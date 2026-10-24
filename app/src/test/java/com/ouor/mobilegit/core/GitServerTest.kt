@@ -1,0 +1,176 @@
+package com.ouor.mobilegit.core
+
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
+import org.junit.Before
+import org.junit.Test
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URI
+import java.util.Base64
+
+class GitServerTest {
+    private lateinit var root: File
+    private lateinit var store: RepoStore
+    private lateinit var settings: SettingsStore
+    private lateinit var log: AccessLogStore
+    private lateinit var server: GitServer
+    private var port = 0
+    private val password = "s3cret-pass"
+
+    @Before fun setUp() {
+        JGitEnv.init()
+        root = tempDir()
+        store = RepoStore(root)
+        settings = SettingsStore(File(root, "settings.json"), FakeCipher)
+        settings.setPassword(password)
+        log = AccessLogStore(null)
+        val auth = Authenticator({ settings.current }, AuthRateLimiter())
+        val web = File(root, "web").apply { mkdirs(); File(this, "index.html").writeText("<html>ui</html>"); File(this, "app.js").writeText("1") }
+        server = GitServer(store, auth, log, { settings.current }, { emptyList() },
+            { p -> File(web, p).takeIf { it.isFile }?.inputStream() }, { Long.MAX_VALUE / 4 })
+        val r = server.start(0, "127.0.0.1")
+        port = (r as ServerStartResult.Started).port
+    }
+
+    @After fun tearDown() { server.stop(0, 100) }
+
+    private fun url(repo: String, user: String = "git", pw: String = password) = "http://$user:$pw@127.0.0.1:$port/$repo"
+
+    private fun get(path: String, auth: Boolean = true): Pair<Int, String> {
+        val c = URI("http://127.0.0.1:$port$path").toURL().openConnection() as HttpURLConnection
+        if (auth) c.setRequestProperty("Authorization", "Basic " + Base64.getEncoder().encodeToString("git:$password".toByteArray()))
+        val code = c.responseCode
+        val body = (if (code < 400) c.inputStream else c.errorStream)?.bufferedReader()?.readText() ?: ""
+        return code to body
+    }
+
+    @Test fun pushCreatesRepo_thenCloneV2AndV0_andHeadPrefersMain() {
+        assumeTrue("git CLI required", GitCli.available)
+        val work = Commits.initWork(branch = "feature")
+        Commits.commit(work, "README.md", "# Hello\n\nworld")
+        work.branchCreate().setName("main").call()
+        val dir = work.repository.workTree
+        GitCli.ok(dir, "push", url("client-a.git"), "feature", "main")
+
+        val meta = store.get("client-a")
+        assertNotNull(meta); assertEquals(RepoType.LOCAL, meta!!.type); assertEquals(CreatedBy.PUSH, meta.createdBy)
+        assertEquals("main", store.open("client-a").use { it.exactRef("HEAD").target.name.removePrefix("refs/heads/") })
+        assertNotNull(store.get("client-a")!!.lastPushAt)
+
+        val c2 = File(tempDir(), "c2")
+        GitCli.ok(root, "-c", "protocol.version=2", "clone", url("client-a.git"), c2.absolutePath)
+        assertEquals("# Hello\n\nworld", File(c2, "README.md").readText().replace("\r\n", "\n"))
+        val c0 = File(tempDir(), "c0")
+        GitCli.ok(root, "-c", "protocol.version=0", "clone", url("client-a"), c0.absolutePath) // F-01 AC5: without .git
+        assertTrue(File(c0, "README.md").isFile)
+
+        // second push (fetch/pull path)
+        work.checkout().setName("main").call()
+        Commits.commit(work, "a.txt", "more")
+        GitCli.ok(dir, "push", url("client-a.git"), "main")
+        GitCli.ok(c2, "pull", "--ff-only")
+        assertTrue(File(c2, "a.txt").isFile)
+        assertTrue(log.entries.value.toString(), log.entries.value.any { it.action == AccessAction.PUSH && it.authResult == AuthResult.OK })
+    }
+
+    @Test fun invalidNameRejected() {
+        assumeTrue(GitCli.available)
+        val work = Commits.initWork(); Commits.commit(work, "x", "y")
+        val r = GitCli.run(work.repository.workTree, "push", url("-bad.git"), "main")
+        assertNotEquals(0, r.code)
+        assertTrue(store.repos.value.isEmpty())
+    }
+
+    @Test fun pushToMirrorIsRejectedWithMessage() {
+        assumeTrue(GitCli.available)
+        store.create("mirrored", RepoType.MIRROR, CreatedBy.MIRROR_ADD, mirror = MirrorSource("https://example.com/a/b.git"))
+        val work = Commits.initWork(); Commits.commit(work, "x", "y")
+        val r = GitCli.run(work.repository.workTree, "-c", "credential.helper=", "push", url("mirrored.git"), "main")
+        assertNotEquals(0, r.code)
+        assertTrue(r.out, r.out.contains("read-only mirror of https://example.com/a/b.git"))
+        assertTrue(log.entries.value.any { it.repoName == "mirrored" && it.action == AccessAction.PUSH && it.status == 403 })
+    }
+
+    @Test fun authRules() {
+        assumeTrue(GitCli.available)
+        store.create("pub", RepoType.LOCAL, CreatedBy.APP_EMPTY)
+        // wrong password
+        assertNotEquals(0, GitCli.run(root, "-c", "credential.helper=", "ls-remote", url("pub.git", pw = "nope")).code)
+        // no credentials
+        assertEquals(401, get("/pub.git/info/refs?service=git-upload-pack", auth = false).first)
+        // anonymous LAN read on: read ok, push still needs auth (F-03 AC5)
+        settings.update { it.copy(anonymousReadOnLan = true) }
+        assertEquals(200, get("/pub.git/info/refs?service=git-upload-pack", auth = false).first)
+        assertEquals(401, get("/pub.git/info/refs?service=git-receive-pack", auth = false).first)
+        assertEquals(200, get("/api/v1/repos", auth = false).first)
+        // ngrok forces auth (F-03 AC7)
+        settings.update { it.copy(ngrokEnabled = true) }
+        assertEquals(401, get("/pub.git/info/refs?service=git-upload-pack", auth = false).first)
+        // auth off: everything anonymous (ngrok off)
+        settings.update { it.copy(ngrokEnabled = false, anonymousReadOnLan = false, authEnabled = false) }
+        assertEquals(200, get("/pub.git/info/refs?service=git-receive-pack", auth = false).first)
+    }
+
+    @Test fun bruteForceBlocksIp() {
+        repeat(11) {
+            val c = URI("http://127.0.0.1:$port/api/v1/repos").toURL().openConnection() as HttpURLConnection
+            c.setRequestProperty("Authorization", "Basic " + Base64.getEncoder().encodeToString("git:wrong$it".toByteArray()))
+            c.responseCode
+        }
+        assertEquals(429, get("/api/v1/repos").first) // even correct creds are blocked for 5 min
+        assertTrue(log.entries.value.any { it.authResult == AuthResult.BLOCKED })
+    }
+
+    @Test fun webApiAndStatic() {
+        assumeTrue(GitCli.available)
+        val work = Commits.initWork()
+        Commits.commit(work, "README.md", "# Title\n\n<script>alert(1)</script>\n\n[x](javascript:alert(1))")
+        Commits.commit(work, "src/main.kt", "fun main() {}")
+        Commits.commit(work, "bin.dat", "\u0000\u0001\u0002binary")
+        Commits.commit(work, "big.lfs", "version https://git-lfs.github.com/spec/v1\noid sha256:${"a".repeat(64)}\nsize 12345\n")
+        GitCli.ok(work.repository.workTree, "push", url("demo.git"), "main")
+
+        val (c1, list) = get("/api/v1/repos"); assertEquals(200, c1); assertTrue(list.contains("\"name\":\"demo\""))
+        val (_, detail) = get("/api/v1/repos/demo"); assertTrue(detail, detail.contains("\"cloneUrl\":\"http://127.0.0.1:$port/demo.git\""))
+        val (_, tree) = get("/api/v1/repos/demo/tree"); assertTrue(tree.indexOf("\"src\"") < tree.indexOf("\"README.md\""))
+        val (_, sub) = get("/api/v1/repos/demo/tree?path=src"); assertTrue(sub.contains("src/main.kt"))
+        val (_, blob) = get("/api/v1/repos/demo/blob?path=src/main.kt"); assertTrue(blob.contains("fun main()"))
+        val (_, bin) = get("/api/v1/repos/demo/blob?path=bin.dat"); assertTrue(bin, bin.contains("\"binary\":true"))
+        val (_, lfs) = get("/api/v1/repos/demo/blob?path=big.lfs"); assertTrue(lfs.contains("\"size\":12345"))
+        val (_, readme) = get("/api/v1/repos/demo/readme")
+        val html = readme.substringAfter("\"html\"")
+        assertTrue(html.contains("<h1>Title</h1>")); assertFalse(html.contains("<script>")); assertFalse(readme.contains("href=\\\"javascript"))
+        val (_, commits) = get("/api/v1/repos/demo/commits?perPage=2"); assertTrue(commits.contains("\"hasMore\":true"))
+        val (_, pathLog) = get("/api/v1/repos/demo/commits?path=src"); assertEquals(1, Regex("\"sha\"").findAll(pathLog).count())
+        assertEquals(404, get("/api/v1/repos/nope").first)
+        assertEquals(404, get("/api/v1/repos/demo/tree?ref=nobranch").first)
+
+        val c = URI("http://127.0.0.1:$port/api/v1/repos/demo/raw?path=src/main.kt").toURL().openConnection() as HttpURLConnection
+        c.setRequestProperty("Authorization", "Basic " + Base64.getEncoder().encodeToString("git:$password".toByteArray()))
+        assertEquals("fun main() {}", c.inputStream.bufferedReader().readText())
+        assertTrue(c.getHeaderField("Content-Disposition").startsWith("attachment"))
+        assertEquals("nosniff", c.getHeaderField("X-Content-Type-Options"))
+
+        assertEquals("<html>ui</html>", get("/").second)
+        assertEquals("<html>ui</html>", get("/demo/tree/main").second) // SPA fallback
+        assertEquals(404, get("/missing.js").first)
+    }
+
+    @Test fun emptyRepoApi() {
+        store.create("empty", RepoType.LOCAL, CreatedBy.APP_EMPTY)
+        val (code, body) = get("/api/v1/repos/empty/tree")
+        assertEquals(404, code); assertTrue(body.contains("EMPTY_REPO"))
+        assertTrue(get("/api/v1/repos/empty").second.contains("\"empty\":true"))
+    }
+
+    @Test fun portInUse() {
+        val other = GitServer(store, Authenticator({ settings.current }, AuthRateLimiter()), log, { settings.current }, { emptyList() }, { null }, { 0 })
+        assertEquals(ServerStartResult.PortInUse(port), other.start(port, "127.0.0.1"))
+    }
+}
