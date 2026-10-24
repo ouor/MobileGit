@@ -30,7 +30,7 @@ data class SyncProgress(val task: String, val done: Int, val total: Int) {
     val fraction: Float? get() = if (total > 0) done.toFloat() / total else null
 }
 
-data class CheckOutcome(val changedRefs: Int, val remoteHead: String?)
+data class CheckOutcome(val changed: Int, val remoteHead: String?)
 
 data class UpdateOutcome(
     val refChanges: List<RefChange>,
