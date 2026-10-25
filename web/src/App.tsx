@@ -32,7 +32,7 @@ function Page({ segments, query }: { segments: string[]; query: URLSearchParams 
   const path = rest.join("/")
   if (r === "r" && repo) {
     if (!view || view === "tree") return <RepoTree repo={repo} path={path} refParam={ref} />
-    if (view === "blob" && path) return <FileView repo={repo} path={path} refParam={ref} line={Number(query.get("L")) || null} />
+    if (view === "blob" && path) return <FileView repo={repo} path={path} refParam={ref} line={Number(query.get("L")) || null} source={query.get("view") === "source"} />
     if (view === "commits") return <Commits repo={repo} path={path} refParam={ref} page={Math.max(1, Number(query.get("page")) || 1)} />
   }
   return <ErrorState error={{ code: "NOT_FOUND", message: "주소가 올바른지 확인하세요." }} />

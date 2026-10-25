@@ -23,7 +23,7 @@ import { ClonePanel, cloneUrlFor, RepoLayout } from "@/components/RepoLayout"
 import { apiUrl, repoApi, useApi, type Readme, type RepoDetail, type Tree, type TreeEntry } from "@/lib/api"
 import { formatBytes, shortUrl } from "@/lib/format"
 import { repoHref } from "@/lib/router"
-import { rewriteReadme } from "@/lib/readme"
+import { MarkdownBody } from "@/components/Markdown"
 
 /** W-02 (path = "") and W-02b (sub directory). */
 export function RepoTree({ repo, path, refParam }: { repo: string; path: string; refParam: string | null }) {
@@ -175,7 +175,6 @@ function EntryRow({ repo, entry: e, refParam }: { repo: string; entry: TreeEntry
 
 function ReadmeCard({ repo, refParam, path, hasReadme }: { repo: string; refParam: string | null; path: string; hasReadme: boolean }) {
   const { data, error } = useApi<Readme>(hasReadme ? apiUrl(repoApi(repo, "readme"), { ref: refParam, path }) : null)
-  const html = useMemo(() => (data ? rewriteReadme(data.html, repo, data.path, refParam) : ""), [data, repo, refParam])
   if (!hasReadme || error) return null
   return (
     <section className="overflow-hidden rounded-xl border bg-card" aria-label="README">
@@ -196,11 +195,7 @@ function ReadmeCard({ repo, refParam, path, hasReadme }: { repo: string; refPara
           <Skeleton className="h-4 w-5/6" />
         </div>
       ) : (
-        // Server-sanitized HTML (spec 3: raw HTML escaped, javascript: links removed).
-        <div
-          className={`prose prose-sm max-w-none px-4 py-5 sm:px-8 sm:py-6 dark:prose-invert prose-headings:scroll-mt-20 prose-a:text-primary prose-code:before:content-none prose-code:after:content-none prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:font-normal prose-pre:bg-muted prose-pre:text-foreground prose-img:inline prose-img:my-0 ${data.format === "text" ? "prose-pre:whitespace-pre-wrap" : ""}`}
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
+        <MarkdownBody doc={data} repo={repo} refParam={refParam} />
       )}
     </section>
   )

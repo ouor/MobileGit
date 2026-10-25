@@ -78,7 +78,8 @@ export function installLinkInterceptor() {
 /** Routes for one repo. `ref` is dropped when it is the default branch to keep URLs short. */
 export const repoHref = {
   tree: (repo: string, path = "", ref?: string | null) => href(["r", repo, path ? "tree" : null, path], { ref }),
-  blob: (repo: string, path: string, ref?: string | null, line?: number) => href(["r", repo, "blob", path], { ref, L: line }),
+  blob: (repo: string, path: string, ref?: string | null, line?: number, view?: "source") =>
+    href(["r", repo, "blob", path], { ref, L: line, view }),
   commits: (repo: string, path = "", ref?: string | null, page?: number) =>
     href(["r", repo, "commits", path], { ref, page: page && page > 1 ? page : undefined }),
 }

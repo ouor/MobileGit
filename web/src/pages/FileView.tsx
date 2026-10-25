@@ -6,27 +6,35 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { CopyButton, ErrorState } from "@/components/common"
 import { PathBar } from "@/components/PathBar"
 import { RepoLayout } from "@/components/RepoLayout"
-import { apiUrl, repoApi, useApi, type Blob, type RepoDetail } from "@/lib/api"
+import { apiUrl, repoApi, useApi, type Blob, type Readme, type RepoDetail } from "@/lib/api"
+import { MarkdownBody } from "@/components/Markdown"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { formatBytes } from "@/lib/format"
 import { HIGHLIGHT_MAX_BYTES, highlightLines } from "@/lib/highlight"
 import { navigate, repoHref } from "@/lib/router"
 import { cn } from "@/lib/utils"
 
+const markdownExt = /\.(md|markdown)$/i
 const imageExt = /\.(png|jpe?g|gif|webp|bmp|ico|avif)$/i
 
 /** W-03 */
-export function FileView({ repo, path, refParam, line }: { repo: string; path: string; refParam: string | null; line: number | null }) {
+export function FileView({ repo, path, refParam, line, source }: { repo: string; path: string; refParam: string | null; line: number | null; source: boolean }) {
   return (
     <RepoLayout repo={repo} tab="code">
-      {(detail) => <FileBody detail={detail} path={path} refParam={refParam} line={line} />}
+      {(detail) => <FileBody detail={detail} path={path} refParam={refParam} line={line} source={source} />}
     </RepoLayout>
   )
 }
 
-function FileBody({ detail, path, refParam, line }: { detail: RepoDetail; path: string; refParam: string | null; line: number | null }) {
+function FileBody({ detail, path, refParam, line, source }: { detail: RepoDetail; path: string; refParam: string | null; line: number | null; source: boolean }) {
   const repo = detail.repo.name
   const { data: blob, error } = useApi<Blob>(apiUrl(repoApi(repo, "blob"), { ref: refParam, path }))
   const rawUrl = apiUrl(repoApi(repo, "raw"), { ref: refParam, path })
+  // Markdown files open as a preview (WR-5); a line link (?L=) or ?view=source shows the source.
+  const isMd = markdownExt.test(path) && blob?.text != null
+  const wantPreview = isMd && !source && !line
+  const { data: md, error: mdError } = useApi<Readme>(wantPreview ? apiUrl(repoApi(repo, "readme"), { ref: refParam, path }) : null)
+  const preview = wantPreview && !mdError
 
   // README links without a trailing slash may point at a folder.
   useEffect(() => {
@@ -77,6 +85,19 @@ function FileBody({ detail, path, refParam, line }: { detail: RepoDetail; path: 
               {formatBytes(blob.size)}
             </span>
             <div className="ml-auto flex items-center gap-1">
+              {isMd && !mdError && (
+                <ToggleGroup
+                  type="single"
+                  variant="outline"
+                  size="sm"
+                  value={preview ? "preview" : "source"}
+                  onValueChange={(v) => v && navigate(repoHref.blob(repo, path, refParam, undefined, v === "source" ? "source" : undefined), { replace: true })}
+                  aria-label="보기 방식"
+                >
+                  <ToggleGroupItem value="preview">미리보기</ToggleGroupItem>
+                  <ToggleGroupItem value="source">원문</ToggleGroupItem>
+                </ToggleGroup>
+              )}
               {blob.text !== null && <CopyButton text={blob.text} label="내용 복사" />}
               <Button variant="ghost" size="sm" asChild>
                 <a href={rawUrl} download={path.split("/").pop()}>
@@ -86,7 +107,20 @@ function FileBody({ detail, path, refParam, line }: { detail: RepoDetail; path: 
               </Button>
             </div>
           </div>
-          {lines ? (
+          {mdError && (
+            <p className="border-b bg-amber-500/10 px-4 py-2 text-xs text-amber-800 dark:text-amber-300">미리보기를 만들 수 없어 원문으로 보여요. {mdError.message}</p>
+          )}
+          {preview ? (
+            md ? (
+              <MarkdownBody doc={md} repo={repo} refParam={refParam} />
+            ) : (
+              <div className="flex flex-col gap-2 p-6">
+                <Skeleton className="h-6 w-1/2" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-5/6" />
+              </div>
+            )
+          ) : lines ? (
             <CodeView repo={repo} path={path} refParam={refParam} text={blob.text!} lines={lines} line={line} />
           ) : (
             <NotShown blob={blob} rawUrl={rawUrl} />
@@ -167,7 +201,7 @@ function CodeView({
             return (
               <tr key={i} id={`L${n}`} className={cn(n === line && "bg-amber-400/15")}>
                 <td className="w-px py-0 pr-3 pl-4 text-right align-top text-muted-foreground/70 select-none">
-                  <a href={repoHref.blob(repo, path, refParam, n)} className="code-line-no hover:text-foreground" data-line={n} aria-label={`${n}번째 줄`} />
+                  <a href={repoHref.blob(repo, path, refParam, n, markdownExt.test(path) ? "source" : undefined)} className="code-line-no hover:text-foreground" data-line={n} aria-label={`${n}번째 줄`} />
                 </td>
                 {hl ? (
                   <td className="py-0 pr-4 whitespace-pre" dangerouslySetInnerHTML={{ __html: hl[i] || "\n" }} />
