@@ -8,6 +8,7 @@ import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import com.ouor.mobilegit.ui.breakable
 import com.ouor.mobilegit.ui.ago
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -24,7 +25,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import com.ouor.mobilegit.ui.components.rememberCopy
 import com.ouor.mobilegit.ui.components.appSwitchColors
-import com.ouor.mobilegit.ui.breakable
 import com.ouor.mobilegit.ui.theme.CodeText
 import com.ouor.mobilegit.R
 import com.ouor.mobilegit.ui.str
@@ -376,8 +376,10 @@ private fun ServerCard(
             Column(Modifier.weight(1f).clip(MaterialTheme.shapes.small)
                 .clickable(onClickLabel = if (showAddr) str(R.string.common_copy) else str(R.string.main_server_details)) { if (showAddr) copy(primary!!.baseUrl) else open = !open }) {
                 Text(title, style = MaterialTheme.typography.titleMedium)
-                Text(if (showAddr) breakable(sub) else sub, style = if (showAddr) CodeText.body else MaterialTheme.typography.bodySmall,
-                    color = if (server is ServerState.Failed) tone(Tone.Danger).content else if (showAddr) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                // RV2-10: at large font sizes the address wraps only before the port, never inside "120"
+                if (showAddr) Text(breakable(sub), style = CodeText.body, color = MaterialTheme.colorScheme.onSurface)
+                else Text(sub, style = MaterialTheme.typography.bodySmall,
+                    color = if (server is ServerState.Failed) tone(Tone.Danger).content else MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = { open = !open }) { Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, str(R.string.main_server_details)) }
             Switch(checked = on, onCheckedChange = { onToggle(it) }, enabled = server !is ServerState.Stopping, colors = appSwitchColors(),

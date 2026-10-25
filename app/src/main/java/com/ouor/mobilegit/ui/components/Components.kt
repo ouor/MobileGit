@@ -328,7 +328,7 @@ fun AddressBar(label: String, url: String, modifier: Modifier = Modifier, large:
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             // large: host:port only so the primary address fits one line; copy/QR still use the full URL.
-            Text(breakable(if (large) url.removePrefix("http://") else url), style = if (large) CodeText.large else CodeText.body, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            Text(breakable(if (large) url.removePrefix("http://") else url), style = if (large) CodeText.large else CodeText.body, // RV2-10: wrap in full at large font sizes, never "…"
                 color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (!large) IconButton(onClick = { copy(url) }) { Icon(Icons.Outlined.ContentCopy, str(R.string.common_copy_named, label), Modifier.size(20.dp)) }

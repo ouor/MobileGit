@@ -9,7 +9,7 @@ class BreakableTest {
 
     @Test fun breaksOnlyAfterPathSlashesAndKeepsNamesWhole() {
         val out = breakable("http://192.168.31.120:8080/field-notes.git")
-        assertEquals("http://192.168.31.120:8080/$zwsp" + "field$wj-${wj}notes.git", out)
+        assertEquals("http://192.$zwsp" + "168.$zwsp" + "31.$zwsp" + "120$zwsp:8080/$zwsp" + "field$wj-${wj}notes.git", out)
         // removing the invisible marks gives back the original text
         assertEquals("http://192.168.31.120:8080/field-notes.git", out.filterNot { it == zwsp || it == wj })
     }

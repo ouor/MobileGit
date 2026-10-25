@@ -1,6 +1,9 @@
 package com.ouor.mobilegit.ui.screens
 
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.semantics.Role
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Schedule
@@ -123,17 +126,26 @@ fun SettingsScreen(nav: Nav) {
                     if (s.exposedWithoutPassword) ExposedMark(running && tunnel is TunnelState.Connected)
                     Spacer(Modifier.height(Space.sm))
                     val opts = listOf(str(R.string.settings_auth_all), str(R.string.settings_auth_push), str(R.string.settings_auth_off))
-                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    val pick = { i: Int ->
+                        when {
+                            i == level -> Unit
+                            i == 0 -> setAuthLevel(0)
+                            s.ngrokEnabled -> { pendingLevel = i; dialog = "riskFromAuth" } // R2-06 AC2
+                            i == 1 -> setAuthLevel(1)
+                            else -> dialog = "authOff"
+                        }
+                    }
+                    // RV2-10: three segments cannot hold "push할 때만" at large font sizes, so they become a radio list
+                    if (androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f) Column(Modifier.selectableGroup()) {
                         opts.forEachIndexed { i, label ->
-                            SegmentedButton(level == i, {
-                                when {
-                                    i == level -> Unit
-                                    i == 0 -> setAuthLevel(0)
-                                    s.ngrokEnabled -> { pendingLevel = i; dialog = "riskFromAuth" } // R2-06 AC2
-                                    i == 1 -> setAuthLevel(1)
-                                    else -> dialog = "authOff"
-                                }
-                            }, SegmentedButtonDefaults.itemShape(i, opts.size)) { Text(label, maxLines = 1) }
+                            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(level == i, role = Role.RadioButton) { pick(i) }, verticalAlignment = Alignment.CenterVertically) {
+                                androidx.compose.material3.RadioButton(level == i, onClick = null)
+                                Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = Space.md))
+                            }
+                        }
+                    } else SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        opts.forEachIndexed { i, label ->
+                            SegmentedButton(level == i, { pick(i) }, SegmentedButtonDefaults.itemShape(i, opts.size)) { Text(label, maxLines = 1) }
                         }
                     }
                 }
@@ -149,12 +161,15 @@ fun SettingsScreen(nav: Nav) {
                     Row(Modifier.padding(vertical = Space.xs), verticalAlignment = Alignment.Top) {
                         Box(Modifier.padding(top = 6.dp).size(10.dp).clip(CircleShape).background(tone(t).content))
                         Spacer(Modifier.width(Space.md))
-                        Column(Modifier.width(88.dp)) {
+                        // RV2-10: at large font sizes the name no longer fits 88dp ("와이파/이"), so the body goes under it
+                        val stacked = androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f
+                        Column(if (stacked) Modifier.weight(1f) else Modifier.width(88.dp)) {
                             Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                             Text(str(when (t) { Tone.Success -> R.string.sec_level_safe; Tone.Danger -> R.string.sec_level_danger; else -> R.string.sec_level_caution }),
                                 style = MaterialTheme.typography.labelMedium, color = tone(t).content)
+                            if (stacked) Text(body, style = MaterialTheme.typography.bodyMedium)
                         }
-                        Text(body, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        if (!stacked) Text(body, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                     }
                 }
             }
