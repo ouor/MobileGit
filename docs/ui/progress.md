@@ -78,3 +78,20 @@
 | APK 크기 | material-icons-extended + 릴리스 R8 꺼짐(`optimization.enable = false`)으로 릴리스 APK가 커진다. R8을 켜거나 쓰는 아이콘만 벡터로 옮길 것 |
 | 화면 회전·태블릿 | 세로 폰 기준으로만 확인 |
 | UI 테스트 | Compose UI 자동 테스트는 없다. 실기기 확인은 수동 + quick-qa |
+
+## 6. QA 1차 처리 (`docs/qa/round1/report.md` 4장)
+
+| ID | 처리 | 실기기 확인 (d418f2d1) |
+|---|---|---|
+| QA-02 서버 실패 종류 | `Failed.message`만 보이고 `detail`은 배너의 "자세히" 안에 둔다. `BACKGROUND_START_BLOCKED`는 스위치를 켜짐으로 두고 경고 톤 + "앱을 열면 서버가 다시 켜져요". `PORT_IN_USE`는 기존 포트 바꾸기 안내 | 서버 켜진 채 `installDebug` → 시스템 로그 "Background started FGS: Disallowed" → 앱 열기 → 첫 화면부터 "서버 켜짐"(코어가 화면이 그려지기 전에 복구해서 실패 배너는 보이지 않음). 영어 원문 노출 없음 |
+| QA-03 이미 미러됨 | `errorKind`를 먼저 본다. `ALREADY_MIRRORED`면 "이미 미러됨 / <이름> 레포로 이미 보존 중이에요" + "기존 레포로 이동" | `Spoon-Knife/tree/main/styles` 공유 → 정보 배너, 버튼으로 상세 이동 |
+| QA-06 분리 레포가 빈 레포로 보임 | UI 원인. "PC에서 시작하기" 카드 조건에 `forkedFromUrl == null` 추가(분리·복제 모두 코어가 채움). 코어 요청 없음 | 미러 → 로컬 레포로 분리(복제) → `Spoon-Knife-local`에 빈 레포 카드 없음 |
+| QA-07 ngrok 토큰 거부 | 배너 제목이 상태를 따른다(연결됨 "외부 공개 중", 거부 "외부 공개 실패", 그 밖 "준비 중"). 본문은 한국어 한 줄, 원문은 "자세히"(빈 줄 제거). 설정 부제도 원문 없음 | 잘못된 토큰 저장 → 외부 접속 켜기 → "외부 공개 실패 (ngrok) / ngrok이 토큰을 거부했어요…", 자세히에 ERR_NGROK_105 원문. 확인 후 끄고 토큰 지움 |
+| QA-10 남은 공간 가려짐 | "남은 공간"을 하단 고정 버튼 바로 위(`BottomAction.above`)로 옮김 | 스크롤 없이 버튼 위에 "남은 공간 97.6 GB" |
+| QA-12 접근성 설명 | 복사 버튼 설명을 "<라벨> 복사"로. 메인 보조 주소 라벨은 "<종류> 주소" | 온보딩 다시 보기 → "사용자 이름 복사" |
+| LFS 안내 (코어 권장) | A-07 LFS 카드에 거부되면 다시 push하라는 문장 + `GIT_LFS_SKIP_PUSH=1 git push` 명령 블록. 문구 해요체로 통일 | PC(git-lfs 3.7.1)에서 `filter=lfs` 레포 push → 상세에 LFS 카드와 명령 표시 |
+
+- 공통: `Banner`에 `detail` 인자(접기/펼치기) 추가. `./gradlew :app:assembleDebug :app:testDebugUnitTest` 통과. 커밋 `dd356a4`.
+- 확인용으로 만든 `Spoon-Knife`, `Spoon-Knife-local`, `lfs-check`는 지웠고 인증은 다시 켰다. ngrok은 꺼짐·토큰 없음으로 되돌렸다. `ngrokWarningAccepted`는 UI로 되돌릴 수 없어 true로 남았다.
+- 주의: 이번 작업을 시작할 때(11:58) 폰의 앱 데이터는 이미 비어 있었다. 데이터 디렉터리가 11:51에 새로 만들어졌으니 그 전에 앱이 지워졌다가 다시 설치된 것으로 보인다(`installDebug`는 데이터를 유지한다). QA가 준비한 레포 15개는 이 작업 전에 이미 없었다.
+- 남은 것: "자세히"는 배너 안의 글자 버튼이다. 원문이 길면 카드가 길어지지만 접혀 있는 것이 기본이다. 메인 FAB가 uiautomator 덤프에 안 보인다는 참고 항목은 TalkBack으로 확인하지 않았다.

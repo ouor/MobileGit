@@ -42,3 +42,7 @@
 ## CR-5 소스 zip 브랜치 선택 (요청 불필요)
 
 - 기존 `WorkScheduler.enqueueExport(kind, repos, ref, uri)`의 `ref`와 `RepoOps.branches(name)`로 충분해서 코어 요청을 만들지 않았다. 내보내기 시트에서 소스 zip을 고르면 브랜치 목록(기본 브랜치 선택)이 나온다. 실기기에서 Spoon-Knife의 브랜치 3개 표시 확인.
+
+## QA-06 (요청 불필요)
+
+- 분리(복제)한 레포가 빈 레포로 보이던 것은 UI 조건(`lastPushAt == null`) 문제였다. 코어는 분리·복제 때 `forkedFromUrl`을 채우므로 UI에서 그 값으로 구분한다. 코어 요청 없음.
