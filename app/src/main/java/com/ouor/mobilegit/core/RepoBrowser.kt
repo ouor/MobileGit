@@ -183,7 +183,9 @@ object RepoBrowser {
 
     /** F-18 AC5: README.md (rendered, sanitized) → README / README.txt (plain). Null when none. */
     fun readme(repo: Repository, ref: String?, dir: String? = null): ReadmeDto? {
-        val tree = tree(repo, ref, dir)
+        val tree = try { tree(repo, ref, dir) } catch (e: BrowseException) {
+            if (e.code == "NOT_A_DIRECTORY") return markdownFile(repo, ref, dir) else throw e
+        }
         val files = tree.entries.filter { it.type == "file" }
         val md = files.firstOrNull { it.name.equals("README.md", true) || it.name.equals("README.markdown", true) }
         val txt = files.firstOrNull { it.name.equals("README", true) || it.name.equals("README.txt", true) }
@@ -192,6 +194,15 @@ object RepoBrowser {
         val raw = blob.text ?: return null
         val html = if (pick === md) renderMarkdown(raw) else "<pre>" + escapeHtml(raw) + "</pre>"
         return ReadmeDto(tree.ref, pick.path, if (pick === md) "markdown" else "text", raw, html)
+    }
+
+    /** WR-5: one Markdown file rendered like a README. 400 NOT_MARKDOWN for other files, 400 TOO_LARGE over the blob limit. */
+    fun markdownFile(repo: Repository, ref: String?, path: String?): ReadmeDto {
+        val b = blob(repo, ref, path)
+        val ext = b.path.substringAfterLast('/').substringAfterLast('.', "").lowercase()
+        if (ext != "md" && ext != "markdown" || b.binary || b.lfs != null) throw BrowseException(400, "NOT_MARKDOWN", "Markdown 파일이 아닙니다")
+        val raw = b.text ?: throw BrowseException(400, "TOO_LARGE", "파일이 너무 커서 렌더링할 수 없습니다")
+        return ReadmeDto(b.ref, b.path, "markdown", raw, renderMarkdown(raw))
     }
 
     private val mdParser = Parser.builder().extensions(listOf(TablesExtension.create(), StrikethroughExtension.create(), AutolinkExtension.create())).build()

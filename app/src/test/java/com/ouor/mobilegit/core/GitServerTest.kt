@@ -225,6 +225,30 @@ class GitServerTest {
         GitCli.ok(tempDir(), "clone", url("demo.git"), "c")
     }
 
+    // WR-5: readme?path=<file.md> renders that file with the README renderer (sanitized); directories behave as before.
+    @Test fun readmeRendersAnyMarkdownFile() {
+        assumeTrue(GitCli.available)
+        val work = Commits.initWork()
+        Commits.commit(work, "README.md", "# Root")
+        Commits.commit(work, "docs/guide.md", "# Guide\n\n<script>x</script>\n\n![img](img/a.png) [next](other.md) [x](javascript:alert(1))")
+        Commits.commit(work, "docs/notes.txt", "plain")
+        Commits.commit(work, "docs/big.md", "a".repeat(1_100_000))
+        GitCli.ok(work.repository.workTree, "push", url("demo.git"), "main")
+
+        val (code, guide) = get("/api/v1/repos/demo/readme?path=docs/guide.md")
+        assertEquals(200, code)
+        assertTrue(guide, guide.contains("\"path\":\"docs/guide.md\"") && guide.contains("\"format\":\"markdown\""))
+        val html = guide.substringAfter("\"html\"")
+        assertTrue(html.contains("<h1>Guide</h1>"))
+        assertTrue(html, html.contains("src=\\\"img/a.png\\\"") && html.contains("href=\\\"other.md\\\"")) // relative URLs untouched, like README
+        assertFalse(html.contains("<script>")); assertFalse(html.contains("javascript:"))
+        assertTrue(get("/api/v1/repos/demo/readme?path=").second.contains("\"path\":\"README.md\"")) // directory: unchanged
+        assertTrue(get("/api/v1/repos/demo/readme?path=docs").second.contains("\"error\"")) // docs has no README
+        val (c400, notMd) = get("/api/v1/repos/demo/readme?path=docs/notes.txt"); assertEquals(400, c400); assertTrue(notMd.contains("NOT_MARKDOWN"))
+        val (cBig, big) = get("/api/v1/repos/demo/readme?path=docs/big.md"); assertEquals(400, cBig); assertTrue(big.contains("TOO_LARGE"))
+        assertEquals(404, get("/api/v1/repos/demo/readme?path=docs/missing.md").first)
+    }
+
     @Test fun compressionScope() {
         assertTrue(GitServer.isCompressible("/api/v1/repos"))
         assertTrue(GitServer.isCompressible("/assets/index-abc.js"))
