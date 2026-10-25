@@ -163,6 +163,11 @@ class MirrorSyncTest {
         val list = ops.archives("up")
         assertEquals(listOf("refs/heads/feat", "refs/heads/main", "refs/tags/v1"), list.map { it.ref })
         assertTrue(list.all { it.group == stamp && it.at == now / 1000 * 1000 })
+        store.open("up").use { r -> // R2SEC-05: capped, newest first, flagged
+            val capped = RepoBrowser.archives(r, store.archiveNotes("up"), max = 2)
+            assertEquals(list.take(2), capped.entries); assertTrue(capped.truncated)
+            assertFalse(RepoBrowser.archives(r, emptyMap()).truncated)
+        }
         val main = list.single { it.name == "main" }
         assertEquals(RefChangeKind.FORCED, main.kind); assertEquals(oldMain, main.sha); assertEquals(upRefs()["refs/heads/main"], main.currentSha)
         assertEquals("edit b.txt", main.summary)
@@ -388,6 +393,7 @@ class MirrorSyncTest {
         val ev = runBlocking { coordinator.update("up", SyncTrigger.MANUAL) }
         assertTrue(myRefs().keys.none { it.startsWith("refs/pull/") })
         assertEquals(0, ev.archivedRefCount)
+        assertEquals(listOf(RefChangeKind.REVIEW), ev.refChanges.map { it.kind }) // R2GIT-05: not "브랜치 삭제됨"
 
         settings.update { it.copy(mirrorPullRefs = true) }
         runBlocking { coordinator.update("up", SyncTrigger.MANUAL) }

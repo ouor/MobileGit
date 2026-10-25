@@ -162,11 +162,12 @@ fun com.ouor.mobilegit.core.RefChangeKind?.label(ref: String? = null): String = 
     com.ouor.mobilegit.core.RefChangeKind.DELETED -> str(R.string.change_deleted)
     com.ouor.mobilegit.core.RefChangeKind.TAG_MOVED -> str(R.string.change_tag_moved)
     com.ouor.mobilegit.core.RefChangeKind.TAG_DELETED -> str(R.string.change_tag_deleted)
+    com.ouor.mobilegit.core.RefChangeKind.REVIEW -> str(R.string.change_review)
     null -> str(R.string.change_unknown)
 }
 
 val com.ouor.mobilegit.core.RefChangeKind?.tone: Tone get() = when (this) {
-    com.ouor.mobilegit.core.RefChangeKind.FAST_FORWARD -> Tone.Neutral
+    com.ouor.mobilegit.core.RefChangeKind.FAST_FORWARD, com.ouor.mobilegit.core.RefChangeKind.REVIEW -> Tone.Neutral
     com.ouor.mobilegit.core.RefChangeKind.CREATED -> Tone.Success
     com.ouor.mobilegit.core.RefChangeKind.DELETED, com.ouor.mobilegit.core.RefChangeKind.TAG_DELETED -> Tone.Danger
     else -> Tone.Warning

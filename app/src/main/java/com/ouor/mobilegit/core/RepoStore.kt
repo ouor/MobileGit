@@ -235,19 +235,43 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
     }
 
     /** R2-03: records the changes that produced archive refs (entries without [RefChange.archivedAs] are ignored). */
+    /** R2GIT-10: archives.json is rewritten under a per-repo monitor, so other repos' meta/history writes do not wait. */
+    private val archiveLocks = ConcurrentHashMap<String, Any>()
+
     fun appendArchives(name: String, changes: List<RefChange>) {
         val archived = changes.filter { it.archivedAs != null }
         if (archived.isEmpty()) return
-        synchronized(this) {
-            if (!exists(name)) return
-            JsonFile.writeList(archivesFile(dir(name)), RefChange.serializer(), (archived + readList(archivesFile(dir(name)), RefChange.serializer())).take(MAX_ARCHIVE_NOTES))
+        val dir = synchronized(this) { if (!exists(name)) return; dir(name) }
+        synchronized(archiveLocks.getOrPut(key(name)) { Any() }) {
+            val f = archivesFile(dir)
+            migrateArchiveNotes(dir)
+            JsonFile.writeList(f, RefChange.serializer(), (archived + readList(f, RefChange.serializer())).take(MAX_ARCHIVE_NOTES))
         }
     }
 
-    /** archive ref → the change that created it. From [appendArchives], plus history for archives made before it existed. */
-    fun archiveNotes(name: String): Map<String, RefChange> =
-        (readList(archivesFile(dir(name)), RefChange.serializer()) + events(name).flatMap { it.refChanges })
-            .filter { it.archivedAs != null }.distinctBy { it.archivedAs }.associateBy { it.archivedAs!! }
+    /**
+     * R2GIT-10: once per repo, copies the archive notes still in the history (archives made before archives.json
+     * existed) into archives.json; afterwards only archives.json is read. Caller holds the repo's archive monitor.
+     */
+    private fun migrateArchiveNotes(dir: File) {
+        val marker = File(dir, "mobilegit/archives.migrated")
+        if (marker.exists()) return
+        val f = archivesFile(dir)
+        val have = readList(f, RefChange.serializer())
+        val known = have.mapNotNull { it.archivedAs }.toSet()
+        val old = readList(eventsFile(dir), SyncEvent.serializer()).flatMap { it.refChanges }
+            .filter { it.archivedAs != null && it.archivedAs !in known }.distinctBy { it.archivedAs }
+        if (old.isNotEmpty()) JsonFile.writeList(f, RefChange.serializer(), (have + old).take(MAX_ARCHIVE_NOTES))
+        marker.createNewFile()
+    }
+
+    /** archive ref → the change that created it ([appendArchives]). */
+    fun archiveNotes(name: String): Map<String, RefChange> {
+        val dir = dir(name)
+        synchronized(archiveLocks.getOrPut(key(name)) { Any() }) { migrateArchiveNotes(dir) }
+        return readList(archivesFile(dir), RefChange.serializer()).filter { it.archivedAs != null }
+            .distinctBy { it.archivedAs }.associateBy { it.archivedAs!! }
+    }
 
     /**
      * R2-01 AC2: the user opened the archive screen; drops the "히스토리 바뀜" badge for archives made up to [seenAt]

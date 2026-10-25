@@ -89,11 +89,12 @@ data class RefChange(val ref: String, val oldSha: String?, val newSha: String?, 
     /**
      * R2-04 AC1. Derived, so history written by older versions gets it too: non-fast-forward branch updates and
      * deletions are always archived ([MirrorEngine]), so an unarchived branch update is a fast-forward.
-     * Review refs (refs/pull/...) are never archived and always count as [RefChangeKind.FAST_FORWARD] when moved.
+     * Review refs (refs/pull/...) are never archived and are always [RefChangeKind.REVIEW] (R2GIT-05).
      */
     val kind: RefChangeKind get() {
         val tag = ref.startsWith("refs/tags/")
         return when {
+            MirrorEngine.isReviewRef(ref) -> RefChangeKind.REVIEW
             oldSha == null -> RefChangeKind.CREATED
             newSha == null -> if (tag) RefChangeKind.TAG_DELETED else RefChangeKind.DELETED
             tag -> RefChangeKind.TAG_MOVED
@@ -104,7 +105,9 @@ data class RefChange(val ref: String, val oldSha: String?, val newSha: String?, 
 }
 
 /** R2-04 / R2-03: "새 커밋", "히스토리 바뀜(강제 push)", "새 브랜치·태그", "브랜치 삭제됨", "태그 이동됨", "태그 삭제됨". */
-@Serializable enum class RefChangeKind { FAST_FORWARD, FORCED, CREATED, DELETED, TAG_MOVED, TAG_DELETED }
+@Serializable enum class RefChangeKind { FAST_FORWARD, FORCED, CREATED, DELETED, TAG_MOVED, TAG_DELETED,
+    /** R2GIT-05: a review ref (refs/pull/..., refs/merge-requests/...) appeared, moved or went away. Never archived. */
+    REVIEW }
 
 @Serializable
 data class SyncEvent(
