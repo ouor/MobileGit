@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -144,7 +145,7 @@ fun OverflowMenu(description: String = "더 보기", build: MenuScope.() -> Unit
 @Composable
 fun BottomAction(label: String, enabled: Boolean = true, loading: Boolean = false, onClick: () -> Unit, above: @Composable ColumnScope.() -> Unit = {}) {
     Surface(color = MaterialTheme.colorScheme.background) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = Space.screen, vertical = Space.md).padding(bottom = Space.xs)) {
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = Space.screen, vertical = Space.md)) {
             above()
             PrimaryButton(label, enabled = enabled && !loading, onClick = onClick, loading = loading)
         }
@@ -306,7 +307,7 @@ fun AddressBar(label: String, url: String, modifier: Modifier = Modifier, large:
             Text(if (large) url.removePrefix("http://") else url, style = if (large) CodeText.large else CodeText.body, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        IconButton(onClick = { copy(url) }) { Icon(Icons.Outlined.ContentCopy, "$label 주소 복사", Modifier.size(20.dp)) }
+        if (!large) IconButton(onClick = { copy(url) }) { Icon(Icons.Outlined.ContentCopy, "$label 주소 복사", Modifier.size(20.dp)) }
         if (onQr != null) IconButton(onClick = onQr) { Icon(Icons.Outlined.QrCode2, "QR 코드 크게 보기", Modifier.size(22.dp)) }
     }
 }
@@ -399,7 +400,7 @@ fun RepoRow(item: RepoListItem, onClick: () -> Unit, onUpdate: (() -> Unit)?) {
                 Spacer(Modifier.width(Space.md))
                 Column(Modifier.weight(1f)) {
                     Text(m.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    val whenText = if (mirror) "업데이트 ${ago(m.mirror?.lastSuccessUpdateAt)}" else "push ${ago(m.lastPushAt)}"
+                    val whenText = if (mirror) m.mirror?.lastSuccessUpdateAt?.let { "업데이트 ${ago(it)}" } ?: "첫 받기 전" else m.lastPushAt?.let { "push ${ago(it)}" } ?: "push 전"
                     Text("${if (mirror) "미러" else "로컬"} · $whenText · ${bytes(m.sizeBytes)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                     if (item.badges.isNotEmpty()) BadgeRow(item.badges, Modifier.padding(top = Space.xs + Space.xxs))
                     item.progress?.let { p ->

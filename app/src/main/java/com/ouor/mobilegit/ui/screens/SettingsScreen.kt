@@ -67,6 +67,7 @@ fun SettingsScreen(nav: Nav) {
     val s by core.settings.state.collectAsStateWithLifecycle()
     val tunnel by core.tunnel.state.collectAsStateWithLifecycle()
     val server by core.server.state.collectAsStateWithLifecycle()
+    val creds by core.credentials.items.collectAsStateWithLifecycle()
     var dialog by remember { mutableStateOf<String?>(null) }
     val running = server is ServerState.Running
 
@@ -140,7 +141,7 @@ fun SettingsScreen(nav: Nav) {
 
             SectionHeader("관리")
             RowGroup {
-                NavRow("원격 자격 증명", { nav.go(Routes.CREDENTIALS) }, icon = Icons.Outlined.Key, value = "${core.credentials.items.value.size}개")
+                NavRow("원격 자격 증명", { nav.go(Routes.CREDENTIALS) }, icon = Icons.Outlined.Key, value = "${creds.size}개")
                 Divider()
                 NavRow("접속 기록", { nav.go(Routes.ACCESS_LOG) }, icon = Icons.Outlined.ListAlt)
                 Divider()

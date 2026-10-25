@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -133,7 +134,7 @@ fun BackupScreen(nav: Nav) {
 
     AppScaffold("전체 백업", onBack = nav::back, bottomBar = {
         Surface(color = MaterialTheme.colorScheme.background) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = Space.screen, vertical = Space.md)) {
+            Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = Space.screen, vertical = Space.md)) {
                 Text("${chosen.size}개 · 예상 ${bytes(est)} 이하" + (free?.let { " · 남은 공간 ${bytes(it.first)}" } ?: ""), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = Space.sm))
                 val p = export.progress
@@ -157,16 +158,6 @@ fun BackupScreen(nav: Nav) {
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
-                SectionCard(title = "복원 방법") {
-                    Text("앱 안에서 가져오기는 없어요. zip을 풀고 PC에서:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(Space.sm))
-                    val base = addrs.firstOrNull()?.baseUrl ?: "http://<폰 주소>:${core.settings.current.port}"
-                    CommandBlock("git clone <이름>.bundle <이름>"); Spacer(Modifier.height(Space.xs))
-                    CommandBlock("cd <이름> && git push $base/<이름>.git --all && git push $base/<이름>.git --tags")
-                    Text("이 폰에 push하면 레포가 새로 만들어져요.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
-                }
-            }
-            item {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = Space.sm)) {
                     Text("레포 ${repos.size}개", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                     val all = repos.isNotEmpty() && selected.size == repos.size
@@ -183,6 +174,18 @@ fun BackupScreen(nav: Nav) {
                         Spacer(Modifier.width(Space.sm))
                         Text(bytes(m.sizeBytes), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                }
+            }
+            item(key = "restore") {
+                SectionCard(Modifier.padding(top = Space.md), title = "복원 방법") {
+                    Text("앱 안에서 가져오기는 없어요. zip을 풀고 PC에서:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(Space.sm))
+                    val base = addrs.firstOrNull()?.baseUrl ?: "http://<폰 주소>:${core.settings.current.port}"
+                    CommandBlock("git clone <이름>.bundle <이름>"); Spacer(Modifier.height(Space.xs))
+                    CommandBlock("cd <이름>"); Spacer(Modifier.height(Space.xs))
+                    CommandBlock("git push $base/<이름>.git --all"); Spacer(Modifier.height(Space.xs))
+                    CommandBlock("git push $base/<이름>.git --tags")
+                    Text("이 폰에 push하면 레포가 새로 만들어져요.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
                 }
             }
         }

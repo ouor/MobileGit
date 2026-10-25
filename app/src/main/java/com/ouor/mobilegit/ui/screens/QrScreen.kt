@@ -68,8 +68,12 @@ fun QrScreen(repo: String?, nav: Nav) {
     DisposableEffect(Unit) {
         val w = (ctx as? Activity)?.window
         val old = w?.attributes?.screenBrightness
+        val bars = w?.let { androidx.core.view.WindowCompat.getInsetsController(it, it.decorView) }
+        val oldLight = bars?.isAppearanceLightStatusBars
+        bars?.isAppearanceLightStatusBars = true // white page: dark status icons
         w?.let { it.attributes = it.attributes.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL }; it.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
         onDispose {
+            oldLight?.let { bars.isAppearanceLightStatusBars = it }
             w?.let { it.attributes = it.attributes.apply { screenBrightness = old ?: WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }; it.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
         }
     }
@@ -88,8 +92,8 @@ fun QrScreen(repo: String?, nav: Nav) {
         Spacer(Modifier.height(Space.lg))
         Image(qr, "QR 코드: $url", Modifier.fillMaxWidth().widthIn(max = 420.dp).aspectRatio(1f), filterQuality = FilterQuality.None)
         Spacer(Modifier.height(Space.lg))
-        Text(url, color = Color(0xFF191F28), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = if (url.length > 40) 22.sp else 28.sp,
-            lineHeight = 34.sp, textAlign = TextAlign.Center)
+        Text(url, color = Color(0xFF191F28), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = when { url.length > 40 -> 16.sp; url.length > 24 -> 20.sp; else -> 26.sp },
+            lineHeight = 30.sp, textAlign = TextAlign.Center)
         if (repo != null) Text("git clone $url", color = Color(0xFF4E5968), fontFamily = Mono, fontSize = 16.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = Space.sm))
         Spacer(Modifier.height(Space.xl))
         if (addrs.size > 1) Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {

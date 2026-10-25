@@ -123,6 +123,7 @@ fun RepoDetailScreen(name: String, nav: Nav) {
     val items by core.repoItems.collectAsStateWithLifecycle(initialValue = null)
     val item = items?.firstOrNull { it.meta.name.equals(name, ignoreCase = true) }
     val export = rememberExportRunner()
+    val screenScope = rememberCoroutineScope() // outlives dialogs: delete removes the repo, which disposes the dialog
     var sheet by remember { mutableStateOf<String?>(null) } // export | fork | delete
     var tab by rememberSaveable { mutableIntStateOf(0) }
 
@@ -145,8 +146,8 @@ fun RepoDetailScreen(name: String, nav: Nav) {
                     item(key = "header") { Header(item) }
                     if (showHistory) item(key = "tabs") {
                         PrimaryTabRow(selectedTabIndex = tab, containerColor = MaterialTheme.colorScheme.background) {
-                            Tab(tab == 0, { tab = 0 }, text = { Text("정보") })
-                            Tab(tab == 1, { tab = 1 }, text = { Text("동기화 이력 ${events.size}") })
+                            Tab(tab == 0, { tab = 0 }, unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant, text = { Text("정보") })
+                            Tab(tab == 1, { tab = 1 }, unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant, text = { Text("동기화 이력 ${events.size}") })
                         }
                     }
                     if (tab == 0 || !showHistory) {
@@ -159,7 +160,7 @@ fun RepoDetailScreen(name: String, nav: Nav) {
                 when (sheet) {
                     "export" -> ExportSheet(meta, export) { sheet = null }
                     "fork" -> ForkDialog(meta, nav) { sheet = null }
-                    "delete" -> DeleteDialog(meta, nav, onExport = { sheet = "export" }) { sheet = null }
+                    "delete" -> DeleteDialog(meta, nav, screenScope, onExport = { sheet = "export" }) { sheet = null }
                 }
             }
         }
@@ -433,9 +434,9 @@ private fun ForkDialog(m: RepoMeta, nav: Nav, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun DeleteDialog(m: RepoMeta, nav: Nav, onExport: () -> Unit, onDismiss: () -> Unit) {
+private fun DeleteDialog(m: RepoMeta, nav: Nav, scope: kotlinx.coroutines.CoroutineScope, onExport: () -> Unit, onDismiss: () -> Unit) {
     val core = core()
-    val scope = rememberCoroutineScope()
+    
     val snack = LocalSnack.current
     var typed by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }

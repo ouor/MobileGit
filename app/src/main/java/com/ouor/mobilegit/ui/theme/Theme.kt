@@ -109,7 +109,7 @@ private val AppTypography = Typography().run {
         headlineLarge = headlineLarge.copy(fontWeight = FontWeight.Bold, fontSize = 30.sp, lineHeight = 38.sp),
         headlineMedium = headlineMedium.copy(fontWeight = FontWeight.Bold, fontSize = 26.sp, lineHeight = 34.sp),
         headlineSmall = headlineSmall.copy(fontWeight = FontWeight.Bold, fontSize = 22.sp, lineHeight = 30.sp),
-        titleLarge = titleLarge.copy(fontWeight = FontWeight.Bold, fontSize = 20.sp, lineHeight = 28.sp),
+        titleLarge = titleLarge.copy(fontWeight = FontWeight.Bold, fontSize = 19.sp, lineHeight = 26.sp),
         titleMedium = titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 17.sp, lineHeight = 24.sp),
         titleSmall = titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 15.sp, lineHeight = 22.sp),
         bodyLarge = bodyLarge.copy(fontSize = 16.sp, lineHeight = 24.sp),
@@ -122,7 +122,7 @@ private val AppTypography = Typography().run {
 
 /** Monospace styles for addresses, URLs, commands and SHAs. */
 object CodeText {
-    val large = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 20.sp, lineHeight = 28.sp)
+    val large = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 19.sp, lineHeight = 26.sp)
     val body = TextStyle(fontFamily = Mono, fontSize = 13.sp, lineHeight = 19.sp)
     val small = TextStyle(fontFamily = Mono, fontSize = 12.sp, lineHeight = 16.sp)
 }
