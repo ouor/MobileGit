@@ -4,6 +4,11 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
+import io.ktor.server.application.install
+import io.ktor.server.plugins.compression.Compression
+import io.ktor.server.plugins.compression.condition
+import io.ktor.server.plugins.compression.gzip
+import io.ktor.server.plugins.compression.minimumSize
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.connector
@@ -95,7 +100,16 @@ class GitServer(
             connector { this.host = host; this.port = port }
             connector { this.host = "127.0.0.1"; this.port = 0 }
             connectionIdleTimeoutSeconds = 120
-        }) { routing {
+        }) {
+            // WR-4: gzip for the web UI and JSON only. Git traffic (packs are already zlib-compressed and git
+            // clients stream them) and raw downloads (exact bytes, Content-Length) stay uncompressed.
+            install(Compression) {
+                gzip {
+                    minimumSize(1024)
+                    condition { isCompressible(request.path()) }
+                }
+            }
+            routing {
             get("/api/v1/{apiPath...}") { api(call) }
             get("/{repo}/info/refs") { infoRefs(call) }
             post("/{repo}/git-upload-pack") { uploadPack(call) }
@@ -372,8 +386,8 @@ class GitServer(
                                     val fileName = (q["path"] ?: "file").substringAfterLast('/').replace("\"", "")
                                     call.response.header(HttpHeaders.ContentDisposition, "attachment; filename=\"$fileName\"")
                                     call.response.header("X-Content-Type-Options", "nosniff")
-                                    call.response.header(HttpHeaders.ContentLength, size.toString())
-                                    call.respondOutputStream(ContentType.Application.OctetStream) { RepoBrowser.raw(repo, q["ref"], q["path"]) { this } }
+                                    // WR-2: let Ktor write Content-Length itself; a manual header plus a streamed body sent both CL and chunked.
+                                    call.respondOutputStream(ContentType.Application.OctetStream, contentLength = size) { RepoBrowser.raw(repo, q["ref"], q["path"]) { this } }
                                 }
                                 else -> throw BrowseException(404, "NOT_FOUND", "알 수 없는 API")
                             }
@@ -402,7 +416,9 @@ class GitServer(
     private suspend fun static(call: ApplicationCall) {
         val ctx = Ctx(call)
         val path = call.request.path().trimStart('/')
-        val isAsset = path.substringAfterLast('/').contains('.')
+        // WR-1: /r/... is the web UI's history-routing space (repo names and file paths may contain dots), always index.html.
+        val isSpaRoute = path == "r" || path.startsWith("r/")
+        val isAsset = !isSpaRoute && path.substringAfterLast('/').contains('.')
         if (!ctx.authorize(false, null, AccessAction.WEB)) return
         call.response.header("Content-Security-Policy",
             "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
@@ -410,10 +426,14 @@ class GitServer(
         call.response.header("Referrer-Policy", "no-referrer")
         if (path.split('/').any { it == ".." }) { call.respondText("Bad path", status = HttpStatusCode.BadRequest); return }
         val bytes = withContext(Dispatchers.IO) {
-            (if (path.isEmpty()) null else assets.open(path))?.use { it.readBytes() }
+            (if (path.isEmpty() || isSpaRoute) null else assets.open(path))?.use { it.readBytes() }
         }
         when {
-            bytes != null -> call.respondBytes(bytes, ContentType.parse(types[path.substringAfterLast('.').lowercase()] ?: "application/octet-stream"))
+            bytes != null -> {
+                // WR-3: Vite puts content hashes in assets/ file names, so they never change under the same URL.
+                if (path.startsWith("assets/")) call.response.header(HttpHeaders.CacheControl, "public, max-age=31536000, immutable")
+                call.respondBytes(bytes, ContentType.parse(types[path.substringAfterLast('.').lowercase()] ?: "application/octet-stream"))
+            }
             isAsset -> call.respondText("Not found", status = HttpStatusCode.NotFound)
             else -> { // SPA fallback: every non-asset path renders index.html (client-side routing).
                 val index = withContext(Dispatchers.IO) { assets.open("index.html")?.use { it.readBytes() } } ?: PLACEHOLDER.toByteArray()
@@ -425,6 +445,13 @@ class GitServer(
     }
 
     companion object {
+        /** WR-4: everything except git smart HTTP and raw file downloads. */
+        fun isCompressible(path: String): Boolean = when {
+            path.startsWith("/api/v1/") -> !path.endsWith("/raw")
+            path.endsWith("/info/refs") || path.endsWith("/git-upload-pack") || path.endsWith("/git-receive-pack") -> false
+            else -> true
+        }
+
         private const val PLACEHOLDER = "<!doctype html><meta charset=utf-8><title>mobilegit</title><p>mobilegit 서버가 동작 중입니다. 웹 화면 파일(assets/web/index.html)이 아직 없습니다. JSON API: <a href=\"/api/v1/repos\">/api/v1/repos</a></p>"
     }
 }

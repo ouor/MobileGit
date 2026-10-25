@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -31,7 +32,7 @@ class GitServerTest {
         settings.setPassword(password)
         log = AccessLogStore(null)
         val auth = Authenticator({ settings.current }, AuthRateLimiter())
-        val web = File(root, "web").apply { mkdirs(); File(this, "index.html").writeText("<html>ui</html>"); File(this, "app.js").writeText("1") }
+        val web = File(root, "web").apply { mkdirs(); File(this, "index.html").writeText("<html>ui</html>"); File(this, "app.js").writeText("1"); File(this, "assets").mkdirs(); File(this, "assets/index-abc123.js").writeText("console.log(1);".repeat(200)) }
         server = GitServer(store, auth, log, { settings.current }, { emptyList() },
             { p -> File(web, p).takeIf { it.isFile }?.inputStream() }, { Long.MAX_VALUE / 4 })
         val r = server.start(0, "127.0.0.1")
@@ -172,5 +173,65 @@ class GitServerTest {
     @Test fun portInUse() {
         val other = GitServer(store, Authenticator({ settings.current }, AuthRateLimiter()), log, { settings.current }, { emptyList() }, { null }, { 0 })
         assertEquals(ServerStartResult.PortInUse(port), other.start(port, "127.0.0.1"))
+    }
+
+    private val CRLF = "\r\n"
+
+    /** Raw HTTP/1.1 exchange so framing headers are seen exactly as sent (HttpURLConnection hides them). */
+    private fun rawGet(path: String, vararg extra: String): Pair<String, Map<String, String>> {
+        java.net.Socket("127.0.0.1", port).use { sock ->
+            val auth = Base64.getEncoder().encodeToString("git:$password".toByteArray())
+            val req = (listOf("GET $path HTTP/1.1", "Host: 127.0.0.1:$port", "Authorization: Basic $auth", "Connection: close") + extra).joinToString(CRLF) + CRLF + CRLF
+            sock.getOutputStream().write(req.toByteArray())
+            val head = sock.getInputStream().readBytes().toString(Charsets.ISO_8859_1).substringBefore(CRLF + CRLF).split(CRLF)
+            val headers = head.drop(1).associate { it.substringBefore(':').trim().lowercase() to it.substringAfter(':').trim() }
+            return head[0] to headers
+        }
+    }
+
+    // WR-2 (no endpoint sends Content-Length together with chunked), WR-1, WR-3, WR-4.
+    @Test fun webFramingSpaCacheAndGzip() {
+        assumeTrue(GitCli.available)
+        val work = Commits.initWork()
+        Commits.commit(work, "README.md", "# T\n" + "lorem ipsum ".repeat(300))
+        GitCli.ok(work.repository.workTree, "push", url("demo.git"), "main")
+
+        val paths = listOf("/api/v1/repos", "/api/v1/repos/demo", "/api/v1/repos/demo/readme", "/api/v1/repos/demo/raw?path=README.md",
+            "/demo.git/info/refs?service=git-upload-pack", "/", "/assets/index-abc123.js", "/r/demo/blob/README.md")
+        for (p in paths) for (gz in listOf(false, true)) {
+            val (status, h) = if (gz) rawGet(p, "Accept-Encoding: gzip") else rawGet(p)
+            assertTrue("$p $status", status.contains(" 200 "))
+            assertFalse("$p sends both Content-Length and chunked", "content-length" in h && "transfer-encoding" in h)
+        }
+        // WR-2: raw has an exact length and is never compressed
+        val (_, raw) = rawGet("/api/v1/repos/demo/raw?path=README.md", "Accept-Encoding: gzip")
+        assertEquals(("# T\n" + "lorem ipsum ".repeat(300)).length.toString(), raw["content-length"])
+        assertNull(raw["content-encoding"])
+        // WR-4: JSON and static files are gzipped on request; git smart HTTP is not
+        assertEquals("gzip", rawGet("/api/v1/repos/demo/readme", "Accept-Encoding: gzip").second["content-encoding"])
+        assertEquals("gzip", rawGet("/assets/index-abc123.js", "Accept-Encoding: gzip").second["content-encoding"])
+        assertNull(rawGet("/demo.git/info/refs?service=git-upload-pack", "Accept-Encoding: gzip").second["content-encoding"])
+        assertNull(rawGet("/api/v1/repos/demo/readme").second["content-encoding"])
+        // WR-3: hashed assets cached for a year; index.html revalidated
+        assertEquals("public, max-age=31536000, immutable", rawGet("/assets/index-abc123.js").second["cache-control"])
+        assertNull(rawGet("/app.js").second["cache-control"])
+        assertEquals("no-cache", rawGet("/r/demo").second["cache-control"])
+        // WR-1: dotted paths under /r/ fall back to index.html; elsewhere they are still 404; git still works
+        assertEquals("<html>ui</html>", get("/r/demo/blob/README.md").second)
+        assertEquals("<html>ui</html>", get("/r/foo.js").second)
+        assertEquals("<html>ui</html>", get("/r").second)
+        assertEquals(404, get("/missing.js").first)
+        assertTrue(get("/api/v1/repos/demo/raw?path=README.md").second.startsWith("# T"))
+        GitCli.ok(tempDir(), "clone", url("demo.git"), "c")
+    }
+
+    @Test fun compressionScope() {
+        assertTrue(GitServer.isCompressible("/api/v1/repos"))
+        assertTrue(GitServer.isCompressible("/assets/index-abc.js"))
+        assertTrue(GitServer.isCompressible("/r/demo/info/refs/x"))
+        assertFalse(GitServer.isCompressible("/api/v1/repos/demo/raw"))
+        assertFalse(GitServer.isCompressible("/demo.git/info/refs"))
+        assertFalse(GitServer.isCompressible("/demo/git-upload-pack"))
+        assertFalse(GitServer.isCompressible("/demo/git-receive-pack"))
     }
 }
