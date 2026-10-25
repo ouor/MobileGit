@@ -90,7 +90,7 @@ fun OnboardingScreen(nav: Nav) {
         HorizontalPager(pager, Modifier.weight(1f)) { page ->
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Space.screen, vertical = Space.lg), verticalArrangement = Arrangement.spacedBy(Space.md)) {
                 when (page) {
-                    0 -> Page(Icons.Outlined.Inventory2, str(R.string.onboarding_intro_title), str(R.string.onboarding_intro_body)) {
+                    0 -> Page(null, str(R.string.onboarding_intro_title), str(R.string.onboarding_intro_body)) {
                         Banner(Tone.Info, Icons.Outlined.CheckCircle, str(R.string.onboarding_extra_copy_title), str(R.string.onboarding_extra_copy_body))
                     }
                     1 -> Page(Icons.Outlined.PhonelinkLock, str(R.string.onboarding_on_device_title), str(R.string.onboarding_on_device_body)) {
@@ -139,9 +139,11 @@ fun OnboardingScreen(nav: Nav) {
 }
 
 @Composable
-private fun Page(icon: ImageVector, title: String, body: String, extra: @Composable () -> Unit) {
+/** [icon] null = the app logo (first page). */
+private fun Page(icon: ImageVector?, title: String, body: String, extra: @Composable () -> Unit) {
     Spacer(Modifier.height(Space.xl))
-    Box(Modifier.size(72.dp).clip(MaterialTheme.shapes.large).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
+    if (icon == null) androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(R.drawable.ic_logo), "mobilegit", Modifier.size(72.dp))
+    else Box(Modifier.size(72.dp).clip(MaterialTheme.shapes.large).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
         Icon(icon, null, Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
     }
     Spacer(Modifier.height(Space.md))

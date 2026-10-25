@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed (monochrome) icon: the branch alone, same geometry as the foreground. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="1536" android:viewportHeight="1536">
+    <group android:translateX="256" android:translateY="256">
+        <path android:pathData="M416,352V672" android:strokeColor="#FFFFFF" android:strokeWidth="64" android:strokeLineCap="round"/>
+        <path android:pathData="M416,640C416,520 608,552 608,432V352" android:strokeColor="#FFFFFF" android:strokeWidth="64" android:strokeLineCap="round"/>
+        <path android:fillColor="#FFFFFF" android:pathData="M356,352a60,60 0 1,0 120,0a60,60 0 1,0 -120,0ZM356,672a60,60 0 1,0 120,0a60,60 0 1,0 -120,0ZM548,352a60,60 0 1,0 120,0a60,60 0 1,0 -120,0Z"/>
+    </group>
+</vector>

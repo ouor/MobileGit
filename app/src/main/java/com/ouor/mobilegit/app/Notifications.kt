@@ -56,7 +56,7 @@ class Notifier(private val context: Context, private val notifyOnSuccess: () -> 
         fun serverBlocked(context: Context) {
             if (!canPost(context)) return
             NotificationManagerCompat.from(context).notify(ID_SERVER_BLOCKED, NotificationCompat.Builder(context, CH_SERVER)
-                .setSmallIcon(R.drawable.ic_launcher_foreground)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(context.getString(R.string.notif_server_blocked_title))
                 .setContentText(context.getString(R.string.notif_server_blocked_body))
                 .setContentIntent(openApp(context, null, "main", ID_SERVER_BLOCKED))
@@ -97,7 +97,7 @@ class Notifier(private val context: Context, private val notifyOnSuccess: () -> 
         }
         // requestCode shares the ID space of the server notifications' PendingIntents, so keep it off 0..2 too
         val id = progressId((notice.repo + notice.kind).hashCode())
-        val n = NotificationCompat.Builder(context, channel).setSmallIcon(R.drawable.ic_launcher_foreground)
+        val n = NotificationCompat.Builder(context, channel).setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title).setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setAutoCancel(true).setContentIntent(openApp(context, notice.repo, target, id)).build()
         NotificationManagerCompat.from(context).notify(TAG_EVENT, id, n)

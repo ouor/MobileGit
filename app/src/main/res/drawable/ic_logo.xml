@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- In-app logo: the full A1-color1 artwork with its squircle. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="72dp" android:height="72dp"
+    android:viewportWidth="1024" android:viewportHeight="1024">
+    <path android:fillColor="#3366FF" android:pathData="M512,0C936,0 1024,88 1024,512S936,1024 512,1024S0,936 0,512S88,0 512,0Z"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M192,512a320,320 0 1,0 640,0a320,320 0 1,0 -640,0Z"/>
+        <path android:pathData="M416,352V672" android:strokeColor="#3366FF" android:strokeWidth="64" android:strokeLineCap="round"/>
+        <path android:pathData="M416,640C416,520 608,552 608,432V352" android:strokeColor="#3366FF" android:strokeWidth="64" android:strokeLineCap="round"/>
+        <path android:fillColor="#3366FF" android:pathData="M356,352a60,60 0 1,0 120,0a60,60 0 1,0 -120,0ZM356,672a60,60 0 1,0 120,0a60,60 0 1,0 -120,0ZM548,352a60,60 0 1,0 120,0a60,60 0 1,0 -120,0Z"/>
+</vector>

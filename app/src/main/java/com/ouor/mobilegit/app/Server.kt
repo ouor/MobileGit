@@ -280,7 +280,7 @@ class ServerService : Service() {
 
     private fun buildNotification(text: String, ngrok: String?): Notification {
         val stop = PendingIntent.getService(this, 1, Intent(this, ServerService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
-        return NotificationCompat.Builder(this, Notifier.CH_SERVER).setSmallIcon(R.drawable.ic_launcher_foreground)
+        return NotificationCompat.Builder(this, Notifier.CH_SERVER).setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(getString(if (ngrok != null) R.string.server_notif_title_public else R.string.server_notif_title))
             .setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(listOfNotNull(text, ngrok).joinToString("\n")))
             .setOngoing(true).setOnlyAlertOnce(true)

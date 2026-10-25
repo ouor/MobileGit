@@ -105,7 +105,7 @@ enum class ExportKind { BUNDLE, SOURCE_ZIP, FULL_BACKUP }
 
 private fun progressInfo(context: Context, id: Int, title: String, text: String, progress: Int = -1): ForegroundInfo {
     val id = Notifier.progressId(id)
-    val n = NotificationCompat.Builder(context, Notifier.CH_PROGRESS).setSmallIcon(R.drawable.ic_launcher_foreground)
+    val n = NotificationCompat.Builder(context, Notifier.CH_PROGRESS).setSmallIcon(R.drawable.ic_notification)
         .setContentTitle(title).setContentText(text).setOngoing(true).setOnlyAlertOnce(true)
         .apply { if (progress >= 0) setProgress(100, progress, false) else setProgress(0, 0, true) }.build()
     return if (Build.VERSION.SDK_INT >= 29) ForegroundInfo(id, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC) else ForegroundInfo(id, n)
