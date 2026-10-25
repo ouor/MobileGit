@@ -319,8 +319,12 @@ private fun OriginCard(item: RepoListItem, nav: Nav, onSheet: (String) -> Unit) 
         }
         val settings by core.settings.state.collectAsStateWithLifecycle()
         val next = (mir.lastCheckAt ?: m.createdAt) + settings.checkIntervalMillis
+        // R2AND-10: an estimate ("쯤") that turns into "곧" while the screen stays open; no time at all while background checks are stalled
+        val overview by core.overview.collectAsStateWithLifecycle(initialValue = null)
+        val now by produceState(System.currentTimeMillis()) { while (true) { kotlinx.coroutines.delay(60_000); value = System.currentTimeMillis() } }
         InfoRow(str(R.string.detail_check_interval), (if (mir.autoUpdateExcluded) str(R.string.detail_check_only_mode) + " · " else "") +
-            str(R.string.detail_check_next, settings.checkIntervalHours, if (next > System.currentTimeMillis()) clock(next) else str(R.string.detail_check_soon)))
+            if (overview?.checksStalled == true) str(R.string.settings_every_hours, settings.checkIntervalHours) + " · " + str(R.string.main_summary_stalled)
+            else str(R.string.detail_check_next, settings.checkIntervalHours, if (next > now) clock(next) else str(R.string.detail_check_soon)))
         InfoRow(str(R.string.detail_scope), str(if (mir.includePullRefs ?: settings.mirrorPullRefs) R.string.detail_scope_mirror_pull else R.string.detail_scope_mirror) + " · " + str(R.string.detail_scope_no_lfs))
         if (mir.pendingChanges > 0) InfoRow(str(R.string.detail_changes), str(R.string.detail_changes_value, mir.pendingChanges), valueTone = Tone.Info)
         mir.waitingReason.label()?.let { InfoRow(str(R.string.status_waiting), it, valueTone = Tone.Warning) }
@@ -574,7 +578,11 @@ private fun ForkSheet(m: RepoMeta, nav: Nav, onDismiss: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val nameErr = if (mode == ForkMode.COPY) RepoNames.validate(newName) ?: if (core.repos.exists(newName)) str(R.string.repo_name_taken) else if (core.repos.damaged.value.any { it.name.equals(newName, true) }) str(R.string.add_name_damaged) else null else null
-    ModalBottomSheet(onDismissRequest = { if (!busy) onDismiss() }, sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+    // R2AND-02: while the fork runs the sheet cannot be swiped or backed away (it would hide but keep its scrim)
+    val sheet = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true,
+        confirmValueChange = { it != androidx.compose.material3.SheetValue.Hidden || !busy })
+    ModalBottomSheet(onDismissRequest = { if (!busy) onDismiss() }, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+        BackHandler(enabled = busy) {}
         val focus = androidx.compose.ui.platform.LocalFocusManager.current
         // drop focus from the name field before it leaves the composition
         BackHandler(enabled = step == 1 && !busy) { focus.clearFocus(); step = 0 }

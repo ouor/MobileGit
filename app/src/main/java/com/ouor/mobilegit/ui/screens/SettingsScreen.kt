@@ -100,10 +100,10 @@ fun SettingsScreen(nav: Nav) {
     var dialog by remember { mutableStateOf<String?>(null) }
     var pendingLevel by remember { mutableIntStateOf(0) }
     val running = server is ServerState.Running
-    fun setAuthLevel(l: Int) = core.settings.update { it.copy(authEnabled = l != 2, anonymousReadOnLan = l == 1) }
+    fun setAuthLevel(l: Int) = core.settings.update { it.withAuthLevel(l) }
     fun turnNgrokOn() = when {
         !s.hasNgrokToken -> { snack(str(R.string.settings_ngrok_need_token)); dialog = "token" }
-        authLevel(s) != 0 -> dialog = "riskFromNgrok" // R2-06 AC1
+        s.becomesExposed(s.copy(ngrokEnabled = true)) -> dialog = "riskFromNgrok" // R2-06 AC1, R2ARC-02: the core decides
         s.ngrokWarningAccepted -> core.settings.update { it.copy(ngrokEnabled = true) }
         else -> dialog = "ngrokWarn"
     }
@@ -120,7 +120,7 @@ fun SettingsScreen(nav: Nav) {
                 Divider()
                 Column(Modifier.padding(horizontal = Space.lg, vertical = Space.md)) {
                     Text(str(R.string.settings_auth), style = MaterialTheme.typography.bodyLarge)
-                    val level = authLevel(s)
+                    val level = s.authLevel
                     Text(listOf(str(R.string.settings_auth_all_sub), str(R.string.settings_auth_push_sub), str(R.string.settings_auth_off_sub))[level],
                         style = MaterialTheme.typography.bodySmall, color = if (level == 2) tone(Tone.Danger).content else MaterialTheme.colorScheme.onSurfaceVariant)
                     if (s.exposedWithoutPassword) ExposedMark(running && tunnel is TunnelState.Connected)
@@ -130,7 +130,7 @@ fun SettingsScreen(nav: Nav) {
                         when {
                             i == level -> Unit
                             i == 0 -> setAuthLevel(0)
-                            s.ngrokEnabled -> { pendingLevel = i; dialog = "riskFromAuth" } // R2-06 AC2
+                            s.becomesExposed(s.withAuthLevel(i)) -> { pendingLevel = i; dialog = "riskFromAuth" } // R2-06 AC2
                             i == 1 -> setAuthLevel(1)
                             else -> dialog = "authOff"
                         }
@@ -265,9 +265,11 @@ fun SettingsScreen(nav: Nav) {
             snack(if (it.isBlank()) str(R.string.cred_deleted) else str(R.string.settings_ngrok_token_saved))
         }
         "interval" -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text(str(R.string.settings_check_interval)) }, text = {
-            Column {
+            Column(Modifier.selectableGroup()) {
                 listOf(1, 6, 12, 24).forEach { h ->
-                    Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable(role = androidx.compose.ui.semantics.Role.RadioButton) { core.settings.setCheckIntervalHours(h); dialog = null },
+                    // R2AND-08: selection state is announced, 48dp rows
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(MaterialTheme.shapes.small)
+                        .selectable(s.checkIntervalHours == h, role = Role.RadioButton) { core.settings.setCheckIntervalHours(h); dialog = null },
                         verticalAlignment = Alignment.CenterVertically) {
                         androidx.compose.material3.RadioButton(s.checkIntervalHours == h, null, Modifier.padding(Space.sm)); Text(str(R.string.settings_every_hours, h))
                     }
@@ -275,16 +277,16 @@ fun SettingsScreen(nav: Nav) {
                 Text(str(R.string.settings_auto_update_where), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
             }
         }, confirmButton = { TextButton(onClick = { dialog = null }) { Text(str(R.string.common_close)) } })
-        "riskFromNgrok" -> RiskDialog(str(R.string.risk_title), str(if (authLevel(s) == 2) R.string.risk_body_off else R.string.risk_body_push_only),
+        "riskFromNgrok" -> RiskDialog(str(R.string.risk_title), str(if (s.authLevel == 2) R.string.risk_body_off else R.string.risk_body_push_only),
             safeLabel = str(R.string.risk_safe_auth_on), onDismiss = { dialog = null },
-            onSafe = { core.settings.update { it.copy(authEnabled = true, anonymousReadOnLan = false, ngrokEnabled = true, ngrokWarningAccepted = true) }; dialog = null; snack(str(R.string.risk_done_auth_on)) },
+            onSafe = { core.settings.update { it.withAuthLevel(0).copy(ngrokEnabled = true, ngrokWarningAccepted = true) }; dialog = null; snack(str(R.string.risk_done_auth_on)) },
             onProceed = { core.settings.update { it.copy(ngrokEnabled = true, ngrokWarningAccepted = true) }; dialog = null })
         "riskFromAuth" -> RiskDialog(str(if (pendingLevel == 2) R.string.risk_title_auth_off else R.string.risk_title_auth_push),
             str(if (pendingLevel == 2) R.string.risk_body_auth_off else R.string.risk_body_auth_push), safeLabel = str(R.string.risk_safe_ngrok_off), onDismiss = { dialog = null },
-            onSafe = { val l = pendingLevel; core.settings.update { it.copy(ngrokEnabled = false, authEnabled = l != 2, anonymousReadOnLan = l == 1) }; dialog = null; snack(str(R.string.risk_done_ngrok_off)) },
+            onSafe = { val l = pendingLevel; core.settings.update { it.withAuthLevel(l).copy(ngrokEnabled = false) }; dialog = null; snack(str(R.string.risk_done_ngrok_off)) },
             onProceed = { setAuthLevel(pendingLevel); dialog = null })
         "authOff" -> ConfirmDialog(str(R.string.settings_auth_off_title), str(R.string.settings_auth_off_body), str(R.string.settings_auth_off_confirm),
-            destructive = true, onConfirm = { core.settings.update { it.copy(authEnabled = false) }; dialog = null }, onDismiss = { dialog = null })
+            destructive = true, onConfirm = { setAuthLevel(2); dialog = null }, onDismiss = { dialog = null })
         "ngrokWarn" -> ConfirmDialog(
             str(R.string.settings_ngrok_on_title), str(R.string.settings_ngrok_on_body), str(R.string.settings_ngrok_on_confirm),
             onConfirm = { core.settings.update { it.copy(ngrokEnabled = true, ngrokWarningAccepted = true) }; dialog = null }, onDismiss = { dialog = null })
@@ -296,7 +298,6 @@ fun SettingsScreen(nav: Nav) {
     }
 }
 
-private fun authLevel(s: com.ouor.mobilegit.core.Settings) = when { !s.authEnabled -> 2; s.anonymousReadOnLan -> 1; else -> 0 }
 
 private fun autoUpdateText(s: com.ouor.mobilegit.core.Settings) = when {
     !s.autoUpdate -> str(R.string.settings_auto_off)

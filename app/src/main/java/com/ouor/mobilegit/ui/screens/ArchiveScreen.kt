@@ -23,6 +23,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -35,6 +38,8 @@ import androidx.compose.ui.unit.dp
 import com.ouor.mobilegit.R
 import com.ouor.mobilegit.app.ServerState
 import com.ouor.mobilegit.core.ArchiveEntryDto
+import com.ouor.mobilegit.core.ArchivesDto
+import com.ouor.mobilegit.core.RepoBrowser
 import com.ouor.mobilegit.ui.Nav
 import com.ouor.mobilegit.ui.ago
 import com.ouor.mobilegit.ui.components.AppScaffold
@@ -65,14 +70,17 @@ fun ArchiveScreen(name: String, group: String?, nav: Nav) {
     val ctx = LocalContext.current
     val server by core.server.state.collectAsStateWithLifecycle()
     val addrs by core.network.addresses.collectAsStateWithLifecycle()
-    val entries by produceState<Result<List<ArchiveEntryDto>>?>(null, name) {
-        value = withContext(Dispatchers.IO) { runCatching { core.repos.markHistorySeen(name); core.ops.archives(name) } }
+    val entries by produceState<Result<ArchivesDto>?>(null, name) {
+        // R2AND-03 / R2ARC-01: mark seen *before* reading, so an archive made while the list loads stays unseen
+        value = withContext(Dispatchers.IO) { runCatching { core.repos.markHistorySeen(name); core.repos.open(name).use { RepoBrowser.archives(it, core.repos.archiveNotes(name)) } } }
     }
-    val groups = remember(entries) { entries?.getOrNull()?.groupBy { it.group }?.entries?.toList().orEmpty() }
+    val groups = remember(entries) { entries?.getOrNull()?.entries?.groupBy { it.group }?.entries?.toList().orEmpty() }
     val list = rememberLazyListState()
+    var scrolled by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(groups, group) {
         val i = groups.indexOfFirst { it.key == group }
-        if (i >= 0) list.scrollToItem(i)
+        // R2AND-12: jump to the update's batch once, not again after rotation
+        if (i >= 0 && !scrolled) { list.scrollToItem(if (entries?.getOrNull()?.truncated == true) i + 1 else i); scrolled = true }
     }
     val base = addrs.firstOrNull()?.baseUrl
 
@@ -80,9 +88,13 @@ fun ArchiveScreen(name: String, group: String?, nav: Nav) {
         val r = entries
         when {
             r == null -> Box(Modifier.padding(padding)) { Loading() }
-            r.isFailure -> Box(Modifier.padding(padding)) { ErrorState(r.exceptionOrNull()?.message ?: str(R.string.export_unknown_error)) }
+            r.isFailure -> Box(Modifier.padding(padding)) { ErrorState(str(R.string.archive_load_failed)) } // R2AND-12: no raw JGit text
             else -> LazyColumn(Modifier.fillMaxSize().padding(padding), state = list,
                 contentPadding = PaddingValues(start = Space.screen, end = Space.screen, bottom = Space.xxl), verticalArrangement = Arrangement.spacedBy(Space.md)) {
+                // R2SEC-05: only the newest MAX_ARCHIVES are listed
+                if (r.getOrNull()?.truncated == true) item(key = "truncated") {
+                    Text(str(R.string.archive_truncated, RepoBrowser.MAX_ARCHIVES), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 if (groups.isEmpty()) item { EmptyState(Icons.Outlined.Archive, str(R.string.archive_empty_title), str(R.string.detail_archive_none)) }
                 items(groups, key = { it.key }) { (_, batch) ->
                     SectionCard(title = str(R.string.archive_group_title, dateTime(batch.first().at), batch.size)) {

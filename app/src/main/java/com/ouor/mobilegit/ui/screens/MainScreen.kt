@@ -218,7 +218,7 @@ fun MainScreen(nav: Nav) {
                     detail = tunnelDetail(tunnel),
                     actionLabel = str(R.string.main_ngrok_off), onAction = { core.settings.update { it.copy(ngrokEnabled = false) }; snack(str(R.string.main_ngrok_off_done)) })
             }
-            if (ngrokOff) item(key = "ngrokOff") {
+            if (ngrokOff && !settings.ngrokEnabled) item(key = "ngrokOff") { // R2AND-06: turned back on while the server was off
                 Banner(Tone.Info, Icons.Outlined.Public, str(R.string.server_notif_ngrok_off_after_restart), str(R.string.main_ngrok_off_after_restart_body),
                     actionLabel = str(R.string.main_ngrok_settings), onAction = { core.server.ackNgrokOff(); nav.go(Routes.SETTINGS) }, onDismiss = { core.server.ackNgrokOff() })
             }
@@ -467,7 +467,10 @@ private fun Summary(c: com.ouor.mobilegit.core.RepoOverview, onProblems: () -> U
     FlowRow(Modifier.fillMaxWidth().padding(top = Space.xs), verticalArrangement = Arrangement.Center, itemVerticalAlignment = Alignment.CenterVertically) {
         parts.forEachIndexed { i, (text, t, click) ->
             val label = if (i < parts.lastIndex) "$text · " else text
-            val m = if (click) Modifier.minimumInteractiveComponentSize().clip(MaterialTheme.shapes.extraSmall).clickable(role = Role.Button, onClick = onProblems) else Modifier.padding(vertical = Space.xs)
+            // R2AND-08: read "오류 1" without the separator, and say what tapping does
+            val m = if (click) Modifier.minimumInteractiveComponentSize().clip(MaterialTheme.shapes.extraSmall)
+                .clickable(role = Role.Button, onClickLabel = str(R.string.main_summary_show_problems), onClick = onProblems).semantics { contentDescription = text }
+            else Modifier.padding(vertical = Space.xs)
             Text(label, style = style, color = t?.let { tone(it).content } ?: dim, fontWeight = if (t != null) FontWeight.SemiBold else null, modifier = m)
         }
     }

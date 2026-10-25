@@ -122,8 +122,8 @@ fun breakable(s: String): String = buildString {
             // no break inside "://" so the scheme stays on the host's line
             c == '/' && s.getOrNull(i + 1) != '/' && s.getOrNull(i - 1) != ':' && !(s.getOrNull(i - 1) == '/' && s.getOrNull(i - 2) == ':') -> append(c).append('\u200B')
             // RV2-10: an IP address breaks after a dot or before ":port", never inside "120" or "8080"
-            c == '.' && s.getOrNull(i - 1)?.isDigit() == true && s.getOrNull(i + 1)?.isDigit() == true -> append(c).append('​')
-            c == ':' && s.getOrNull(i + 1)?.isDigit() == true -> append('​').append(c)
+            c == '.' && s.getOrNull(i - 1)?.isDigit() == true && s.getOrNull(i + 1)?.isDigit() == true -> append(c).append('\u200B') // R2AND-09: escaped, not a literal
+            c == ':' && s.getOrNull(i + 1)?.isDigit() == true -> append('\u200B').append(c)
             else -> append(c)
         }
     }

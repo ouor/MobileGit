@@ -131,7 +131,7 @@ fun CredentialsScreen(prefillHost: String?, nav: Nav) {
                             }
                             if (shown == c.id) repos.filter { it.mirror?.credentialId == c.id }.forEach { r ->
                                 Text(r.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(top = Space.xs).clip(MaterialTheme.shapes.extraSmall).clickable { nav.go(Routes.repo(r.name)) })
+                                    modifier = Modifier.padding(top = Space.xs).clip(MaterialTheme.shapes.extraSmall).clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = str(R.string.common_open)) { nav.go(Routes.repo(r.name)) })
                             }
                         }
                         IconButton(onClick = { editing = c }) { Icon(Icons.Outlined.Edit, str(R.string.cred_edit_named, c.host)) }

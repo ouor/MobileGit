@@ -1,5 +1,6 @@
 package com.ouor.mobilegit.ui
 
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.ouor.mobilegit.R
@@ -60,7 +61,6 @@ fun rememberExportRunner(): ExportRunner {
     val snack = LocalSnack.current
     val id0 = rememberSaveable { mutableStateOf<String?>(null) }
     val pending0 = rememberSaveable { mutableStateOf<ArrayList<String>?>(null) }
-    val savedUri = rememberSaveable { mutableStateOf<String?>(null) }
     val runner = remember { ExportRunner(id0, pending0) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         val p = runner.pending; runner.pending = null
@@ -69,14 +69,15 @@ fun rememberExportRunner(): ExportRunner {
     runner.launch = { picker.launch(it) }
     runner.enqueue = { kind, repos, ref, uri ->
         runner.progress = null
-        savedUri.value = uri?.toString()
         runner.workId = MobileGitApp.core(ctx).scheduler.enqueueExport(kind, repos, ref, uri)
         snack(str(R.string.export_started))
     }
     val id = runner.workId
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(id) {
         if (id == null) return@LaunchedEffect
-        WorkManager.getInstance(ctx).getWorkInfoByIdFlow(id).collect { info ->
+        // R2AND-07: only while the screen is visible; a result that lands in the background is the worker's notification, and shows here on return
+        lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) { WorkManager.getInstance(ctx).getWorkInfoByIdFlow(id).collect { info ->
             if (info == null) return@collect
             val d = info.progress.getInt("done", -1); val t = info.progress.getInt("total", -1)
             if (t > 0) runner.progress = d to t
@@ -86,27 +87,21 @@ fun rememberExportRunner(): ExportRunner {
                     val file = info.outputData.getString(ExportWorker.K_OUT_FILE)
                     // R2-10 AC2: say where the (unencrypted) file went
                     if (file != null) { share(ctx, File(file)); snack(str(R.string.export_shared_done)) }
-                    else snack(savedUri.value?.let { savedText(ctx, Uri.parse(it)) } ?: str(R.string.export_saved))
-                    savedUri.value = null
+                    else {
+                        // R2AND-04 / R2ARC-05: the worker already looked up name and folder (same words as its notification)
+                        val name = info.outputData.getString(ExportWorker.K_SAVED_NAME)
+                        val folder = info.outputData.getString(ExportWorker.K_SAVED_FOLDER)
+                        snack(when { name == null -> str(R.string.export_saved); folder == null -> str(R.string.export_saved_name, name); else -> str(R.string.export_saved_where, name, folder) })
+                    }
                 }
                 WorkInfo.State.FAILED -> { runner.workId = null; snack(str(R.string.export_failed, info.outputData.getString(ExportWorker.K_ERROR) ?: str(R.string.export_unknown_error))) }
                 WorkInfo.State.CANCELLED -> { runner.workId = null; snack(str(R.string.export_cancelled)) }
                 else -> Unit
             }
-        }
+        } }
     }
     return runner
 }
-
-/** "파일 이름 · 폴더" for a SAF document. The folder only comes from path-like document ids (e.g. "primary:Download/x"). */
-private fun savedText(ctx: Context, uri: Uri): String? = runCatching {
-    val name = ctx.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
-        if (c.moveToFirst()) c.getString(0) else null
-    } ?: return null
-    val path = android.provider.DocumentsContract.getDocumentId(uri).substringAfter(':', "")
-    val folder = path.substringBeforeLast('/', "").takeIf { path.contains('/') && !path.startsWith("msf") }
-    if (folder != null) str(R.string.export_saved_where, name, folder) else str(R.string.export_saved_name, name)
-}.getOrNull()
 
 private fun share(ctx: Context, file: File) {
     val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.files", file)

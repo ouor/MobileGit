@@ -244,8 +244,9 @@ fun Banner(
 ) {
     val c = tone(tone)
     var open by remember { mutableStateOf(false) }
-    Surface(modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, color = c.container) {
-        Row(Modifier.padding(Space.md), verticalAlignment = Alignment.Top) {
+    Surface(modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, color = c.container) { Box {
+        // R2AND-13: the close button sits in the corner inside the card (an offset pushed part of its 48dp outside the clip)
+        Row(Modifier.padding(start = Space.md, top = Space.md, bottom = Space.md, end = if (onDismiss != null) 40.dp else Space.md), verticalAlignment = Alignment.Top) {
             Icon(icon, null, tint = c.content, modifier = Modifier.padding(top = 1.dp).size(20.dp))
             Spacer(Modifier.width(Space.sm + Space.xxs))
             Column(Modifier.weight(1f)) {
@@ -262,9 +263,9 @@ fun Banner(
                         color = c.content, modifier = Modifier.padding(top = 2.dp))
                 }
             }
-            if (onDismiss != null) IconButton(onClick = onDismiss, modifier = Modifier.offset(x = Space.sm, y = (-Space.sm))) { Icon(Icons.Outlined.Close, str(R.string.common_close), tint = c.content, modifier = Modifier.size(18.dp)) }
         }
-    }
+        if (onDismiss != null) IconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.TopEnd)) { Icon(Icons.Outlined.Close, str(R.string.common_close), tint = c.content, modifier = Modifier.size(18.dp)) }
+    } }
 }
 
 /** Small tappable warning chip for the main-screen status strip. */
