@@ -145,7 +145,8 @@ fun com.ouor.mobilegit.core.RepoIssue.text(intervalHours: Int, now: Long = Syste
     else -> badge.style().label
 }
 
-val com.ouor.mobilegit.core.RepoIssue.tone get() = if (badge == Badge.ORIGIN_GONE || badge == Badge.FAILED) Tone.Danger else Tone.Warning
+/** Row colour follows the core severity (CR-11): 오류 red, 주의 orange. */
+val com.ouor.mobilegit.core.RepoIssue.tone get() = if (severity == com.ouor.mobilegit.core.Severity.ERROR) Tone.Danger else Tone.Warning
 
 /** "15:20" (today) or "10.26 15:20". */
 fun clock(t: Long, now: Long = System.currentTimeMillis()): String {

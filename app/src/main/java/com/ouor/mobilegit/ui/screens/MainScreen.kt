@@ -165,11 +165,8 @@ fun MainScreen(nav: Nav) {
     val batteryHint = remember(resumeTick, settings.batteryHintDismissedAt) { BatteryHelper.shouldShowHint(ctx, settings.batteryHintDismissedAt) }
 
     val all = items.orEmpty()
-    val shown = remember(items, sort, filter, query, stalled) {
-        RepoQuery.apply(all, sort, filter, query).let { l -> if (filter == RepoFilter.PROBLEM) l.filter { Counts.problem(it, stalled) != null } else l }
-    }
-    val counts = remember(items, stalled) { Counts.of(all, stalled) }
-    val problems = counts.errors + counts.warnings
+    val shown = remember(items, sort, filter, query) { RepoQuery.apply(all, sort, filter, query) }
+    val problems = overview?.attention ?: 0
     val notifOk = remember(resumeTick) { androidx.core.app.NotificationManagerCompat.from(ctx).areNotificationsEnabled() }
 
     val list = rememberLazyListState()
@@ -264,7 +261,7 @@ fun MainScreen(nav: Nav) {
                             Text(if (sort == RepoSort.RECENT) str(R.string.main_sort_recent) else str(R.string.main_sort_name))
                         }
                     }
-                    if (all.isNotEmpty()) Summary(counts, overview?.lastCheckAt, onProblems = { filter = RepoFilter.PROBLEM })
+                    overview?.takeIf { all.isNotEmpty() }?.let { Summary(it, onProblems = { filter = RepoFilter.PROBLEM }) }
                     if (all.isNotEmpty()) {
                         SearchField(query) { query = it }
                         FlowRow(Modifier.padding(top = Space.sm), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
@@ -296,7 +293,7 @@ fun MainScreen(nav: Nav) {
                     }
                 }
                 else -> items(shown, key = { it.meta.id }) { item ->
-                    RepoRow(item, settings.checkIntervalHours, stalled = stalled, onClick = { nav.go(Routes.repo(item.meta.name)) },
+                    RepoRow(item, settings.checkIntervalHours, onClick = { nav.go(Routes.repo(item.meta.name)) },
                         onUpdate = if (item.meta.mirror != null) ({ core.mirrors.updateNow(item.meta.name); snack(str(R.string.main_update_started, item.meta.name)) }) else null)
                 }
             }
@@ -446,35 +443,13 @@ private fun PushGuide(baseUrl: String?, port: Int, username: String, name: Strin
     }
 }
 
-/** Main-list problem counts. 오류 = failed, origin gone, token; 주의 = delayed, history changed (glossary 8.1). */
-internal data class Counts(val mirrors: Int, val locals: Int, val errors: Int, val warnings: Int) {
-    val healthy get() = mirrors - errors - warnings
-    companion object {
-        private val errorBadges = setOf(com.ouor.mobilegit.core.Badge.FAILED, com.ouor.mobilegit.core.Badge.ORIGIN_GONE, com.ouor.mobilegit.core.Badge.AUTH_REQUIRED)
-        /** null = fine. While checks are stalled for all mirrors, "지연" is not counted per repo (RV2-06; CR-11 asks core to do the same). */
-        fun problem(i: com.ouor.mobilegit.core.RepoListItem, stalled: Boolean): Tone? {
-            val b = i.issue?.badge ?: return null
-            return when {
-                b in errorBadges -> Tone.Danger
-                stalled && b == com.ouor.mobilegit.core.Badge.DELAYED -> null
-                else -> Tone.Warning
-            }
-        }
-        fun of(all: List<com.ouor.mobilegit.core.RepoListItem>, stalled: Boolean): Counts {
-            val mirrors = all.filter { it.meta.type == RepoType.MIRROR }
-            val tones = mirrors.map { problem(it, stalled) }
-            return Counts(mirrors.size, all.size - mirrors.size, tones.count { it == Tone.Danger }, tones.count { it == Tone.Warning })
-        }
-    }
-}
-
 /**
  * R2-02 / RV2-06: "미러 12개 · 정상 10 · 오류 1 · 주의 1 · 마지막 확인 10분 전 · 로컬 3개". Errors are red, warnings orange.
  * Each part carries its own " ·" so a wrapped line never starts with the separator (RV2-05).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Summary(c: Counts, lastCheckAt: Long?, onProblems: () -> Unit) {
+private fun Summary(c: com.ouor.mobilegit.core.RepoOverview, onProblems: () -> Unit) {
     val style = MaterialTheme.typography.bodyMedium
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
     val parts = buildList<Triple<String, Tone?, Boolean>> {
@@ -483,7 +458,7 @@ private fun Summary(c: Counts, lastCheckAt: Long?, onProblems: () -> Unit) {
         if (c.errors > 0) add(Triple(str(R.string.main_summary_errors, c.errors), Tone.Danger, true))
         if (c.warnings > 0) add(Triple(str(R.string.main_summary_attention, c.warnings), Tone.Warning, true))
         if (c.mirrors > 0 && c.errors + c.warnings == 0) add(Triple(str(R.string.main_summary_all_ok), Tone.Success, false))
-        lastCheckAt?.let { add(Triple(str(R.string.main_summary_last_check, ago(it)), null, false)) }
+        c.lastCheckAt?.let { add(Triple(str(R.string.main_summary_last_check, ago(it)), null, false)) }
         if (c.locals > 0) add(Triple(str(R.string.main_summary_locals, c.locals), null, false))
     }
     FlowRow(Modifier.fillMaxWidth().padding(top = Space.xs), verticalArrangement = Arrangement.Center) {

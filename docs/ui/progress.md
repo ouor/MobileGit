@@ -261,3 +261,7 @@ QA2-03을 메인 배너에서만 고치고 같은 문구를 쓰는 설정 표시
 확인하지 못한 것: 위험 대화상자와 ngrok 배너(ngrok 토큰 없음, 실제 토큰은 넣지 않음), API 32 이하의 줄바꿈(글자 단위로 남음), 실제 시스템 글꼴 200%와 바텀 시트, 알림 아이콘이 재부팅 뒤 바뀌는지.
 
 커밋: `5f3a0c0`(용어·설정·요약·줄바꿈·대비), 이 커밋(200% 글꼴 수정, CR-11, 기록).
+
+### CR-11 반영 (코어 `02f67e1`)
+
+`MainScreen.kt`의 `Counts`와 멈춤 동안 지연을 숨기던 UI 처리(`RepoRow`의 `stalled`)를 지웠다. 요약 줄은 `overview`의 `mirrors`·`healthy`·`errors`·`warnings`·`locals`, "주의 필요" 개수는 `overview.attention`, 필터는 `RepoQuery.apply` 그대로. 행 색은 `RepoIssue.tone`이 코어 `severity`를 따른다(`ERROR` 빨강, `WARNING` 주황). 이제 토큰 확인 필요도 빨강이다. 오류·주의 수는 로컬 레포(히스토리 바뀜)도 센다. 멈춤 배너는 그대로 `overview.checksStalled`.

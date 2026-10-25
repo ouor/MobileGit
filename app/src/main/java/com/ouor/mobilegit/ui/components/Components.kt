@@ -410,7 +410,7 @@ fun Divider() = HorizontalDivider(Modifier.padding(horizontal = Space.lg), color
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun RepoRow(item: RepoListItem, intervalHours: Int, onClick: () -> Unit, onUpdate: (() -> Unit)?, stalled: Boolean = false) {
+fun RepoRow(item: RepoListItem, intervalHours: Int, onClick: () -> Unit, onUpdate: (() -> Unit)?) {
     val m = item.meta
     var menu by remember { mutableStateOf(false) }
     val mirror = m.type == RepoType.MIRROR
@@ -430,13 +430,11 @@ fun RepoRow(item: RepoListItem, intervalHours: Int, onClick: () -> Unit, onUpdat
                     Text(m.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     val whenText = if (mirror && m.mirror?.waitingForForeground == true) str(R.string.detail_waiting_foreground_short) else if (mirror) m.mirror?.lastSuccessUpdateAt?.let { str(R.string.common_updated_ago, ago(it)) } ?: str(R.string.common_before_first_fetch) else m.lastPushAt?.let { "push ${ago(it)}" } ?: str(R.string.common_before_push)
                     val kind = if (mirror) str(R.string.common_kind_mirror) else str(R.string.common_kind_local)
-                    // RV2-06: when background checks stopped for every mirror, "지연" is one shared cause (main banner), not a per-row alarm
-                    val issue = item.issue?.takeUnless { stalled && it.badge == com.ouor.mobilegit.core.Badge.DELAYED }
+                    val issue = item.issue
                     // R2-01: the reason replaces "업데이트 N분 전"; the icon already says 미러, and "언제부터" must not be cut (RV2-05)
                     if (issue != null) Text(issue.text(intervalHours), style = MaterialTheme.typography.bodySmall, color = tone(issue.tone).content, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     else Text("$kind · ${whenText} · ${bytes(m.sizeBytes)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
-                    val badges = if (stalled) item.badges - com.ouor.mobilegit.core.Badge.DELAYED else item.badges
-                    if (badges.isNotEmpty()) BadgeRow(badges, Modifier.padding(top = Space.xs + Space.xxs))
+                    if (item.badges.isNotEmpty()) BadgeRow(item.badges, Modifier.padding(top = Space.xs + Space.xxs))
                     item.progress?.let { p ->
                         val f = p.progress?.fraction
                         Spacer(Modifier.height(Space.sm))
