@@ -280,7 +280,7 @@
     <string name="manage_045">서랍 폰 운영 팁</string>
     <string name="manage_046">충전기에 꽂아 두세요. 자동 업데이트를 \'충전 중에만\'으로 두면 배터리 부담이 없어요.</string>
     <string name="manage_047" formatted="false">오래 꽂아 둘 거라면 배터리 보호(충전 상한 80% 등) 기능을 켜세요.</string>
-    <string name="manage_048">재부팅해도 서버가 켜지도록 아래 \'부팅 후 서버 자동 시작\'을 켜세요.</string>
+    <string name="manage_048">재부팅해도 서버가 다시 켜지도록 아래 \'부팅 후 서버 자동 시작\'을 켜 두세요. 새로 설치하면 켜져 있어요.</string>
     <string name="manage_049">같은 와이파이인데 접속이 안 되면 공유기가 기기 간 통신을 막는 것일 수 있어요(AP 격리). 폰 핫스팟을 쓰세요.</string>
     <string name="manage_050">부팅 후 서버 자동 시작</string>
     <string name="manage_051">기록 지우기</string>
@@ -572,4 +572,11 @@
     <string name="qr_who">다른 폰이나 태블릿의 카메라로 찍으면 주소가 열려요. PC에서는 복사하거나 공유해서 쓰세요.</string>
     <string name="qr_share">공유</string>
     <string name="settings_auth_off_confirm">비밀번호 끄기</string>
+    <string name="detail_push_tab">push 이력 %1$s</string>
+    <string name="detail_push_empty">PC에서 push하면 여기에 남아요. 이 기능이 생기기 전의 push는 기록에 없어요.</string>
+    <string name="detail_push_title">push 받음</string>
+    <string name="detail_push_created">새로 만듦</string>
+    <string name="detail_push_deleted">삭제</string>
+    <string name="detail_push_forced">강제 push</string>
+    <string name="detail_push_from">%1$s · %2$s에서</string>
 </resources>

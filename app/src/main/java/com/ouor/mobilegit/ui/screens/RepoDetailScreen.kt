@@ -1,5 +1,7 @@
 package com.ouor.mobilegit.ui.screens
 
+import com.ouor.mobilegit.core.PushEvent
+import androidx.compose.ui.text.font.FontWeight
 import com.ouor.mobilegit.ui.components.AdvancedSection
 import com.ouor.mobilegit.ui.components.SecondaryButton
 import androidx.compose.material.icons.outlined.Refresh
@@ -152,21 +154,30 @@ fun RepoDetailScreen(name: String, nav: Nav) {
             else -> {
                 val meta = item.meta
                 val events by remember(meta.name) { core.repos.eventsFlow(meta.name) }.collectAsStateWithLifecycle(emptyList())
-                val showHistory = meta.mirror != null || events.isNotEmpty()
+                val pushes by remember(meta.name) { core.repos.pushEventsFlow(meta.name) }.collectAsStateWithLifecycle(emptyList())
+                // one push = all refs with the same `at`; flow is newest first so groups stay in order
+                val pushGroups = remember(pushes) { pushes.groupBy { it.at }.values.toList() }
+                val isMirror = meta.mirror != null
+                val showHistory = true
                 LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(start = Space.screen, end = Space.screen, bottom = Space.xxl),
                     verticalArrangement = Arrangement.spacedBy(Space.md)) {
                     item(key = "header") { Header(item) }
                     if (showHistory) item(key = "tabs") {
                         PrimaryTabRow(selectedTabIndex = tab, containerColor = MaterialTheme.colorScheme.background) {
                             Tab(tab == 0, { tab = 0 }, unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant, text = { Text(str(R.string.detail_005)) })
-                            Tab(tab == 1, { tab = 1 }, unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant, text = { Text(str(R.string.detail_006, events.size)) })
+                            Tab(tab == 1, { tab = 1 }, unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant, text = { Text(if (isMirror) str(R.string.detail_006, events.size) else str(R.string.detail_push_tab, pushGroups.size)) })
                         }
                     }
                     if (tab == 0 || !showHistory) {
                         item(key = "info") { InfoTab(item, export, onSheet = { sheet = it }, nav = nav) }
                     } else {
-                        if (events.isEmpty()) item { EmptyState(Icons.Outlined.History, str(R.string.detail_007), str(R.string.detail_008)) }
-                        items(events, key = { it.startedAt.toString() + it.kind }) { EventRow(it) }
+                        if (!isMirror) {
+                            if (pushGroups.isEmpty()) item { EmptyState(Icons.Outlined.History, str(R.string.detail_007), str(R.string.detail_push_empty)) }
+                            items(pushGroups, key = { it.first().at }) { PushRow(it) }
+                        } else {
+                            if (events.isEmpty()) item { EmptyState(Icons.Outlined.History, str(R.string.detail_007), str(R.string.detail_008)) }
+                            items(events, key = { it.startedAt.toString() + it.kind }) { EventRow(it) }
+                        }
                     }
                 }
                 when (sheet) {
@@ -423,6 +434,41 @@ private fun EventRow(e: SyncEvent) {
                         .background(MaterialTheme.colorScheme.background).padding(Space.sm))
                 }
             }
+        }
+    }
+}
+
+/** One push (all refs sharing `at`): created / deleted / forced are labelled, not only coloured. */
+@Composable
+private fun PushRow(g: List<PushEvent>) {
+    val e = g.first()
+    Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(Space.md)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(str(R.string.detail_push_title), style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.width(Space.sm))
+                Pill(e.route.label(), Tone.Neutral)
+                Spacer(Modifier.weight(1f))
+                Text(ago(e.at), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            g.forEach { p ->
+                val name = p.branch ?: p.ref.removePrefix("refs/tags/").removePrefix("refs/")
+                val (label, t) = when {
+                    p.oldSha == null -> str(R.string.detail_push_created) to Tone.Success
+                    p.newSha == null -> str(R.string.detail_push_deleted) to Tone.Danger
+                    p.forced -> str(R.string.detail_push_forced) to Tone.Warning
+                    else -> null to Tone.Neutral
+                }
+                Row(Modifier.padding(top = Space.sm), verticalAlignment = Alignment.CenterVertically) {
+                    if (label != null) { Pill(label, t); Spacer(Modifier.width(Space.sm)) }
+                    Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f, fill = false))
+                    Spacer(Modifier.width(Space.sm))
+                    Text(if (p.oldSha == null) shortSha(p.newSha) else if (p.newSha == null) shortSha(p.oldSha) else "${shortSha(p.oldSha)} → ${shortSha(p.newSha)}",
+                        style = CodeText.small, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Text(str(R.string.detail_push_from, dateTime(e.at), e.clientIp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = Space.sm))
         }
     }
 }

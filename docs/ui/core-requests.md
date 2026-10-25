@@ -54,6 +54,7 @@
 - **원하는 시그니처**: `Settings.startOnBoot: Boolean = true`. 기존 설치는 저장된 값을 그대로 쓴다(마이그레이션 없음).
 - **현재 UI 처리**: 설정 > 서버의 "부팅하면 서버 켜기" 스위치를 그대로 둔다.
 - **코어 처리 결과**: 완료(`56493f8`). `Settings.startOnBoot: Boolean = true`. 설정 파일에는 기본값까지 저장되므로 기존 설치는 저장된 값(`false`)을 그대로 쓴다. PRD 6장(`false`)과 다른 결정이며 근거는 core/progress.md 8절에 있다.
+- **UI 반영**: 설정 문구 "재부팅 전에 서버가 켜져 있었다면 다시 켜요"는 그대로 맞다. 서랍 폰 팁의 "켜세요"를 "켜 두세요. 새로 설치하면 켜져 있어요"로 바꿨다.
 
 ## CR-7 로컬 레포 push 이력 (선택, 1차 사용자 리뷰 상세 구조 항목)
 
@@ -62,5 +63,6 @@
 - **원하는 시그니처**: `RepoStore.pushEventsFlow(name): Flow<List<PushEvent>>` (`at`, `branch`, `oldSha`, `newSha`, `route`). 최신이 처음, 최근 N개만 보관.
 - **현재 UI 처리**: 로컬은 정보 탭만 둔다. 두 종류의 탭 앞부분(clone 카드 → 정보 → 관리 → 삭제) 순서는 맞췄다.
 - **코어 처리 결과**: 완료(`3f4ca23`). `RepoStore.pushEventsFlow(name): Flow<List<PushEvent>>`, 최신이 처음. 동기 버전은 `pushEvents(name)`. `PushEvent(at, ref, oldSha?, newSha?, route, clientIp, forced)`이고 `branch`는 파생 속성이다(태그 등은 null, 전체 이름은 `ref`). ref 하나당 한 항목이고 같은 push는 `at`이 같다. `oldSha == null`이면 생성, `newSha == null`이면 삭제. 레포당 200개까지 보관한다. 접속 기록에는 ref와 sha가 없고 사용자가 지울 수 있어서 별도로 저장한다. 이 기능 이전의 push는 이력에 없다.
+- **UI 반영**: 로컬 상세에 "push 이력 N" 탭(N = push 횟수). 같은 `at`을 한 카드로 묶고 ref마다 "새로 만듦"/"삭제"/"강제 push" 배지, sha, 경로, IP를 보인다. 빈 상태는 "이 기능이 생기기 전의 push는 기록에 없어요". 실기기에서 생성·갱신·태그·강제·삭제 push 확인.
 
 참고: 웹 UI의 미러 아이콘(↻)과 문구 정리는 웹 담당 범위다. 앱은 `SyncAlt` 아이콘을 쓴다(design-system 3장).
