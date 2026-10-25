@@ -68,6 +68,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ouor.mobilegit.app.Notifier
 import com.ouor.mobilegit.core.AddPreview
+import com.ouor.mobilegit.core.AddPreviewError
 import com.ouor.mobilegit.core.BulkItemStatus
 import com.ouor.mobilegit.core.BulkSourceKind
 import com.ouor.mobilegit.core.CatalogException
@@ -194,6 +195,8 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
                     }
                 } catch (e: Exception) { error = e.message ?: e.toString() } finally { busy = false }
             }
+        }, above = { // QA-10: next to the button so it never scrolls under it
+            free?.let { Text(str(R.string.add_028, bytes(it.first)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = Space.sm)) }
         })
     }) { padding ->
         ScreenColumn(padding) {
@@ -222,8 +225,10 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
                 val p = preview
                 when {
                     p == null -> Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(Space.sm)); Text(str(R.string.add_017)) }
-                    p.error != null -> Banner(Tone.Danger, Icons.Outlined.ErrorOutline, str(R.string.add_018), p.error)
-                    p.existing != null -> Banner(Tone.Info, Icons.Outlined.Info, str(R.string.add_019), p.existing!!.name, actionLabel = str(R.string.add_020), onAction = { nav.replace(Routes.repo(p.existing!!.name)) })
+                    // QA-03: errorKind first; error is also set for an existing mirror
+                    p.errorKind == AddPreviewError.ALREADY_MIRRORED && p.existing != null -> Banner(Tone.Info, Icons.Outlined.Info, str(R.string.add_019),
+                        str(R.string.add_already_mirrored_body, p.existing!!.name), actionLabel = str(R.string.add_go_existing), onAction = { nav.replace(Routes.repo(p.existing!!.name)) })
+                    p.errorKind != null || p.error != null -> Banner(Tone.Danger, Icons.Outlined.ErrorOutline, str(R.string.add_018), p.error)
                     else -> {
                         SectionCard(title = str(R.string.add_021)) {
                             Text(str(R.string.add_022), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -242,7 +247,6 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
                     }
                 }
             }
-            free?.let { Text(str(R.string.add_028, bytes(it.first)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }
 }

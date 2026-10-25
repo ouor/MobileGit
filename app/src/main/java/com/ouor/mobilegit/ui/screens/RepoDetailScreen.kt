@@ -204,7 +204,7 @@ private fun InfoTab(item: RepoListItem, export: ExportRunner, onSheet: (String) 
             OriginCard(item, nav)
         } else LocalInfoCard(m)
 
-        if (m.mirror == null && m.lastPushAt == null) SectionCard(title = str(R.string.detail_018)) {
+        if (m.mirror == null && m.lastPushAt == null && m.forkedFromUrl == null) SectionCard(title = str(R.string.detail_018)) {
             Text(str(R.string.detail_019), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(Space.sm))
             core.ops.pushCommands(urls.firstOrNull()?.second ?: str(R.string.detail_020, core.settings.current.port, m.name)).forEach {
@@ -231,7 +231,10 @@ private fun InfoTab(item: RepoListItem, export: ExportRunner, onSheet: (String) 
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
         }
 
-        if (m.hasLfs) Banner(Tone.Warning, Icons.Outlined.Inventory2, str(R.string.detail_029), str(R.string.detail_030))
+        if (m.hasLfs) {
+            Banner(Tone.Warning, Icons.Outlined.Inventory2, str(R.string.detail_029), str(R.string.detail_030) + " " + str(R.string.detail_lfs_push_hint))
+            CommandBlock("GIT_LFS_SKIP_PUSH=1 git push")
+        }
         if (m.submoduleUrls.isNotEmpty()) SectionCard(title = str(R.string.detail_031, m.submoduleUrls.size)) {
             Text(str(R.string.detail_032), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             m.submoduleUrls.forEach { u ->

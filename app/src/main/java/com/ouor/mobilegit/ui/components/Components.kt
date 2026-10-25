@@ -226,9 +226,10 @@ fun BadgeRow(badges: Set<com.ouor.mobilegit.core.Badge>, modifier: Modifier = Mo
 @Composable
 fun Banner(
     tone: Tone, icon: ImageVector, title: String, body: String? = null, modifier: Modifier = Modifier,
-    actionLabel: String? = null, onAction: (() -> Unit)? = null, onDismiss: (() -> Unit)? = null,
+    actionLabel: String? = null, onAction: (() -> Unit)? = null, onDismiss: (() -> Unit)? = null, detail: String? = null,
 ) {
     val c = tone(tone)
+    var open by remember { mutableStateOf(false) }
     Surface(modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, color = c.container) {
         Row(Modifier.padding(Space.md), verticalAlignment = Alignment.Top) {
             Icon(icon, null, tint = c.content, modifier = Modifier.padding(top = 1.dp).size(20.dp))
@@ -239,6 +240,12 @@ fun Banner(
                 if (actionLabel != null && onAction != null) {
                     Text(actionLabel, style = MaterialTheme.typography.labelLarge, color = c.content, fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(top = Space.sm).clip(MaterialTheme.shapes.extraSmall).clickable(role = Role.Button, onClick = onAction).padding(vertical = 2.dp))
+                }
+                if (!detail.isNullOrBlank()) {
+                    Text(if (open) str(R.string.common_details_hide) else str(R.string.common_details), style = MaterialTheme.typography.labelMedium, color = c.content,
+                        modifier = Modifier.padding(top = Space.xs).clip(MaterialTheme.shapes.extraSmall).clickable(role = Role.Button) { open = !open }.padding(vertical = 2.dp))
+                    if (open) Text(detail.lines().map { it.trim() }.filter { it.isNotEmpty() }.joinToString("\n"), style = CodeText.small,
+                        color = c.content.copy(alpha = 0.85f), modifier = Modifier.padding(top = 2.dp))
                 }
             }
             if (onDismiss != null) IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Close, str(R.string.common_005), tint = c.content, modifier = Modifier.size(18.dp)) }

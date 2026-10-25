@@ -79,6 +79,7 @@ import com.ouor.mobilegit.core.RepoQuery
 import com.ouor.mobilegit.core.RepoSort
 import com.ouor.mobilegit.core.RepoType
 import com.ouor.mobilegit.core.TunnelState
+import com.ouor.mobilegit.app.ServerFailure
 import com.ouor.mobilegit.ui.Nav
 import com.ouor.mobilegit.ui.Routes
 import com.ouor.mobilegit.ui.components.AddressBar
@@ -158,7 +159,7 @@ fun MainScreen(nav: Nav) {
                 }
             }
             if (settings.ngrokEnabled) item(key = "ngrok") {
-                Banner(Tone.Danger, Icons.Outlined.Public, str(R.string.main_010), tunnelText(tunnel, server is ServerState.Running),
+                Banner(Tone.Danger, Icons.Outlined.Public, tunnelTitle(tunnel, server is ServerState.Running), tunnelText(tunnel, server is ServerState.Running), detail = tunnelDetail(tunnel),
                     actionLabel = str(R.string.main_011), onAction = { core.settings.update { it.copy(ngrokEnabled = false) }; snack(str(R.string.main_012)) })
             }
             if (lowStorage) item(key = "storage") {
@@ -266,9 +267,18 @@ fun tunnelText(t: TunnelState, serverRunning: Boolean): String = when {
         TunnelState.Off -> str(R.string.main_049)
         is TunnelState.Connecting -> str(R.string.main_050, t.attempt)
         is TunnelState.Connected -> str(R.string.main_051, t.publicUrl)
-        is TunnelState.Retrying -> str(R.string.main_052, com.ouor.mobilegit.ui.time(t.atMillis), t.reason)
-        is TunnelState.TokenRejected -> str(R.string.main_053, t.reason)
+        is TunnelState.Retrying -> str(R.string.tunnel_retrying, com.ouor.mobilegit.ui.time(t.atMillis))
+        is TunnelState.TokenRejected -> str(R.string.tunnel_token_rejected)
     }
+}
+
+/** Raw ngrok error, shown only under "자세히" (QA-07). */
+fun tunnelDetail(t: TunnelState): String? = when (t) { is TunnelState.Retrying -> t.reason; is TunnelState.TokenRejected -> t.reason; else -> null }
+
+fun tunnelTitle(t: TunnelState, serverRunning: Boolean): String = when {
+    serverRunning && t is TunnelState.Connected -> str(R.string.tunnel_title_connected)
+    serverRunning && t is TunnelState.TokenRejected -> str(R.string.tunnel_title_failed)
+    else -> str(R.string.tunnel_title_pending)
 }
 
 @Composable
@@ -277,7 +287,8 @@ private fun ServerCard(
     onToggle: (Boolean) -> Unit, onQr: () -> Unit, onPort: () -> Unit, onTailscale: () -> Unit,
 ) {
     val running = server is ServerState.Running
-    val on = running || server is ServerState.Starting
+    val blocked = server is ServerState.Failed && server.kind == ServerFailure.BACKGROUND_START_BLOCKED
+    val on = running || server is ServerState.Starting || blocked // blocked: the core restarts it once the app is open
     val (title, sub, t) = when (server) {
         is ServerState.Running -> Triple(str(R.string.main_054), str(R.string.main_055, server.port) + when { !auth -> str(R.string.main_056); anon -> str(R.string.main_057); else -> str(R.string.main_058) }, Tone.Success)
         ServerState.Starting -> Triple(str(R.string.main_059), str(R.string.main_060, port), Tone.Info)
@@ -298,8 +309,10 @@ private fun ServerCard(
         }
         if (server is ServerState.Failed) {
             Spacer(Modifier.height(Space.md))
-            Banner(Tone.Danger, Icons.Outlined.Close, server.message, if (server.portInUse) str(R.string.main_066) else null,
-                actionLabel = if (server.portInUse) str(R.string.main_067) else null, onAction = onPort)
+            val portBusy = server.kind == ServerFailure.PORT_IN_USE
+            Banner(if (blocked) Tone.Warning else Tone.Danger, Icons.Outlined.Close, server.message,
+                when { portBusy -> str(R.string.main_066); blocked -> str(R.string.server_blocked_hint); else -> null },
+                actionLabel = if (portBusy) str(R.string.main_067) else null, onAction = onPort, detail = server.detail)
         }
         Spacer(Modifier.height(Space.md))
         if (addrs.isEmpty()) {
@@ -308,7 +321,7 @@ private fun ServerCard(
         } else {
             val primary = addrs.first()
             AddressBar(str(R.string.main_071, primary.kind.label()), primary.baseUrl, large = true, enabled = running, onQr = onQr)
-            addrs.drop(1).forEach { a -> Spacer(Modifier.height(Space.xs)); AddressBar(a.kind.label(), a.baseUrl, enabled = running) }
+            addrs.drop(1).forEach { a -> Spacer(Modifier.height(Space.xs)); AddressBar(str(R.string.main_071, a.kind.label()), a.baseUrl, enabled = running) }
             Text(
                 if (running) str(R.string.main_072) else str(R.string.main_073),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm, start = Space.xs),
