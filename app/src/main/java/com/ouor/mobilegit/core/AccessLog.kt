@@ -78,6 +78,49 @@ object NetClassifier {
         ServerAddress(kind, i.ipv4, "http://${i.ipv4}:$port")
     }.distinctBy { it.host }.sortedBy { it.kind.ordinal }
 
+    // Only ever called with IP literals (contains ':'), so getByName does not hit DNS. Java turns v4-mapped IPv6 into Inet4Address.
+    private fun literal(ip: String) = runCatching { java.net.InetAddress.getByName(ip.substringBefore('%').trim('[', ']')) }.getOrNull()
+    private fun v6(ip: String): ByteArray? = if (!ip.contains(':')) null else (literal(ip) as? java.net.Inet6Address)?.address
+    /** IPv4 (also v4-mapped IPv6) as a dotted string, else null. */
+    private fun v4(ip: String): String? = if (!ip.contains(':')) ip else (literal(ip) as? java.net.Inet4Address)?.hostAddress
+
+    fun isLoopback(ip: String) = v4(ip)?.startsWith("127.") == true || v6(ip)?.let { b -> (0..14).all { b[it].toInt() == 0 } && b[15].toInt() == 1 } == true
+
+    /**
+     * SEC-03: addresses of the phone's own networks: RFC 1918, IPv4 link-local, Tailscale (100.64/10), IPv6 link-local
+     * (fe80::/10) and unique-local (fc00::/7, Tailscale uses fd7a:115c:a1e0::/48). Loopback is *not* included: a local
+     * reverse proxy or tunnel would make it the address of anyone.
+     */
+    fun isLocalNetwork(ip: String): Boolean {
+        v4(ip)?.let { a -> return isPrivate(a) || isTailscale(a) || a.startsWith("169.254.") }
+        val b = v6(ip) ?: return false
+        val first = b[0].toInt() and 0xff
+        return (first == 0xfe && (b[1].toInt() and 0xc0) == 0x80) || (first and 0xfe) == 0xfc
+    }
+
+    /**
+     * SEC-04: the server socket is dual-stack (`[::]:port`, checked on the device), so it is also reachable on a global
+     * IPv6 address (mobile data). Those addresses are never shown to the user; requests arriving on them are refused.
+     */
+    fun isPublicIpv6(localIp: String): Boolean {
+        val b = v6(localIp) ?: return false
+        if (isLoopback(localIp) || isLocalNetwork(localIp)) return false
+        return true
+    }
+
+    /**
+     * SEC-03 (DNS rebinding): Host values a browser can only send when the user typed the phone's address: IP
+     * literals, localhost, single-label names, mDNS (.local) and Tailscale MagicDNS (.ts.net). A rebinding page runs
+     * under an attacker's domain name and fails this check.
+     */
+    fun isDirectHost(hostHeader: String?): Boolean {
+        val h = hostHeader?.trim()?.lowercase() ?: return false
+        val name = if (h.startsWith("[")) return true else h.substringBeforeLast(':').takeIf { h.count { it == ':' } == 1 } ?: h
+        if (name.isEmpty()) return false
+        if (name.all { it.isDigit() || it == '.' }) return true
+        return name == "localhost" || !name.contains('.') || name.endsWith(".local") || name.endsWith(".ts.net")
+    }
+
     /** F-23 route from the local address the client connected to. */
     fun route(localIp: String, viaNgrok: Boolean, current: List<ServerAddress>): AccessRoute = when {
         viaNgrok -> AccessRoute.NGROK

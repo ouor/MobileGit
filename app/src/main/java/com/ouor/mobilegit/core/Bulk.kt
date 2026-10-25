@@ -134,10 +134,10 @@ class RemoteCatalog(private val clock: Clock = SystemClock, private val apiBaseO
             throw CatalogException(code, when (code) { 401 -> "인증 실패 (토큰 확인 필요)"; 404 -> "계정/조직을 찾을 수 없습니다"; else -> "원격 API 오류 $code: ${Redact.text(msg)}" })
         }
         val body = CoreJson.parseToJsonElement(c.inputStream.bufferedReader().readText())
-        val next = c.getHeaderField("Link")?.let { link -> Regex("""<([^>]+)>;\s*rel="next"""").find(link)?.groupValues?.get(1) }
+        val next = (c.getHeaderField("Link")?.let { link -> Regex("""<([^>]+)>;\s*rel="next"""").find(link)?.groupValues?.get(1) }
             ?: c.getHeaderField("X-Next-Page")?.takeIf { it.isNotBlank() }?.let { p ->
                 if (Regex("""[?&]page=\d+""").containsMatchIn(url)) url.replace(Regex("""([?&])page=\d+"""), "$1page=$p") else "$url&page=$p"
-            }
+            })?.takeIf { sameOrigin(url, it) } // SEC-09: the token header never follows a link to another host or to http
         return Resp(body, next)
     }
 
@@ -151,6 +151,11 @@ class RemoteCatalog(private val clock: Clock = SystemClock, private val apiBaseO
         }
         return null
     }
+
+    private fun sameOrigin(a: String, b: String): Boolean = runCatching {
+        val x = URI(a); val y = URI(b)
+        x.scheme.equals(y.scheme, true) && x.host.equals(y.host, true) && x.port == y.port
+    }.getOrDefault(false)
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
     private fun JsonObject.str(k: String) = (this[k] as? JsonElement)?.takeIf { it !is JsonNull }?.jsonPrimitive?.contentOrNull

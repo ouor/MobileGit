@@ -92,6 +92,7 @@ class GitServer(
     @Volatile var ngrokPort: Int = -1; private set
     @Volatile var port: Int = -1; private set
     private val packSlots = Semaphore(maxConcurrentPacks)
+    private val heavySlots = Semaphore(2)
     private val activeByRepo = ConcurrentHashMap<String, MutableSet<Job>>()
 
     val isRunning get() = server != null
@@ -161,14 +162,27 @@ class GitServer(
 
     private inner class Ctx(val call: ApplicationCall) {
         val viaNgrok = call.request.local.localPort == ngrokPort
-        val clientIp: String = if (viaNgrok) call.request.header("X-Forwarded-For")?.substringBefore(',')?.trim() ?: call.request.local.remoteAddress
+        /**
+         * SEC-01: ngrok *appends* the address it saw to any X-Forwarded-For the client sent ("use the last value",
+         * ngrok HTTP endpoint docs), so only the last entry is trustworthy.
+         */
+        val clientIp: String = if (viaNgrok) call.request.headers.getAll("X-Forwarded-For")?.lastOrNull()?.substringAfterLast(',')?.trim()
+            ?.takeIf { it.isNotEmpty() } ?: call.request.local.remoteAddress
             else call.request.local.remoteAddress
         val route = NetClassifier.route(call.request.local.localAddress, viaNgrok, addresses())
         var authResult = AuthResult.ANONYMOUS
 
         /** Returns false (and has responded) if the request must stop here. */
         suspend fun authorize(isPush: Boolean, repo: String?, action: AccessAction): Boolean {
-            val d = auth.decide(call.request.header(HttpHeaders.Authorization), clientIp, isPush, viaNgrok)
+            if (!viaNgrok && NetClassifier.isPublicIpv6(call.request.local.localAddress)) { // SEC-04
+                log(repo, action, 403)
+                call.respondText("mobilegit does not serve this network address\n", status = HttpStatusCode.Forbidden); return false
+            }
+            // SEC-03: anonymous read only for clients on the phone's own networks that typed the phone's address
+            val anonymousOk = !viaNgrok && NetClassifier.isLocalNetwork(call.request.local.remoteAddress) &&
+                NetClassifier.isDirectHost(call.request.header(HttpHeaders.Host))
+            val header = call.request.header(HttpHeaders.Authorization)
+            val d = withContext(Dispatchers.IO) { auth.decide(header, clientIp, isPush, viaNgrok, anonymousOk) } // SEC-02: PBKDF2 off the event loop
             authResult = when (d) { AuthDecision.OK -> AuthResult.OK; AuthDecision.ANONYMOUS -> AuthResult.ANONYMOUS; AuthDecision.BLOCKED -> AuthResult.BLOCKED; else -> AuthResult.FAILED }
             when (d) {
                 AuthDecision.OK, AuthDecision.ANONYMOUS -> return true
@@ -214,6 +228,7 @@ class GitServer(
 
     private fun Repository.uploadPack(call: ApplicationCall) = UploadPack(this).apply {
         setBiDirectionalPipe(false)
+        timeout = TRANSFER_IDLE_TIMEOUT_S // SEC-06: a client that stops reading/sending loses its pack slot
         call.request.header("Git-Protocol")?.let { setExtraParameters(it.split(':')) }
         setPackConfig(PackConfig(this@uploadPack).apply { threads = 1 })
     }
@@ -333,7 +348,8 @@ class GitServer(
                 withContext(Dispatchers.IO) {
                     store.open(name).use { repo ->
                         val up = repo.uploadPack(call)
-                        val input = body(call, call.receiveStream())
+                        // SEC-06: negotiation requests are small; cap the (possibly gzip-inflated) body
+                        val input = LimitedInput(body(call, call.receiveStream()), MAX_UPLOAD_REQUEST_BYTES)
                         call.respondOutputStream(ContentType.parse("application/x-git-upload-pack-result")) {
                             up.use { u -> u.uploadWithExceptionPropagation(input, this, null) }
                         }
@@ -360,21 +376,35 @@ class GitServer(
         }
         var status = 200
         var created = false
+        var mirrorNow: RepoMeta? = null
         withPackSlot(call) {
             tracked(name) {
                 withContext(Dispatchers.IO) {
                     store.withRepoLock(name) {
+                        // GIT-11: it may have become a mirror (same-name mirror add) while we waited for the lock
+                        store.get(name)?.takeIf { it.type == RepoType.MIRROR }?.let { mirrorNow = it; return@withRepoLock }
                         if (!store.exists(name)) { store.create(name, RepoType.LOCAL, CreatedBy.PUSH); created = true }
                         val canonical = store.require(name).name
+                        store.sweepLocks(canonical) // GIT-01: we hold the repo lock, so any ref lock left is stale
                         val pushed = mutableListOf<PushEvent>()
                         store.open(canonical).use { repo ->
                             val rp = ReceivePack(repo)
                             rp.setBiDirectionalPipe(false)
                             rp.isAtomic = true
+                            rp.timeout = TRANSFER_IDLE_TIMEOUT_S // SEC-06
+                            // GIT-07 / SEC-08: refs/archive/* is mobilegit's preservation area; pushes never change it
+                            // (a `git push --mirror` from a PC would otherwise delete every archived ref).
+                            rp.setPreReceiveHook { _, cmds ->
+                                cmds.filter { it.refName.startsWith(RepoStore.ARCHIVE_PREFIX) }.forEach {
+                                    it.setResult(ReceiveCommand.Result.REJECTED_OTHER_REASON, "refs/archive/ is read-only (mobilegit keeps preserved history there)")
+                                }
+                            }
                             // F-17 AC3 / NFR-저장 공간: refuse packs that do not fit (keeps a 32 MB margin).
                             rp.setMaxPackSizeLimit((freeBytes() - 32L * 1024 * 1024).coerceAtLeast(1))
                             rp.postReceiveHook = PostReceiveHook { r, cmds ->
-                                if (created) chooseHead(r.repository, cmds)
+                                // F-13 AC5 / GIT-10: also when HEAD points at a branch that does not exist (app-created
+                                // empty repo that got only `master`, or the default branch was deleted)
+                                if (created || r.repository.exactRef(Constants.HEAD)?.objectId == null) chooseHead(r.repository, cmds)
                                 // CR-7: JGit passes only the commands that were applied (Result.OK)
                                 val now = System.currentTimeMillis()
                                 pushed += cmds.map { c ->
@@ -398,6 +428,9 @@ class GitServer(
                     }
                 }
             }
+        }
+        mirrorNow?.let {
+            ctx.log(name, AccessAction.PUSH, 403); call.respondText(mirrorMessage(it) + "\n", status = HttpStatusCode.Forbidden); return
         }
         ctx.log(name, AccessAction.PUSH, status)
         if (status == 200) onPushed(name, created)
@@ -438,15 +471,17 @@ class GitServer(
                         store.open(meta.name).use { repo ->
                             when (parts.getOrNull(2)) {
                                 null -> json(call, RepoDetailDto.serializer(), RepoBrowser.detail(repo, meta).copy(cloneUrl = "${ctx.baseUrl()}/${meta.name}.git"))
-                                "tree" -> json(call, TreeDto.serializer(), RepoBrowser.tree(repo, q["ref"], q["path"]))
-                                "blob" -> json(call, BlobDto.serializer(), RepoBrowser.blob(repo, q["ref"], q["path"]))
+                                "tree" -> json(call, TreeDto.serializer(), heavy { RepoBrowser.tree(repo, q["ref"], q["path"]) })
+                                "blob" -> json(call, BlobDto.serializer(), heavy { RepoBrowser.blob(repo, q["ref"], q["path"]) })
                                 "readme" -> {
-                                    val r = RepoBrowser.readme(repo, q["ref"], q["path"]) ?: throw BrowseException(404, "README_NOT_FOUND", "README가 없습니다")
+                                    val r = heavy { RepoBrowser.readme(repo, q["ref"], q["path"]) } ?: throw BrowseException(404, "README_NOT_FOUND", "README가 없습니다")
                                     json(call, ReadmeDto.serializer(), r)
                                 }
-                                "commits" -> json(call, CommitPageDto.serializer(), RepoBrowser.commits(repo, q["ref"], q["path"], q["page"]?.toIntOrNull() ?: 1, q["perPage"]?.toIntOrNull() ?: 50))
+                                "commits" -> json(call, CommitPageDto.serializer(), heavy { RepoBrowser.commits(repo, q["ref"], q["path"], q["page"]?.toIntOrNull() ?: 1, q["perPage"]?.toIntOrNull() ?: 50) })
                                 "raw" -> {
-                                    val size = RepoBrowser.rawSize(repo, q["ref"], q["path"])
+                                    // GIT-14: resolve the blob once, so the length and the bytes always match
+                                    val blob = RepoBrowser.rawBlob(repo, q["ref"], q["path"])
+                                    val size = repo.open(blob).size
                                     val fileName = (q["path"] ?: "file").substringAfterLast('/').replace(Regex("[\"\\\\\\r\\n]"), "")
                                     // QA-14: images (incl. SVG) are served inline with their real type so <img> can show them;
                                     // everything else stays an opaque download. ?download=1 forces a download for any file.
@@ -458,7 +493,7 @@ class GitServer(
                                     call.response.header("Content-Security-Policy", RAW_CSP)
                                     // WR-2: let Ktor write Content-Length itself; a manual header plus a streamed body sent both CL and chunked.
                                     call.respondOutputStream(if (inline) ContentType.parse(imageType!!) else ContentType.Application.OctetStream, contentLength = size) {
-                                        RepoBrowser.raw(repo, q["ref"], q["path"]) { this }
+                                        repo.open(blob).copyTo(this)
                                     }
                                 }
                                 else -> throw BrowseException(404, "NOT_FOUND", "알 수 없는 API")
@@ -471,9 +506,26 @@ class GitServer(
         } catch (e: BrowseException) {
             status = e.status; apiError(call, e.status, e.code, e.message ?: "")
         } catch (e: Exception) {
-            status = 500; apiError(call, 500, "INTERNAL", Redact.text(e.message) ?: "internal error")
+            // SEC-10: no internal paths or JGit state to anonymous/ngrok clients; the id ties the log line to the reply
+            val id = java.util.UUID.randomUUID().toString().take(8)
+            System.err.println("mobilegit api error $id: ${Redact.text(e.toString())}")
+            status = 500; apiError(call, 500, "INTERNAL", "서버 오류가 발생했습니다 (오류 ID $id)")
         }
         ctx.log(repoParam, AccessAction.WEB, status)
+    }
+
+    /** GIT-09: at most two history/tree walks at a time; others get 503 BUSY after 10 s instead of piling up. */
+    private suspend fun <T> heavy(block: () -> T): T {
+        val got = withTimeoutOrNull(10_000) { heavySlots.acquire(); true } ?: throw BrowseException(503, "BUSY", "서버가 바쁩니다. 잠시 후 다시 시도해 주세요")
+        try { return block() } finally { if (got) heavySlots.release() }
+    }
+
+    /** Fails the read once more than [max] bytes have been read. */
+    private class LimitedInput(private val inner: InputStream, private val max: Long) : java.io.FilterInputStream(inner) {
+        private var n = 0L
+        private fun count(k: Int): Int { if (k > 0) { n += k; if (n > max) throw java.io.IOException("request too large") }; return k }
+        override fun read(): Int = super.read().also { if (it >= 0) count(1) }
+        override fun read(b: ByteArray, off: Int, len: Int): Int = count(super.read(b, off, len))
     }
 
     // ---------------- static web UI ----------------
@@ -532,6 +584,9 @@ class GitServer(
         }
 
         /** QA-14: raw responses never run scripts or load anything, even when opened as a top-level document. */
+        const val TRANSFER_IDLE_TIMEOUT_S = 120
+        const val MAX_UPLOAD_REQUEST_BYTES = 64L shl 20
+
         const val RAW_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox"
 
         private const val PLACEHOLDER ="<!doctype html><meta charset=utf-8><title>mobilegit</title><p>mobilegit 서버가 동작 중입니다. 웹 화면 파일(assets/web/index.html)이 아직 없습니다. JSON API: <a href=\"/api/v1/repos\">/api/v1/repos</a></p>"

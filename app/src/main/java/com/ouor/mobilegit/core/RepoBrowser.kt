@@ -55,13 +55,16 @@ data class BlobDto(
 )
 
 @Serializable data class ReadmeDto(val ref: String, val path: String, val format: String, val raw: String, val html: String)
-@Serializable data class CommitPageDto(val ref: String, val path: String, val page: Int, val perPage: Int, val hasMore: Boolean, val commits: List<CommitDto>)
+/** [truncated]: the scan limit ended this page early; older matching commits may exist (GIT-09). */
+@Serializable data class CommitPageDto(val ref: String, val path: String, val page: Int, val perPage: Int, val hasMore: Boolean, val commits: List<CommitDto>, val truncated: Boolean = false)
 
 class BrowseException(val status: Int, val code: String, message: String) : Exception(message)
 
 /** Read-only views for the web UI (F-18, PRD 7.3). Works on a consistent snapshot; never takes repo locks. */
 object RepoBrowser {
     const val MAX_TEXT_BYTES = 1_000_000L
+    const val MAX_COMMIT_PAGE = 1_000
+    const val MAX_SCANNED_COMMITS = 200_000
 
     fun summary(m: RepoMeta) = RepoSummaryDto(
         name = m.name, type = m.type, description = m.description, defaultBranch = m.defaultBranch,
@@ -168,9 +171,13 @@ object RepoBrowser {
         return p.substringAfterLast('/')
     }
 
-    fun rawSize(repo: Repository, ref: String?, path: String?): Long {
+    fun rawSize(repo: Repository, ref: String?, path: String?): Long = repo.open(rawBlob(repo, ref, path)).size
+
+    /** GIT-14: the blob a raw request refers to, resolved once (the ref may move during the download). */
+    fun rawBlob(repo: Repository, ref: String?, path: String?): ObjectId {
         val (_, commit) = resolveCommit(repo, ref)
-        return repo.open(blobId(repo, commit, normPath(path))).size
+        val p = normPath(path).ifEmpty { throw BrowseException(400, "BAD_PATH", "경로가 필요합니다") }
+        return blobId(repo, commit, p)
     }
 
     /** F-24 AC3 */
@@ -241,23 +248,40 @@ object RepoBrowser {
 
     fun escapeHtml(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;")
 
-    /** F-18 W-04: 50 per page; [path] limits to that file/dir's history. */
+    /**
+     * F-18 W-04: 50 per page; [path] limits to that file/dir's history.
+     * GIT-09 / SEC-11: page ≤ [MAX_COMMIT_PAGE] (else 400 PAGE_TOO_DEEP); bodies are parsed only for the listed
+     * commits; at most [MAX_SCANNED_COMMITS] commits are examined per request. When that limit is hit the page ends
+     * there with `truncated = true` (path history of a very large repo).
+     */
     fun commits(repo: Repository, ref: String?, path: String?, page: Int, perPage: Int = 50): CommitPageDto {
+        if (page > MAX_COMMIT_PAGE) throw BrowseException(400, "PAGE_TOO_DEEP", "커밋 목록은 ${MAX_COMMIT_PAGE}쪽까지 볼 수 있습니다")
         val (refName, commit) = resolveCommit(repo, ref)
         val p = normPath(path)
         val pg = page.coerceAtLeast(1); val per = perPage.coerceIn(1, 100)
+        val skip = (pg - 1).toLong() * per
         val list = mutableListOf<CommitDto>()
         var hasMore = false
+        var scanned = 0
+        var truncated = false
         RevWalk(repo).use { rw ->
+            rw.isRetainBody = false
+            rw.revFilter = object : org.eclipse.jgit.revwalk.filter.RevFilter() {
+                override fun include(walker: RevWalk, c: RevCommit): Boolean {
+                    if (++scanned > MAX_SCANNED_COMMITS) { truncated = true; throw org.eclipse.jgit.errors.StopWalkException.INSTANCE }
+                    return true
+                }
+                override fun clone() = this
+            }
             if (p.isNotEmpty()) rw.treeFilter = AndTreeFilter.create(PathFilterGroup.createFromStrings(p), TreeFilter.ANY_DIFF)
             rw.markStart(rw.parseCommit(commit))
-            var i = 0
+            var i = 0L
             for (c in rw) {
-                if (i >= (pg - 1) * per) { if (list.size == per) { hasMore = true; break }; list += commitDto(c) }
+                if (i >= skip) { if (list.size == per) { hasMore = true; break }; rw.parseBody(c); list += commitDto(c) }
                 i++
             }
         }
-        return CommitPageDto(refName, p, pg, per, hasMore, list)
+        return CommitPageDto(refName, p, pg, per, hasMore, list, truncated && !hasMore)
     }
 
     fun commitDto(c: RevCommit) = CommitDto(

@@ -18,6 +18,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -89,6 +90,53 @@ class AuthUnitTest {
         assertNull(s.initialPassword())
         try { s.setPassword("short"); error("x") } catch (_: SettingsException) {}
         try { s.setPort(80); error("x") } catch (_: SettingsException) {}
+    }
+
+    @Test fun networkClassesForSecurity() {
+        // SEC-03: anonymous read only from the phone's own networks
+        listOf("192.168.0.7", "10.1.2.3", "172.16.0.1", "100.100.1.1", "169.254.3.4", "fe80::1", "fd7a:115c:a1e0::1", "::ffff:192.168.0.7")
+            .forEach { assertTrue(it, NetClassifier.isLocalNetwork(it)) }
+        listOf("127.0.0.1", "::1", "8.8.8.8", "2001:db8::1", "::ffff:8.8.8.8").forEach { assertFalse(it, NetClassifier.isLocalNetwork(it)) }
+        // SEC-04: global IPv6 local addresses are refused; v4-mapped, loopback, link-local and ULA are not
+        assertTrue(NetClassifier.isPublicIpv6("2001:4860:1::5"))
+        listOf("::ffff:192.168.0.5", "192.168.0.5", "::1", "fe80::1%wlan0", "fd00::5").forEach { assertFalse(it, NetClassifier.isPublicIpv6(it)) }
+        // SEC-03: DNS rebinding hosts
+        listOf("192.168.0.5:8080", "localhost:8080", "[fe80::1]:8080", "phone", "phone.local:8080", "phone.tail1234.ts.net").forEach { assertTrue(it, NetClassifier.isDirectHost(it)) }
+        listOf("evil.example:8080", "evil.example", null, "").forEach { assertFalse("$it", NetClassifier.isDirectHost(it)) }
+    }
+
+    @Test fun limiterGroupsIpv6AndStaysBounded() {
+        val l = AuthRateLimiter(maxTracked = 100)
+        repeat(11) { l.recordFailure("2001:db8:1:2::$it") } // one /64 = one client (SEC-07)
+        assertTrue(l.isBlocked("2001:db8:1:2::ffff"))
+        assertFalse(l.isBlocked("2001:db8:1:3::1"))
+        repeat(5_000) { l.recordFailure("10.0.${it / 250}.${it % 250}") }
+        assertTrue(l.trackedCount() <= 102)
+    }
+
+    @Test fun ngrokFailuresShareOneLimit() {
+        val s = SettingsStore(File(tempDir(), "s.json"), FakeCipher).apply { setPassword("right-password"); update { it.copy(ngrokEnabled = true) } }
+        val a = Authenticator({ s.current }, AuthRateLimiter())
+        fun basic(pw: String) = "Basic " + java.util.Base64.getEncoder().encodeToString("git:$pw".toByteArray())
+        assertEquals(AuthDecision.OK, a.decide(basic("right-password"), "1.1.1.1", false, viaNgrok = true))
+        // SEC-01: a new address per attempt does not dodge the limit
+        val results = (1..40).map { a.decide(basic("guess$it"), "203.0.113.$it", false, viaNgrok = true) }
+        assertEquals(AuthDecision.BLOCKED, results.last())
+        assertEquals(AuthDecision.BLOCKED, a.decide(basic("guess-x"), "198.51.100.1", false, viaNgrok = true))
+        // the owner's known-good header still works during the block
+        assertEquals(AuthDecision.OK, a.decide(basic("right-password"), "198.51.100.2", false, viaNgrok = true))
+    }
+
+    @Test fun credentialsOnlyOverHttpsOrLocal() {
+        // SEC-05
+        assertTrue(CredentialStore.allowsCredentials("https://github.com/a/b.git"))
+        assertFalse(CredentialStore.allowsCredentials("http://github.com/a/b.git"))
+        assertTrue(CredentialStore.allowsCredentials("http://192.168.0.10:3000/a/b.git"))
+        assertTrue(CredentialStore.allowsCredentials("http://127.0.0.1:8080/a.git"))
+        val c = CredentialStore(File(tempDir(), "c.json"), FakeCipher)
+        c.add("github.com", "tok")
+        assertNull(c.effective(MirrorSource("http://github.com/a/b.git")))
+        assertNotNull(c.effective(MirrorSource("https://github.com/a/b.git")))
     }
 
     @Test fun rateLimiterWindow() {

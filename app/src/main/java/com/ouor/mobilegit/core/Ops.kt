@@ -50,7 +50,9 @@ class RepoOps(
                 if (store.exists(target)) throw RepoException(RepoException.Code.NAME_TAKEN, "'$target' 이름은 이미 쓰고 있습니다")
                 val size = store.dir(name).dirSize()
                 if (env.freeBytes() - size < settings().storageFloorBytes) throw RepoException(RepoException.Code.STORAGE_LOW, "공간이 부족해 복제할 수 없습니다") // AC5
-                store.withRepoLock(name) {
+                // GIT-11: the target name is locked too, so a push-create of the same name cannot slip in between
+                store.withRepoLock(name) { store.withRepoLock(target) {
+                    if (store.exists(target)) throw RepoException(RepoException.Code.NAME_TAKEN, "'$target' 이름은 이미 쓰고 있습니다")
                     val tmp = File(store.reposDir, ".tmp-${UUID.randomUUID()}")
                     try {
                         store.dir(name).copyRecursively(tmp)
@@ -65,7 +67,7 @@ class RepoOps(
                     )
                     store.adopt(meta)
                     store.refreshDerived(target)
-                }
+                } }
             }
         }
     }
@@ -133,16 +135,20 @@ class RepoOps(
 class Exporter(private val store: RepoStore, private val appVersion: String, private val clock: Clock = SystemClock) {
 
     /** AC1: every ref (archive refs included) plus HEAD, so `git clone x.bundle` checks out the default branch. */
-    fun writeBundle(name: String, out: OutputStream, monitor: ProgressMonitor = NullProgressMonitor.INSTANCE) {
-        store.open(name).use { repo ->
-            val w = BundleWriter(repo)
-            w.setPackConfig(PackConfig(repo).apply { threads = 1 })
-            val refs = repo.refDatabase.refs.filter { !it.isSymbolic && it.objectId != null }
-            if (refs.isEmpty()) throw RepoException(RepoException.Code.NOT_FOUND, "빈 레포는 bundle로 만들 수 없습니다")
-            refs.forEach { w.include(it.name, it.objectId) }
-            repo.exactRef(Constants.HEAD)?.objectId?.let { w.include(Constants.HEAD, it) }
-            w.writeBundle(monitor, out)
-        }
+    fun writeBundle(name: String, out: OutputStream, monitor: ProgressMonitor = NullProgressMonitor.INSTANCE) =
+        store.open(name).use { repo -> writeBundle(repo, refSnapshot(repo), out, monitor) }
+
+    /** All non-symbolic refs plus HEAD's commit, read once (GIT-13: the manifest lists exactly what the bundle holds). */
+    private fun refSnapshot(repo: org.eclipse.jgit.lib.Repository): Map<String, org.eclipse.jgit.lib.ObjectId> =
+        repo.refDatabase.refs.filter { !it.isSymbolic && it.objectId != null }.associate { it.name to it.objectId } +
+            listOfNotNull(repo.exactRef(Constants.HEAD)?.objectId?.let { Constants.HEAD to it })
+
+    private fun writeBundle(repo: org.eclipse.jgit.lib.Repository, refs: Map<String, org.eclipse.jgit.lib.ObjectId>, out: OutputStream, monitor: ProgressMonitor) {
+        if (refs.keys.none { it != Constants.HEAD }) throw RepoException(RepoException.Code.NOT_FOUND, "빈 레포는 bundle로 만들 수 없습니다")
+        val w = BundleWriter(repo)
+        w.setPackConfig(PackConfig(repo).apply { threads = 1 })
+        refs.forEach { (n, id) -> w.include(n, id) }
+        w.writeBundle(monitor, out)
     }
 
     /** AC3: latest tree of [ref] without .git. */
@@ -153,11 +159,20 @@ class Exporter(private val store: RepoStore, private val appVersion: String, pri
             ZipOutputStream(out).use { zip ->
                 TreeWalk(repo).use { tw ->
                     tw.addTree(commit.tree); tw.isRecursive = true
+                    var entries = 0L; var bytes = 0L
                     while (tw.next()) {
                         val mode = tw.getFileMode(0)
                         if (mode == FileMode.GITLINK) continue
-                        zip.putNextEntry(ZipEntry(prefix + tw.pathString).apply { time = commit.commitTime * 1000L })
-                        repo.open(tw.getObjectId(0)).copyTo(zip)
+                        // GIT-13: mirrored objects are not fsck'd, so a tree may carry "..", "/" or "\" names (zip-slip)
+                        val path = tw.pathString
+                        if (path.split('/').any { it == ".." || it == "." || it.isEmpty() } || path.contains(BACKSLASH) || path.contains(':')) continue
+                        val loader = repo.open(tw.getObjectId(0))
+                        // SEC-12: a "git bomb" (huge fan-out of shared trees) must not fill the phone
+                        entries++; bytes += loader.size
+                        if (entries > MAX_ZIP_ENTRIES || bytes > MAX_ZIP_BYTES)
+                            throw RepoException(RepoException.Code.STORAGE_LOW, "소스 zip이 너무 큽니다 (파일 ${MAX_ZIP_ENTRIES}개 또는 ${MAX_ZIP_BYTES shr 30}GB 초과)")
+                        zip.putNextEntry(ZipEntry(prefix + path).apply { time = commit.commitTime * 1000L })
+                        loader.copyTo(zip)
                         zip.closeEntry()
                     }
                 }
@@ -171,17 +186,24 @@ class Exporter(private val store: RepoStore, private val appVersion: String, pri
         ZipOutputStream(out).use { zip ->
             names.forEachIndexed { i, n ->
                 val meta = store.require(n)
-                val refs = store.open(n).use { r -> r.refDatabase.refs.filter { !it.isSymbolic && it.objectId != null }.associate { it.name to it.objectId.name } }
-                val bundleName = if (refs.isEmpty()) "" else "${meta.name}.bundle"
-                if (refs.isNotEmpty()) {
-                    zip.putNextEntry(ZipEntry(bundleName))
-                    writeBundle(n, NonClosing(zip))
-                    zip.closeEntry()
+                val bundleName = store.open(n).use { repo ->
+                    val snap = refSnapshot(repo)
+                    val refs = snap.filterKeys { it != Constants.HEAD }.mapValues { it.value.name }
+                    val bn = if (refs.isEmpty()) "" else "${meta.name}.bundle"
+                    if (refs.isNotEmpty()) {
+                        // GIT-13: packs are already compressed; deflating them again only burns CPU and battery
+                        zip.setLevel(java.util.zip.Deflater.NO_COMPRESSION)
+                        zip.putNextEntry(ZipEntry(bn))
+                        writeBundle(repo, snap, NonClosing(zip), NullProgressMonitor.INSTANCE)
+                        zip.closeEntry()
+                    }
+                    entries += ManifestRepo(meta.name, meta.type, meta.mirror?.remoteUrl ?: meta.forkedFromUrl, meta.mirror?.originStatus,
+                        meta.mirror?.lastSuccessUpdateAt, meta.lastPushAt, refs, bn)
+                    bn
                 }
-                entries += ManifestRepo(meta.name, meta.type, meta.mirror?.remoteUrl ?: meta.forkedFromUrl, meta.mirror?.originStatus,
-                    meta.mirror?.lastSuccessUpdateAt, meta.lastPushAt, refs, bundleName)
                 onProgress(i + 1, names.size)
             }
+            zip.setLevel(java.util.zip.Deflater.DEFAULT_COMPRESSION)
             zip.putNextEntry(ZipEntry("manifest.json"))
             zip.write(CoreJson.encodeToString(BackupManifest.serializer(), BackupManifest("mobilegit", appVersion, clock.now(), entries)).toByteArray())
             zip.closeEntry()
@@ -196,6 +218,10 @@ class Exporter(private val store: RepoStore, private val appVersion: String, pri
     }
 
     companion object {
+        private const val BACKSLASH = '\\'
+        const val MAX_ZIP_ENTRIES = 1_000_000L
+        const val MAX_ZIP_BYTES = 8L shl 30
+
         /** AC5: writes to `<target>.part` then renames; a failure never leaves a partial file. */
         fun toFileAtomically(target: File, writer: (OutputStream) -> Unit): File {
             val part = File(target.parentFile, target.name + ".part")

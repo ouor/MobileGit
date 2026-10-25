@@ -340,8 +340,7 @@ class MirrorController(
 
     /** AC3: reachability/auth check before registering. Blocking network call: run off the main thread. */
     fun probe(url: String, credentialId: String? = null): ProbeResult {
-        val cred = credentials.get(credentialId) ?: CredentialStore.hostOf(url)?.let { credentials.forHost(it).firstOrNull() }
-        return engine.probe(url, credentials.provider(cred))
+        return engine.probe(url, credentials.provider(credentials.forUrl(url, credentialId)))
     }
 
     fun storageOk() = env.freeBytes() >= settings().storageFloorBytes

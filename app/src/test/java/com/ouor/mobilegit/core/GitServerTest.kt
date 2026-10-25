@@ -106,11 +106,14 @@ class GitServerTest {
         assertNotEquals(0, GitCli.run(root, "-c", "credential.helper=", "ls-remote", url("pub.git", pw = "nope")).code)
         // no credentials
         assertEquals(401, get("/pub.git/info/refs?service=git-upload-pack", auth = false).first)
-        // anonymous LAN read on: read ok, push still needs auth (F-03 AC5)
+        // anonymous LAN read on: loopback is not "the same network" (SEC-03: a local proxy/tunnel would make it anyone)
         settings.update { it.copy(anonymousReadOnLan = true) }
-        assertEquals(200, get("/pub.git/info/refs?service=git-upload-pack", auth = false).first)
-        assertEquals(401, get("/pub.git/info/refs?service=git-receive-pack", auth = false).first)
-        assertEquals(200, get("/api/v1/repos", auth = false).first)
+        assertEquals(401, get("/pub.git/info/refs?service=git-upload-pack", auth = false).first)
+        assertEquals(401, get("/api/v1/repos", auth = false).first)
+        // the rule itself (F-03 AC5): read ok for a LAN client that typed the phone's address, push still needs auth
+        val a = Authenticator({ settings.current }, AuthRateLimiter())
+        assertEquals(AuthDecision.ANONYMOUS, a.decide(null, "192.168.0.7", isPush = false, viaNgrok = false, anonymousOk = true))
+        assertEquals(AuthDecision.CHALLENGE, a.decide(null, "192.168.0.7", isPush = true, viaNgrok = false, anonymousOk = true))
         // ngrok forces auth (F-03 AC7)
         settings.update { it.copy(ngrokEnabled = true) }
         assertEquals(401, get("/pub.git/info/refs?service=git-upload-pack", auth = false).first)
@@ -371,5 +374,63 @@ class GitServerTest {
         assertFalse(GitServer.isCompressible("/demo.git/info/refs"))
         assertFalse(GitServer.isCompressible("/demo/git-upload-pack"))
         assertFalse(GitServer.isCompressible("/demo/git-receive-pack"))
+    }
+
+    // ---- code review round 1 ----
+
+    @Test fun archiveRefsAreReadOnlyForPushes() {
+        assumeTrue(GitCli.available)
+        val work = Commits.initWork()
+        val c1 = Commits.commit(work, "a.txt", "1")
+        val dir = work.repository.workTree
+        GitCli.ok(dir, "push", url("keep.git"), "main")
+        store.open("keep").use { r -> r.updateRef("refs/archive/20250101T000000Z/heads/old").apply { setNewObjectId(org.eclipse.jgit.lib.ObjectId.fromString(c1)) }.update() }
+        // GIT-07: `push --mirror` from a clone without refs/archive must not delete them
+        Commits.commit(work, "a.txt", "2")
+        GitCli.run(dir, "-c", "credential.helper=", "push", "--mirror", url("keep.git"))
+        assertNotNull(store.open("keep").use { it.exactRef("refs/archive/20250101T000000Z/heads/old") })
+        val r = GitCli.run(dir, "-c", "credential.helper=", "push", url("keep.git"), "main:refs/archive/mine")
+        assertNotEquals(0, r.code)
+        assertTrue(r.out, r.out.contains("refs/archive/ is read-only"))
+    }
+
+    @Test fun zeroPaddedTreeModeIsAccepted() {
+        assumeTrue(GitCli.available)
+        val work = Commits.initWork()
+        Commits.commit(work, "a.txt", "1")
+        val repo = work.repository
+        val head = repo.resolve("HEAD")
+        val id = repo.newObjectInserter().use { ins ->
+            val blob = ins.insert(org.eclipse.jgit.lib.Constants.OBJ_BLOB, "x".toByteArray())
+            val sub = ins.insert(org.eclipse.jgit.lib.TreeFormatter().apply { append("f", org.eclipse.jgit.lib.FileMode.REGULAR_FILE, blob) })
+            val raw = java.io.ByteArrayOutputStream().apply { write("040000 d".toByteArray()); write(0); sub.copyRawTo(this) }.toByteArray()
+            val tree = ins.insert(org.eclipse.jgit.lib.Constants.OBJ_TREE, raw) // GIT-06: legacy zero-padded mode
+            val who = org.eclipse.jgit.lib.PersonIdent("Old", "old@example.com")
+            ins.insert(org.eclipse.jgit.lib.CommitBuilder().apply { setTreeId(tree); setParentId(head); setAuthor(who); setCommitter(who); setMessage("old") })
+                .also { ins.flush() }
+        }
+        repo.updateRef("refs/heads/main").apply { setNewObjectId(id) }.forceUpdate()
+        val r = GitCli.run(repo.workTree, "-c", "credential.helper=", "push", url("legacy.git"), "main")
+        assertEquals(r.out, 0, r.code)
+        assertEquals(id.name, store.open("legacy").use { it.resolve("refs/heads/main").name })
+    }
+
+    @Test fun headFollowsPushedBranchWhenDefaultIsMissing() {
+        assumeTrue(GitCli.available)
+        store.create("empty", RepoType.LOCAL, CreatedBy.APP_EMPTY) // HEAD -> main (does not exist yet)
+        val work = Commits.initWork(branch = "master")
+        Commits.commit(work, "a.txt", "1")
+        GitCli.ok(work.repository.workTree, "push", url("empty.git"), "master")
+        assertEquals("refs/heads/master", store.open("empty").use { it.exactRef("HEAD").target.name }) // GIT-10
+    }
+
+    @Test fun commitPagesAreBounded() {
+        assumeTrue(GitCli.available)
+        val work = Commits.initWork()
+        Commits.commit(work, "a.txt", "1")
+        GitCli.ok(work.repository.workTree, "push", url("hist.git"), "main")
+        val (code, body) = get("/api/v1/repos/hist/commits?page=1001")
+        assertEquals(400, code); assertTrue(body.contains("PAGE_TOO_DEEP"))
+        assertEquals(200, get("/api/v1/repos/hist/commits?page=1000").first)
     }
 }

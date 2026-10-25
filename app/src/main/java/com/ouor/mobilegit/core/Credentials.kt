@@ -52,19 +52,43 @@ class CredentialStore(private val file: File, private val cipher: SecretCipher, 
         mir.credentialId == id || (mir.credentialId == null && effective(mir)?.id == id)
     }
 
-    /** F-07 AC1: explicit choice, else the first credential stored for the host. */
-    fun effective(mirror: MirrorSource): RemoteCredential? =
-        get(mirror.credentialId) ?: hostOf(mirror.remoteUrl)?.let { forHost(it).firstOrNull() }
+    /**
+     * F-07 AC1: explicit choice, else the first credential stored for the host.
+     * SEC-05: never for a URL that would carry the token in clear text ([allowsCredentials]).
+     */
+    fun effective(mirror: MirrorSource): RemoteCredential? = forUrl(mirror.remoteUrl, mirror.credentialId)
+
+    fun forUrl(url: String, credentialId: String? = null): RemoteCredential? {
+        if (!allowsCredentials(url)) return null
+        return get(credentialId) ?: hostOf(url)?.let { forHost(it).firstOrNull() }
+    }
 
     fun token(c: RemoteCredential): String = cipher.decrypt(c.encryptedToken)
 
-    fun provider(c: RemoteCredential?): CredentialsProvider? = c?.let { UsernamePasswordCredentialsProvider(it.username ?: defaultUser(it.host), token(it)) }
+    /** SEC-09: the token is only handed to its own host over https (a redirect to another host/http gets nothing). */
+    fun provider(c: RemoteCredential?): CredentialsProvider? = c?.let { HostBoundProvider(it.host, it.username ?: defaultUser(it.host), token(it)) }
+
+    private class HostBoundProvider(private val host: String, user: String, token: String) : UsernamePasswordCredentialsProvider(user, token) {
+        private fun ok(uri: org.eclipse.jgit.transport.URIish?) = uri != null && uri.host?.lowercase() == host &&
+            allowsCredentials("${uri.scheme}://${uri.host}/")
+        override fun get(uri: org.eclipse.jgit.transport.URIish?, vararg items: org.eclipse.jgit.transport.CredentialItem): Boolean =
+            ok(uri) && super.get(uri, *items)
+    }
 
     /** All decrypted tokens, for redacting error text (F-07 AC5). */
     fun secrets(): List<String> = _items.value.mapNotNull { runCatching { token(it) }.getOrNull() }
 
     companion object {
         fun normalizeHost(h: String) = h.trim().lowercase().removePrefix("https://").removePrefix("http://").substringBefore('/')
+        /** SEC-05: https, or plain http only to this phone or a private-network IP address (self-hosted on the LAN). */
+        fun allowsCredentials(url: String): Boolean {
+            val u = runCatching { java.net.URI(url) }.getOrNull() ?: return false
+            if (u.scheme.equals("https", true)) return true
+            if (!u.scheme.equals("http", true)) return false
+            val h = u.host?.trim('[', ']')?.lowercase() ?: return false
+            return h == "localhost" || NetClassifier.isLoopback(h) || (h.all { it.isDigit() || it == '.' } && NetClassifier.isLocalNetwork(h))
+        }
+
         fun hostOf(url: String) = runCatching { java.net.URI(url).host?.lowercase() }.getOrNull()
 
         /** Token-only auth usernames understood by common hosts. */
