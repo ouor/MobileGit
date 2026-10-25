@@ -172,6 +172,7 @@ class MirrorSyncTest {
         assertTrue(Badge.HISTORY_CHANGED in Badges.of(RepoStore(store.reposDir.parentFile, clock).require("up"), settings.current, now, null))
         store.markHistorySeen("up")
         assertFalse(Badge.HISTORY_CHANGED in Badges.of(store.require("up"), settings.current, now, null))
+        assertNotNull(store.require("up").lastArchivedAt) // R2ARC-01: the detail keeps "마지막 보존"
         // kinds survive the history limit (archives.json); archives from before round 2 have none
         File(store.reposDir, "up.git/mobilegit/events.json").delete()
         assertEquals(RefChangeKind.FORCED, ops.archives("up").single { it.name == "main" }.kind)

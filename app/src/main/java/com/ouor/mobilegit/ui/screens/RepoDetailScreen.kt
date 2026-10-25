@@ -276,7 +276,7 @@ private fun InfoTab(item: RepoListItem, export: ExportRunner, onSheet: (String) 
                     Text(str(R.string.detail_archive_none), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else NavRow(str(R.string.detail_archive_title), { nav.go(Routes.archives(m.name)) }, icon = Icons.Outlined.Archive,
-                subtitle = str(R.string.detail_archive_count, m.archivedRefCount) + (m.historyChangedAt?.let { " · " + str(R.string.detail_archive_last, clock(it)) } ?: ""))
+                subtitle = str(R.string.detail_archive_count, m.archivedRefCount) + (m.lastArchivedAt?.let { " · " + str(R.string.detail_archive_last, clock(it)) } ?: ""))
         }
 
         // 고급 stays last before 관리 (design-system 9)

@@ -49,6 +49,43 @@ class StorageTest {
         assertNull(m.mirror!!.lastError)
     }
 
+    /** R2ARC-15 / R2ARC-01: files written by round-1 and round-2 builds load with the right derived values. */
+    @Test fun roundOneAndTwoFilesReload() {
+        val root = tempDir()
+        val store = RepoStore(root)
+        store.create("m", RepoType.MIRROR, CreatedBy.MIRROR_ADD, mirror = MirrorSource("https://example.com/a.git"))
+        val dir = File(store.reposDir, "m.git/mobilegit")
+        val json = kotlinx.serialization.json.Json.parseToJsonElement(File(dir, "meta.json").readText()).toString()
+        // round 1: none of the round-2 fields; a successful check at 1000 and an update at 900
+        val r1 = json.replace(Regex(""","(lastArchivedAt|historySeenAt|lastSuccessCheckAt|failingSince|includePullRefs)":[^,}]*"""), "")
+            .replace("\"lastCheckAt\":null", "\"lastCheckAt\":1000").replace("\"lastCheckResult\":null", "\"lastCheckResult\":\"NO_CHANGE\"")
+            .replace("\"lastSuccessUpdateAt\":null", "\"lastSuccessUpdateAt\":900")
+        assertFalse(r1, r1.contains("lastArchivedAt") || r1.contains("historySeenAt"))
+        File(dir, "meta.json").writeText(r1)
+        File(dir, "events.json").writeText("""[{"startedAt":900,"durationMs":1,"trigger":"AUTO","kind":"UPDATE","result":"SUCCESS",
+            "refChanges":[{"ref":"refs/heads/main","oldSha":"a","newSha":"b","archivedAs":"refs/archive/x/heads/main"},{"ref":"refs/tags/v1","oldSha":"c","newSha":"d","archivedAs":"refs/archive/x/tags/v1"}]}]""")
+        val s = Settings()
+        var m = RepoStore(root).require("m")
+        assertNull(m.lastArchivedAt); assertFalse(m.historyUnseen)
+        assertFalse(Badge.HISTORY_CHANGED in Badges.of(m, s, 2000, null))
+        assertEquals(1000L, m.mirror!!.lastOkAt)
+        val notes = RepoStore(root).archiveNotes("m")
+        assertEquals(RefChangeKind.FORCED, notes["refs/archive/x/heads/main"]!!.kind)
+        assertEquals(RefChangeKind.TAG_MOVED, notes["refs/archive/x/tags/v1"]!!.kind)
+        // round 2: "historyChangedAt" meant "unseen archive at"; it is read as lastArchivedAt
+        File(dir, "meta.json").writeText(r1.replaceFirst("{", "{\"historyChangedAt\":1500,"))
+        val again = RepoStore(root) { 1400L }
+        m = again.require("m")
+        assertEquals(1500L, m.lastArchivedAt); assertTrue(Badge.HISTORY_CHANGED in Badges.of(m, s, 2000, null))
+        assertEquals(1500L, Badges.issue(m, Badges.of(m, s, 2000, null))!!.since)
+        again.markHistorySeen("m") // R2GIT-08: seen at 1400, before the archive at 1500 -> still unseen
+        assertTrue(again.require("m").historyUnseen)
+        again.markHistorySeen("m", seenAt = 1500)
+        m = again.require("m")
+        assertFalse(m.historyUnseen); assertEquals(1500L, m.lastArchivedAt) // R2ARC-01: the time stays for the detail row
+        assertFalse(File(dir, "meta.json").readText().contains("historyChangedAt"))
+    }
+
     @Test fun unreadableMetaIsReportedNeverAdoptedOrOverwritten() {
         val root = tempDir()
         val store = RepoStore(root)

@@ -249,9 +249,12 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
         (readList(archivesFile(dir(name)), RefChange.serializer()) + events(name).flatMap { it.refChanges })
             .filter { it.archivedAs != null }.distinctBy { it.archivedAs }.associateBy { it.archivedAs!! }
 
-    /** R2-01 AC2: the user opened the archive screen; drops the "히스토리 바뀜" badge. */
-    fun markHistorySeen(name: String) {
-        if (get(name)?.historyChangedAt != null) update(name) { it.copy(historyChangedAt = null) }
+    /**
+     * R2-01 AC2: the user opened the archive screen; drops the "히스토리 바뀜" badge for archives made up to [seenAt]
+     * (R2GIT-08: an archive written after that keeps it). Call it before reading the list.
+     */
+    fun markHistorySeen(name: String, seenAt: Long = clock.now()) {
+        if (get(name)?.historyUnseen == true) update(name) { it.copy(historySeenAt = maxOf(it.historySeenAt ?: seenAt, seenAt)) }
     }
 
     fun appendEvent(name: String, event: SyncEvent) {

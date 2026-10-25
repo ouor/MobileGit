@@ -1,6 +1,8 @@
 package com.ouor.mobilegit.core
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonNames
 
 // PRD 6장 데이터 모델. 시각은 모두 epoch millis(UTC).
 
@@ -17,7 +19,7 @@ import kotlinx.serialization.Serializable
 
 /** F-05 AC2 상태 배지. */
 @Serializable enum class Badge { UPDATE_AVAILABLE, UPDATING, FAILED, ORIGIN_GONE, AUTH_REQUIRED, DELAYED, LFS_MISSING,
-    /** R2-01 AC2: an update archived refs (F-11); cleared when the user opens the archive screen ([RepoStore.markHistorySeen]). */
+    /** R2-01 AC2: an update archived refs (F-11); shown while [RepoMeta.historyUnseen]. */
     HISTORY_CHANGED }
 
 @Serializable
@@ -73,9 +75,14 @@ data class RepoMeta(
     val forkedAt: Long? = null,
     val archivedRefCount: Int = 0,
     val mirror: MirrorSource? = null,
-    /** R2-01 AC2: when the last update archived refs and the user has not opened the archive screen since. */
-    val historyChangedAt: Long? = null,
-)
+    /** R2-03 AC1 / R2ARC-01: when an update last archived refs. Never cleared. Round-2 builds wrote it as "historyChangedAt". */
+    @OptIn(ExperimentalSerializationApi::class) @JsonNames("historyChangedAt") val lastArchivedAt: Long? = null,
+    /** R2-01 AC2: when the user last opened the archive screen ([RepoStore.markHistorySeen]). */
+    val historySeenAt: Long? = null,
+) {
+    /** R2-01 AC2: the "히스토리 바뀜" badge. */
+    val historyUnseen: Boolean get() = lastArchivedAt != null && lastArchivedAt > (historySeenAt ?: Long.MIN_VALUE)
+}
 
 @Serializable
 data class RefChange(val ref: String, val oldSha: String?, val newSha: String?, val archivedAs: String? = null) {

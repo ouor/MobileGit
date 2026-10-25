@@ -73,7 +73,7 @@ object Badges {
     fun of(m: RepoMeta, s: Settings, now: Long, running: RepoProgress?, checksStalled: Boolean = false): Set<Badge> {
         val out = mutableSetOf<Badge>()
         if (m.hasLfs) out += Badge.LFS_MISSING
-        if (m.historyChangedAt != null) out += Badge.HISTORY_CHANGED
+        if (m.historyUnseen) out += Badge.HISTORY_CHANGED
         val mir = m.mirror ?: return out
         if (running != null) out += Badge.UPDATING
         if (mir.pendingChanges > 0) out += Badge.UPDATE_AVAILABLE
@@ -99,7 +99,7 @@ object Badges {
             Badge.AUTH_REQUIRED in badges -> RepoIssue(Badge.AUTH_REQUIRED, mir?.failingSince, mir?.lastError)
             Badge.FAILED in badges -> RepoIssue(Badge.FAILED, mir?.failingSince, mir?.lastError)
             Badge.DELAYED in badges -> RepoIssue(Badge.DELAYED, mir?.lastCheckAt ?: m.createdAt, null)
-            Badge.HISTORY_CHANGED in badges -> RepoIssue(Badge.HISTORY_CHANGED, m.historyChangedAt, null)
+            Badge.HISTORY_CHANGED in badges -> RepoIssue(Badge.HISTORY_CHANGED, m.lastArchivedAt, null)
             else -> null
         }
     }
@@ -255,16 +255,16 @@ class SyncCoordinator(
                         val ev = SyncEvent(started, clock.now() - started, trigger, SyncKind.UPDATE,
                             if (out.refChanges.isEmpty()) SyncResult.NO_CHANGE else SyncResult.SUCCESS,
                             out.refChanges, out.newCommitCount, out.archivedRefCount)
-                        store.appendEvent(name, ev)
-                        store.appendArchives(name, out.refChanges)
                         val now = clock.now()
-                        if (out.archivedRefCount > 0) store.update(name) { it.copy(historyChangedAt = now) } // R2-01 AC2
-                        val after = store.updateMirror(name) {
-                            it.copy(lastCheckAt = now, lastCheckResult = SyncResult.SUCCESS, lastUpdateAt = now, lastSuccessUpdateAt = now,
+                        // R2GIT-06: refs are applied; the meta (incl. the history badge) is written first and in one
+                        // write, history files after and best effort, so a full disk cannot drop the badge silently.
+                        val after = store.update(name) { m -> m.copy(lastArchivedAt = if (out.archivedRefCount > 0) now else m.lastArchivedAt, mirror = m.mirror!!.copy(lastCheckAt = now, lastCheckResult = SyncResult.SUCCESS, lastUpdateAt = now, lastSuccessUpdateAt = now,
                                 pendingChanges = 0, originStatus = OriginStatus.OK, lastError = null, consecutiveFailures = 0, nextRetryAt = null,
                                 waitingReason = WaitingReason.NONE, initialFetchDone = true, waitingForForeground = false,
-                                lastSuccessCheckAt = now, failingSince = null)
+                                lastSuccessCheckAt = now, failingSince = null)) // R2-01 AC2
                         }.mirror!!
+                        runCatching { store.appendEvent(name, ev) }
+                        runCatching { store.appendArchives(name, out.refChanges) }
                         runCatching { store.refreshDerived(name) }
                         NotificationRules.decide(meta.name, mir, after, out.archivedRefCount,
                             out.refChanges.isNotEmpty() && settings().notifyOnSuccess && trigger != SyncTrigger.MANUAL).forEach(notifier::notify)

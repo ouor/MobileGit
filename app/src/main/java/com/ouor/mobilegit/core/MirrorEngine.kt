@@ -136,7 +136,7 @@ class MirrorEngine(private val clock: Clock = SystemClock, private val timeoutSe
             val cur = repo.exactRef(Constants.HEAD)?.target?.name
             if (cur != remoteHead) repo.updateRef(Constants.HEAD).link(remoteHead)
         }
-        val newCommits = countNewCommits(repo, local.filterKeys { !isReviewRef(it) }.values, remote.filterKeys { !isReviewRef(it) }.values)
+        val newCommits = runCatching { countNewCommits(repo, local.filterKeys { !isReviewRef(it) }.values, remote.filterKeys { !isReviewRef(it) }.values) }.getOrDefault(0) // R2GIT-06: refs are already applied
         return UpdateOutcome(changes, newCommits, changes.count { it.archivedAs != null })
     }
 

@@ -209,7 +209,7 @@ class NotificationRulesTest {
         assertEquals(RepoIssue(Badge.ORIGIN_GONE, null, null), items[1].issue)
         assertNull(items[0].issue)
         // R2-01 AC2/AC4: history changed counts as "주의 필요", also for local repos
-        val c = a.copy(id = "3", name = "gamma", historyChangedAt = 50)
+        val c = a.copy(id = "3", name = "gamma", lastArchivedAt = 50)
         val items2 = RepoQuery.items(listOf(a, c), s, 60, emptyMap())
         assertEquals(listOf("gamma"), RepoQuery.apply(items2, RepoSort.NAME, RepoFilter.PROBLEM, "").map { it.meta.name })
         assertEquals(RepoIssue(Badge.HISTORY_CHANGED, 50, null), items2[1].issue)
