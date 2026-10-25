@@ -219,16 +219,22 @@ class MirrorEngine(private val clock: Clock = SystemClock, private val timeoutSe
             // TransportException messages are "<uri>: <text>"; JGit's text for an unexpected status is "<code> <reason>".
             val transport = chain.filterIsInstance<TransportException>().mapNotNull { t -> t.message?.let { it.substringAfter(": ", it).lowercase() } }
             fun status(re: String) = Regex(re).let { r -> transport.any { r.containsMatchIn(it) } }
+            // R2GIT-01: JGit's fixed texts are the whole message, so match their start only; a remote body
+            // ("invalid advertisement of <html>…") or a URL ("…/timeout-utils.git") must not decide.
+            fun jgit(vararg prefixes: String) = transport.any { m -> prefixes.any { m.startsWith(it) } }
+            val noUrls = lower.replace(Regex("""\S+://\S*"""), "")
             val cat = when {
                 chain.any { it is SocketTimeoutException } -> ErrorCategory.TIMEOUT
                 chain.any { it is UnknownHostException || it is java.net.SocketException || it is java.io.EOFException || it is SSLException } ||
                     "unexpected end of stream" in lower || "connection reset" in lower -> ErrorCategory.NETWORK
                 chain.any { it is NoRemoteRepositoryException } || status("""^404\b""") -> ErrorCategory.ORIGIN_GONE
                 // JGitText: notAuthorized, noCredentialsProvider, authenticationNotSupported, serviceNotPermitted (403)
-                status("""^40[13]\b""") || transport.any { "not authorized" in it || "authentication is required" in it ||
-                    "authentication not supported" in it || " not permitted on " in it } -> ErrorCategory.AUTH_REQUIRED
-                "timed out" in lower || "timeout" in lower -> ErrorCategory.TIMEOUT
-                "no space left" in lower || "enospc" in lower -> ErrorCategory.STORAGE_FULL
+                status("""^40[13]\b""") || jgit("not authorized", "authentication is required", "authentication not supported") ||
+                    transport.any { Regex("""^git-[a-z-]+ not permitted on """).containsMatchIn(it) } -> ErrorCategory.AUTH_REQUIRED
+                // a login page (captive portal) instead of git, or a redirect to another host: not the origin talking
+                jgit("invalid advertisement of", "redirection blocked") -> ErrorCategory.NETWORK
+                "timed out" in noUrls || "timeout" in noUrls -> ErrorCategory.TIMEOUT
+                "no space left" in noUrls || "enospc" in noUrls -> ErrorCategory.STORAGE_FULL
                 "cannot open git-upload-pack" in lower -> ErrorCategory.NETWORK
                 else -> ErrorCategory.REMOTE_ERROR
             }

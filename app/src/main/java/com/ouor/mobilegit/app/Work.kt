@@ -146,6 +146,8 @@ class PeriodicCheckWorker(context: Context, params: WorkerParameters) : Coroutin
     override suspend fun doWork(): Result {
         val core = MobileGitApp.core(applicationContext)
         val jitter = core.settings.current.checkIntervalMillis / 10
+        core.settings.update { it.copy(lastPeriodicCheckAt = System.currentTimeMillis()) }
+        core.settings.flush() // the worker's process may be killed right after
         core.repos.repos.value.filter { it.mirror != null }.forEach { core.scheduler.enqueueCheck(it.name, jitter) }
         return Result.success()
     }

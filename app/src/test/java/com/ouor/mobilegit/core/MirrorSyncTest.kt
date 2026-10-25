@@ -268,7 +268,7 @@ class MirrorSyncTest {
         assertEquals(SyncResult.NO_CHANGE, runBlocking { coordinator.update("up", SyncTrigger.MANUAL) }.result)
     }
 
-    /** QA2-01: a dropped connection is a network failure, never "원본 없음"; a later network error clears a stale GONE. */
+    /** QA2-01: a dropped connection is a network failure, never "원본 없음". R2GIT-03: it does not clear a confirmed one either. */
     @Test fun droppedConnectionIsNetworkNotOriginGone() {
         addAndFetch()
         val drop = java.net.ServerSocket(0, 50, java.net.InetAddress.getByName("127.0.0.1"))
@@ -283,14 +283,16 @@ class MirrorSyncTest {
             store.updateMirror("up") { it.copy(remoteUrl = "http://127.0.0.1:$upPort/nope.git") }
             assertEquals(ErrorCategory.ORIGIN_GONE, runBlocking { coordinator.update("up", SyncTrigger.MANUAL) }.errorCategory)
             assertEquals(OriginStatus.GONE, store.require("up").mirror!!.originStatus)
-            // ... and a following connection refusal turns it into "업데이트 실패 · 네트워크 오류"
+            // ... and R2GIT-03: a following connection refusal did not reach the origin, so "원본 없음" stays, no new notice
+            val n0 = notices.size
             val refused = java.net.ServerSocket(0).run { localPort.also { close() } }
             store.updateMirror("up") { it.copy(remoteUrl = "http://127.0.0.1:$refused/up.git") }
             assertEquals(ErrorCategory.NETWORK, runBlocking { coordinator.update("up", SyncTrigger.MANUAL) }.errorCategory)
             val m = store.require("up")
-            assertEquals(OriginStatus.UNKNOWN, m.mirror!!.originStatus)
-            val badges = Badges.of(m, settings.current, now, null)
-            assertTrue(Badge.FAILED in badges); assertFalse(Badge.ORIGIN_GONE in badges)
+            assertEquals(OriginStatus.GONE, m.mirror!!.originStatus)
+            assertEquals(ErrorCategory.ORIGIN_GONE, m.mirror!!.lastError)
+            assertTrue(Badge.ORIGIN_GONE in Badges.of(m, settings.current, now, null))
+            assertEquals(n0, notices.size)
         } finally { drop.close(); t.interrupt() }
     }
 
@@ -448,6 +450,33 @@ class MirrorSyncTest {
         assertEquals(0, m.consecutiveFailures); assertNull(m.lastError); assertNull(m.nextRetryAt)
         assertTrue(notices.isEmpty())
         assertFalse(coordinator.isRunning("up"))
+    }
+
+    /** R2GIT-02: a check that reaches the origin keeps a failing update's record ("N일째", backoff, no notice ping-pong). */
+    @Test fun checkSuccessKeepsUpdateFailure() {
+        addAndFetch()
+        Commits.commit(work, "c.txt", "three")
+        pushUpstream("up", "+refs/heads/*:refs/heads/*")
+        now += 60_000L
+        val ev = runBlocking { coordinator.update("up", SyncTrigger.MANUAL) { env.free = 1; true } }
+        assertEquals(ErrorCategory.STORAGE_FULL, ev.errorCategory)
+        val since = store.require("up").mirror!!.failingSince
+        assertNotNull(since)
+        env.free = Long.MAX_VALUE / 4
+        val n0 = notices.size
+        now += 3_600_000L
+        assertTrue(runBlocking { coordinator.check("up", SyncTrigger.MANUAL) }.changed > 0)
+        val m = store.require("up").mirror!!
+        assertEquals(since, m.failingSince); assertEquals(ErrorCategory.STORAGE_FULL, m.lastError); assertEquals(1, m.consecutiveFailures)
+        assertEquals(now, m.lastSuccessCheckAt)
+        assertEquals(n0, notices.size) // no RECOVERED
+        runBlocking { coordinator.update("up", SyncTrigger.MANUAL) { env.free = 1; true } }
+        assertEquals(since, store.require("up").mirror!!.failingSince)
+        assertEquals(n0, notices.size) // no second FAILED
+        env.free = Long.MAX_VALUE / 4
+        assertEquals(SyncResult.SUCCESS, runBlocking { coordinator.update("up", SyncTrigger.MANUAL) }.result)
+        assertNull(store.require("up").mirror!!.failingSince)
+        assertEquals(NoticeKind.RECOVERED, notices.last().kind)
     }
 
     @Test fun lowSpaceDuringFetchStopsWithStorageFull() {

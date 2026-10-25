@@ -38,6 +38,8 @@ data class Settings(
     val serverBootCount: Int? = null,
     /** R2-02 AC4: the "서버를 꺼도 미러 확인·업데이트는 계속돼요" hint was dismissed. */
     val serverOffHintDismissed: Boolean = false,
+    /** R2GIT-04: when the periodic check job last ran ([RepoQuery.checksStalled]). */
+    val lastPeriodicCheckAt: Long? = null,
 ) {
     val hasNgrokToken get() = ngrokAuthtokenEnc != null
     /**

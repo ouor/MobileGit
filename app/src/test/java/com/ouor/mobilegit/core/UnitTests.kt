@@ -86,8 +86,26 @@ class ClassifyTest {
         assertEquals(ErrorCategory.AUTH_REQUIRED, cat(org.eclipse.jgit.errors.TransportException(uri, "git-upload-pack not permitted on 'https://example.com/a.git/'")))
         assertEquals(ErrorCategory.REMOTE_ERROR, cat(org.eclipse.jgit.errors.TransportException(uri, "500 Internal Server Error")))
         // a repo or file named like a status code is not a status
-        assertEquals(ErrorCategory.REMOTE_ERROR, cat(org.eclipse.jgit.errors.TransportException(org.eclipse.jgit.transport.URIish("https://example.com/404.git"), "invalid advertisement of 404-thing")))
+        assertEquals(ErrorCategory.REMOTE_ERROR, cat(org.eclipse.jgit.errors.TransportException(org.eclipse.jgit.transport.URIish("https://example.com/404.git"), "Cannot read 404-thing")))
         assertEquals(ErrorCategory.TIMEOUT, cat(org.eclipse.jgit.errors.TransportException(uri, "read timed out", java.net.SocketTimeoutException("Read timed out"))))
+    }
+
+    /** R2GIT-01: messages JGit 7.8.0 really produced in the reviewer's scratch runs; remote bodies and URLs must not decide. */
+    @Test fun remoteTextDoesNotDecide() {
+        val t = org.eclipse.jgit.transport.URIish("https://example.com/timeout-utils.git")
+        // captive portal: HTTP 200 with a login page
+        assertEquals(ErrorCategory.NETWORK, cat(org.eclipse.jgit.errors.PackProtocolException(uri,
+            "invalid advertisement of <html><body>You are not authorized to use this Wi-Fi. Authentication is required.</body></html>")))
+        assertEquals(ErrorCategory.REMOTE_ERROR, cat(org.eclipse.jgit.errors.TransportException(t, "500 Internal Server Error")))
+        assertEquals(ErrorCategory.REMOTE_ERROR, cat(org.eclipse.jgit.errors.TransportException(uri, "429 null")))
+        assertEquals(ErrorCategory.REMOTE_ERROR, cat(org.eclipse.jgit.errors.TransportException(uri, "503 Service Unavailable")))
+        assertEquals(ErrorCategory.REMOTE_ERROR, cat(org.eclipse.jgit.errors.TransportException(uri, "410 Gone")))
+        assertEquals(ErrorCategory.NETWORK, cat(org.eclipse.jgit.errors.TransportException(uri,
+            "Redirection blocked: redirect https://example.com/a.git -> https://portal.example.net/login not allowed")))
+        // JGit's own fixed texts still decide
+        assertEquals(ErrorCategory.AUTH_REQUIRED, cat(org.eclipse.jgit.errors.TransportException(t,
+            "Authentication is required but no CredentialsProvider has been registered")))
+        assertEquals(ErrorCategory.AUTH_REQUIRED, cat(org.eclipse.jgit.errors.TransportException(t, "authentication not supported")))
     }
 }
 
@@ -235,6 +253,12 @@ class NotificationRulesTest {
         val one = RepoQuery.items(listOf(late1, fresh), s, stalledNow, emptyMap())
         assertEquals(Severity.WARNING, one.single { it.meta.name == "late1" }.severity)
         assertEquals(RepoOverview(2, 1, 1, 0, stalledNow - 1, false, errors = 0, warnings = 1), RepoQuery.overview(one, s, stalledNow))
+        // R2GIT-04: once the periodic job records its runs, a manual check or a new mirror does not hide the stall
+        val sp = s.copy(lastPeriodicCheckAt = 7)
+        val oneP = RepoQuery.items(listOf(late1, fresh), sp, stalledNow, emptyMap())
+        assertTrue(RepoQuery.overview(oneP, sp, stalledNow).checksStalled); assertTrue(oneP.none { Badge.DELAYED in it.badges })
+        assertFalse(RepoQuery.checksStalled(listOf(late1), sp.copy(lastPeriodicCheckAt = stalledNow - 1), stalledNow))
+        assertFalse(RepoQuery.checksStalled(listOf(a), sp, stalledNow)) // no mirrors, nothing to check
         assertEquals(Severity.ERROR, RepoBrowser.summary(b, s, 7).severity)
         assertEquals(RepoOverview(0, 0, 0, 1, null, false), RepoQuery.overview(RepoQuery.items(listOf(a), s, 8, emptyMap()), s, Long.MAX_VALUE / 2))
         // WR-6: the web summary uses the same rule as the app row

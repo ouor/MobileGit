@@ -168,9 +168,14 @@ class SyncCoordinator(
                 ev?.let { store.appendEvent(name, it) }
                 val before = mir
                 val after = store.updateMirror(name) {
+                    // R2GIT-02: the origin answered, but an update that failed for another reason (timeout, space, pack
+                    // error) still has to happen: keep its failure ("N일째", backoff) while changes are pending.
+                    val updateFailing = outcome.changed > 0 && it.lastUpdateAt != null && it.lastUpdateAt != it.lastSuccessUpdateAt &&
+                        it.lastError != null && it.lastError != ErrorCategory.ORIGIN_GONE && it.lastError != ErrorCategory.AUTH_REQUIRED
                     it.copy(lastCheckAt = clock.now(), lastCheckResult = if (outcome.changed > 0) SyncResult.SUCCESS else SyncResult.NO_CHANGE,
-                        pendingChanges = outcome.changed, originStatus = OriginStatus.OK, lastError = null, consecutiveFailures = 0, nextRetryAt = null,
-                        lastSuccessCheckAt = clock.now(), failingSince = null)
+                        pendingChanges = outcome.changed, originStatus = OriginStatus.OK, nextRetryAt = null, lastSuccessCheckAt = clock.now(),
+                        lastError = if (updateFailing) it.lastError else null, consecutiveFailures = if (updateFailing) it.consecutiveFailures else 0,
+                        failingSince = if (updateFailing) it.failingSince else null)
                 }.mirror!!
                 NotificationRules.decide(meta.name, before, after, 0, false).forEach(notifier::notify)
                 val s = settings()
@@ -317,10 +322,15 @@ class SyncCoordinator(
             ErrorCategory.ORIGIN_GONE -> OriginStatus.GONE
             ErrorCategory.AUTH_REQUIRED -> if (!hasCred && mir.initialFetchDone) OriginStatus.GONE else OriginStatus.AUTH_REQUIRED
             ErrorCategory.STORAGE_FULL -> mir.originStatus // a local problem says nothing about the origin
-            // QA2-01: the origin could not be asked, so an earlier "gone"/"needs auth" is no longer known to hold
-            else -> if (mir.originStatus == OriginStatus.OK) OriginStatus.OK else OriginStatus.UNKNOWN
+            // R2GIT-03: the origin was not reached, so a confirmed "gone"/"needs auth" still holds
+            ErrorCategory.NETWORK, ErrorCategory.TIMEOUT -> mir.originStatus
+            // the origin answered with something else: an earlier "gone"/"needs auth" is no longer known to hold
+            ErrorCategory.REMOTE_ERROR -> if (mir.originStatus == OriginStatus.OK) OriginStatus.OK else OriginStatus.UNKNOWN
         }
-        val category = if (status == OriginStatus.GONE) ErrorCategory.ORIGIN_GONE else f.category
+        val category = if (status == OriginStatus.GONE && f.category == ErrorCategory.AUTH_REQUIRED) ErrorCategory.ORIGIN_GONE else f.category
+        // R2GIT-03: the row keeps saying why the origin is gone / needs auth; the history entry records this failure
+        val shownError = if (status == mir.originStatus && status != OriginStatus.OK && status != OriginStatus.UNKNOWN &&
+            (category == ErrorCategory.NETWORK || category == ErrorCategory.TIMEOUT)) mir.lastError ?: category else category
         val n = mir.consecutiveFailures + 1
         // NFR: exponential, max 24 h; also capped at 2x the check interval so the "지연" badge stays meaningful.
         val backoff = minOf(24 * 3_600_000L, 2 * settings().checkIntervalMillis, 3_600_000L shl minOf(n - 1, 5))
@@ -330,7 +340,7 @@ class SyncCoordinator(
         val after = store.updateMirror(meta.name) {
             val now = clock.now()
             it.copy(lastCheckAt = now, lastCheckResult = SyncResult.FAILED, lastUpdateAt = if (kind == SyncKind.UPDATE) now else it.lastUpdateAt,
-                originStatus = status, lastError = category, consecutiveFailures = n, nextRetryAt = now + backoff,
+                originStatus = status, lastError = shownError, consecutiveFailures = n, nextRetryAt = now + backoff,
                 failingSince = it.failingSince ?: now)
         }.mirror!!
         NotificationRules.decide(meta.name, mir, after, 0, false).forEach(notifier::notify)
@@ -502,9 +512,15 @@ object RepoQuery {
         return repos.map { m -> running[m.name.lowercase()].let { p -> RepoListItem(m, Badges.of(m, s, now, p, stalled), p) } }
     }
 
-    /** R2-02 AC3 / CR-11: the newest check attempt over all mirrors (failed ones count: they ran) is older than 3 intervals. */
+    /**
+     * R2-02 AC3 / CR-11 / R2GIT-04: the periodic check job has not run for more than 3 intervals. A manual check or a
+     * new mirror does not hide it. Until the job has recorded a run (older data), the newest check attempt over all
+     * mirrors stands in.
+     */
     fun checksStalled(repos: List<RepoMeta>, s: Settings, now: Long): Boolean {
-        val newest = repos.mapNotNull { m -> m.mirror?.let { it.lastCheckAt ?: m.createdAt } }.maxOrNull() ?: return false
+        val mirrors = repos.filter { it.mirror != null }
+        if (mirrors.isEmpty()) return false
+        val newest = s.lastPeriodicCheckAt ?: mirrors.maxOf { it.mirror!!.lastCheckAt ?: it.createdAt }
         return now - newest > 3 * s.checkIntervalMillis
     }
 
