@@ -48,6 +48,8 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
     private fun metaFile(dir: File) = File(dir, "mobilegit/meta.json")
     private fun eventsFile(dir: File) = File(dir, "mobilegit/events.json")
     private fun pushesFile(dir: File) = File(dir, "mobilegit/pushes.json")
+    /** R2-03: the [RefChange] behind each archive ref, so its kind survives the 200-entry history limit. */
+    private fun archivesFile(dir: File) = File(dir, "mobilegit/archives.json")
 
     /** ARC-01/GIT-15: repos whose meta.json exists but cannot be read. They are not served or adopted, and their files are left untouched. */
     private val _damaged = MutableStateFlow<List<DamagedRepo>>(emptyList())
@@ -232,6 +234,26 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
         bumpEvents("push:$name")
     }
 
+    /** R2-03: records the changes that produced archive refs (entries without [RefChange.archivedAs] are ignored). */
+    fun appendArchives(name: String, changes: List<RefChange>) {
+        val archived = changes.filter { it.archivedAs != null }
+        if (archived.isEmpty()) return
+        synchronized(this) {
+            if (!exists(name)) return
+            JsonFile.writeList(archivesFile(dir(name)), RefChange.serializer(), (archived + readList(archivesFile(dir(name)), RefChange.serializer())).take(MAX_ARCHIVE_NOTES))
+        }
+    }
+
+    /** archive ref → the change that created it. From [appendArchives], plus history for archives made before it existed. */
+    fun archiveNotes(name: String): Map<String, RefChange> =
+        (readList(archivesFile(dir(name)), RefChange.serializer()) + events(name).flatMap { it.refChanges })
+            .filter { it.archivedAs != null }.distinctBy { it.archivedAs }.associateBy { it.archivedAs!! }
+
+    /** R2-01 AC2: the user opened the archive screen; drops the "히스토리 바뀜" badge. */
+    fun markHistorySeen(name: String) {
+        if (get(name)?.historyChangedAt != null) update(name) { it.copy(historyChangedAt = null) }
+    }
+
     fun appendEvent(name: String, event: SyncEvent) {
         synchronized(this) {
             if (!exists(name)) return // ARC-04
@@ -283,6 +305,7 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
     companion object {
         const val MAX_EVENTS = 200
         const val MAX_PUSH_EVENTS = 200
+        const val MAX_ARCHIVE_NOTES = 10_000
         const val ARCHIVE_PREFIX = "refs/archive/"
     }
 }

@@ -44,8 +44,8 @@ class GitServerTest {
 
     private fun url(repo: String, user: String = "git", pw: String = password) = "http://$user:$pw@127.0.0.1:$port/$repo"
 
-    private fun get(path: String, auth: Boolean = true): Pair<Int, String> {
-        val c = URI("http://127.0.0.1:$port$path").toURL().openConnection() as HttpURLConnection
+    private fun get(path: String, auth: Boolean = true, viaPort: Int = port): Pair<Int, String> {
+        val c = URI("http://127.0.0.1:$viaPort$path").toURL().openConnection() as HttpURLConnection
         if (auth) c.setRequestProperty("Authorization", "Basic " + Base64.getEncoder().encodeToString("git:$password".toByteArray()))
         val code = c.responseCode
         val body = (if (code < 400) c.inputStream else c.errorStream)?.bufferedReader()?.readText() ?: ""
@@ -114,11 +114,23 @@ class GitServerTest {
         val a = Authenticator({ settings.current }, AuthRateLimiter())
         assertEquals(AuthDecision.ANONYMOUS, a.decide(null, "192.168.0.7", isPush = false, viaNgrok = false, anonymousOk = true))
         assertEquals(AuthDecision.CHALLENGE, a.decide(null, "192.168.0.7", isPush = true, viaNgrok = false, anonymousOk = true))
-        // ngrok forces auth (F-03 AC7)
+        // R2-06: ngrok follows the user's choice (no silent forcing). "push만" over ngrok: anonymous read, push 401
         settings.update { it.copy(ngrokEnabled = true) }
-        assertEquals(401, get("/pub.git/info/refs?service=git-upload-pack", auth = false).first)
-        // auth off: everything anonymous (ngrok off)
-        settings.update { it.copy(ngrokEnabled = false, anonymousReadOnLan = false, authEnabled = false) }
+        assertTrue(settings.current.exposedWithoutPassword)
+        val ng = server.ngrokPort
+        assertEquals(200, get("/pub.git/info/refs?service=git-upload-pack", auth = false, viaPort = ng).first)
+        assertEquals(401, get("/pub.git/info/refs?service=git-receive-pack", auth = false, viaPort = ng).first)
+        assertEquals(401, get("/pub.git/info/refs?service=git-upload-pack", auth = false).first) // loopback still not anonymous
+        assertTrue(log.entries.value.any { it.route == AccessRoute.NGROK && it.authResult == AuthResult.ANONYMOUS })
+        // "읽기·쓰기" with ngrok: password everywhere
+        settings.update { it.copy(anonymousReadOnLan = false) }
+        assertFalse(settings.current.exposedWithoutPassword)
+        assertEquals(401, get("/pub.git/info/refs?service=git-upload-pack", auth = false, viaPort = ng).first)
+        // "끄기": everything anonymous, ngrok included
+        settings.update { it.copy(authEnabled = false) }
+        assertTrue(settings.current.exposedWithoutPassword)
+        assertEquals(200, get("/pub.git/info/refs?service=git-receive-pack", auth = false, viaPort = ng).first)
+        settings.update { it.copy(ngrokEnabled = false) }
         assertEquals(200, get("/pub.git/info/refs?service=git-receive-pack", auth = false).first)
     }
 

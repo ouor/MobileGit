@@ -36,11 +36,19 @@ data class Settings(
     val initialPasswordEnc: String? = null,
     /** Boot count when the server was last switched on; distinguishes process restarts from reboots (F-01 AC7 vs F-22 AC2). */
     val serverBootCount: Int? = null,
+    /** R2-02 AC4: the "서버를 꺼도 미러 확인·업데이트는 계속돼요" hint was dismissed. */
+    val serverOffHintDismissed: Boolean = false,
 ) {
     val hasNgrokToken get() = ngrokAuthtokenEnc != null
-    /** F-03 AC7: while ngrok is on, "auth off" and "anonymous LAN read" are ignored. */
-    val effectiveAuthEnabled get() = authEnabled || ngrokEnabled
-    val effectiveAnonymousRead get() = anonymousReadOnLan && !ngrokEnabled && authEnabled
+    /**
+     * R2-06 AC4: the user's choice applies on every route, ngrok included (the round-1 rule that ngrok silently forced
+     * auth on, F-03 AC7, is gone). Kept as properties for callers; they equal the stored values now.
+     */
+    val effectiveAuthEnabled get() = authEnabled
+    /** "push만": reads without a password (local networks and ngrok, see GitServer), pushes need one. */
+    val effectiveAnonymousRead get() = anonymousReadOnLan && authEnabled
+    /** R2-06 AC3: ngrok is on and "비밀번호 요구" is "push만" or "끄기"; the UI shows the danger banner. */
+    val exposedWithoutPassword get() = ngrokEnabled && (!authEnabled || anonymousReadOnLan)
     val checkIntervalMillis get() = checkIntervalHours * 3_600_000L
 }
 

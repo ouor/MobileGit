@@ -45,9 +45,11 @@
     <string name="badge_origin_gone">원본 없음</string>
     <string name="badge_auth_required">인증 필요</string>
     <string name="badge_delayed">지연</string>
+    <string name="badge_history_changed">히스토리 바뀜</string>
     <string name="badge_lfs_missing">LFS 누락</string>
     <string name="route_wifi">와이파이</string>
     <string name="route_hotspot">핫스팟</string>
+    <string name="route_usb_tether">USB 테더링</string>
     <string name="route_this_phone">이 폰</string>
     <string name="route_other">기타</string>
     <string name="auth_result_ok">인증됨</string>
@@ -634,6 +636,7 @@
     <string name="server_notif_title">mobilegit 서버 실행 중</string>
     <string name="server_notif_title_public">mobilegit 서버 (외부 공개 중)</string>
     <string name="server_notif_stop">서버 끄기</string>
+    <string name="server_notif_ngrok_off_after_restart">외부 공개는 꺼진 채로 다시 시작했어요</string>
     <string name="tunnel_token_unreadable">저장된 authtoken을 읽을 수 없어요. 설정에서 다시 입력해 주세요.</string>
     <string name="work_fetching">%1$s 받는 중</string>
     <string name="work_update">업데이트</string>

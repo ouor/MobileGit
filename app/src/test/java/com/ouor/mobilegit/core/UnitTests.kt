@@ -60,10 +60,12 @@ class UrlAndNameTest {
 
 class NetTest {
     @Test fun classifiesAddresses() {
-        val ifaces = listOf(NetIface("wlan0", "192.168.0.12"), NetIface("swlan0", "10.42.17.1"), NetIface("tun0", "100.101.2.3"),
-            NetIface("rmnet_data0", "10.200.1.1"), NetIface("lo", "127.0.0.1"))
+        val ifaces = listOf(NetIface("rndis0", "192.168.42.129"), NetIface("wlan0", "192.168.0.12"), NetIface("swlan0", "10.42.17.1"), NetIface("tun0", "100.101.2.3"),
+            NetIface("rmnet_data0", "10.200.1.1"), NetIface("lo", "127.0.0.1"), NetIface("bt-pan", "192.168.44.1"), NetIface("ncm0", "192.168.50.1"))
         val a = NetClassifier.addresses(ifaces, setOf("wlan0"), 8080)
-        assertEquals(listOf(AddressKind.WIFI, AddressKind.HOTSPOT, AddressKind.TAILSCALE), a.map { it.kind })
+        // R2-15: Wi-Fi → hotspot (incl. Bluetooth tethering) → USB tethering → Tailscale
+        assertEquals(listOf(AddressKind.WIFI, AddressKind.HOTSPOT, AddressKind.HOTSPOT, AddressKind.USB_TETHER, AddressKind.USB_TETHER, AddressKind.TAILSCALE), a.map { it.kind })
+        assertEquals(AccessRoute.USB_TETHER, NetClassifier.route("192.168.42.129", false, a))
         assertEquals("http://192.168.0.12:8080/foo.git", a[0].cloneUrl("foo"))
         assertEquals(AccessRoute.HOTSPOT, NetClassifier.route("10.42.17.1", false, a))
         assertEquals(AccessRoute.LOCALHOST, NetClassifier.route("127.0.0.1", false, a))
@@ -169,7 +171,22 @@ class NotificationRulesTest {
             mirror = MirrorSource("u", originStatus = OriginStatus.GONE, lastCheckAt = 6))
         val items = RepoQuery.items(listOf(a, b), s, 7, emptyMap())
         assertEquals(listOf("Alpha", "beta"), RepoQuery.apply(items, RepoSort.NAME, RepoFilter.ALL, "").map { it.meta.name })
-        assertEquals(listOf("beta", "Alpha"), RepoQuery.apply(items, RepoSort.RECENT, RepoFilter.ALL, "").map { it.meta.name })
+        // R2-01 AC5: "최근 활동순" puts the repo needing attention first, even though beta is more recent
+        assertEquals(listOf("Alpha", "beta"), RepoQuery.apply(items, RepoSort.RECENT, RepoFilter.ALL, "").map { it.meta.name })
+        assertEquals(RepoIssue(Badge.ORIGIN_GONE, null, null), items[1].issue)
+        assertNull(items[0].issue)
+        // R2-01 AC2/AC4: history changed counts as "주의 필요", also for local repos
+        val c = a.copy(id = "3", name = "gamma", historyChangedAt = 50)
+        val items2 = RepoQuery.items(listOf(a, c), s, 60, emptyMap())
+        assertEquals(listOf("gamma"), RepoQuery.apply(items2, RepoSort.NAME, RepoFilter.PROBLEM, "").map { it.meta.name })
+        assertEquals(RepoIssue(Badge.HISTORY_CHANGED, 50, null), items2[1].issue)
+        // R2-02 summary
+        val ok = RepoMeta("4", "ok", RepoType.MIRROR, createdAt = 5, createdBy = CreatedBy.MIRROR_ADD,
+            mirror = MirrorSource("u2", originStatus = OriginStatus.OK, lastCheckAt = 7, lastCheckResult = SyncResult.NO_CHANGE))
+        val all = RepoQuery.items(listOf(a, b, ok), s, 8, emptyMap())
+        assertEquals(RepoOverview(mirrors = 2, healthy = 1, attention = 1, locals = 1, lastCheckAt = 7, checksStalled = false), RepoQuery.overview(all, s, 8))
+        assertTrue(RepoQuery.overview(all, s, 7 + 3 * s.checkIntervalMillis + 1).checksStalled)
+        assertEquals(RepoOverview(0, 0, 0, 1, null, false), RepoQuery.overview(RepoQuery.items(listOf(a), s, 8, emptyMap()), s, Long.MAX_VALUE / 2))
         assertEquals(listOf("Alpha"), RepoQuery.apply(items, RepoSort.NAME, RepoFilter.PROBLEM, "").map { it.meta.name })
         assertEquals(listOf("beta"), RepoQuery.apply(items, RepoSort.NAME, RepoFilter.ALL, "ET").map { it.meta.name })
     }

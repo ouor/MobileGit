@@ -69,6 +69,7 @@ object Badges {
     fun of(m: RepoMeta, s: Settings, now: Long, running: RepoProgress?): Set<Badge> {
         val out = mutableSetOf<Badge>()
         if (m.hasLfs) out += Badge.LFS_MISSING
+        if (m.historyChangedAt != null) out += Badge.HISTORY_CHANGED
         val mir = m.mirror ?: return out
         if (running != null) out += Badge.UPDATING
         if (mir.pendingChanges > 0) out += Badge.UPDATE_AVAILABLE
@@ -81,8 +82,36 @@ object Badges {
         return out
     }
 
-    val problem = setOf(Badge.FAILED, Badge.ORIGIN_GONE, Badge.AUTH_REQUIRED, Badge.DELAYED)
+    /** R2-01 AC4: "주의 필요" (filter [RepoFilter.PROBLEM], summary count). */
+    val problem = setOf(Badge.FAILED, Badge.ORIGIN_GONE, Badge.AUTH_REQUIRED, Badge.DELAYED, Badge.HISTORY_CHANGED)
+
+    /** R2-01 AC1: the one reason shown in the row's second line, most serious first. */
+    fun issue(m: RepoMeta, badges: Set<Badge>): RepoIssue? {
+        val mir = m.mirror
+        return when {
+            Badge.ORIGIN_GONE in badges -> RepoIssue(Badge.ORIGIN_GONE, mir?.failingSince, mir?.lastError)
+            Badge.AUTH_REQUIRED in badges -> RepoIssue(Badge.AUTH_REQUIRED, mir?.failingSince, mir?.lastError)
+            Badge.FAILED in badges -> RepoIssue(Badge.FAILED, mir?.failingSince, mir?.lastError)
+            Badge.DELAYED in badges -> RepoIssue(Badge.DELAYED, mir?.lastCheckAt ?: m.createdAt, null)
+            Badge.HISTORY_CHANGED in badges -> RepoIssue(Badge.HISTORY_CHANGED, m.historyChangedAt, null)
+            else -> null
+        }
+    }
 }
+
+/**
+ * R2-01 AC1 row reason. [since]: failures — start of the current failure run (null for failures recorded before
+ * round 2); DELAYED — last check; HISTORY_CHANGED — when the archive happened. [category] for FAILED/ORIGIN_GONE/AUTH.
+ */
+data class RepoIssue(val badge: Badge, val since: Long?, val category: ErrorCategory?)
+
+/**
+ * R2-02 A-02 summary line: "미러 [mirrors]개 · 정상 [healthy] · 주의 [attention] · 마지막 확인 …" + "로컬 [locals]개".
+ * [attention] counts every repo needing attention (the "주의 필요" filter), [healthy] the mirrors that do not.
+ * [lastCheckAt]: newest successful contact with an origin over all mirrors. [checksStalled]: no mirror reached its
+ * origin for more than 3 check intervals (F-12 AC5) → "백그라운드 확인이 멈춘 것 같아요".
+ */
+data class RepoOverview(val mirrors: Int, val healthy: Int, val attention: Int, val locals: Int, val lastCheckAt: Long?, val checksStalled: Boolean)
 
 /**
  * F-09/F-10/F-11/F-12 orchestration: concurrency limit (2, NFR-원본 예의), exponential backoff (max 24 h),
@@ -125,7 +154,8 @@ class SyncCoordinator(
                 val before = mir
                 val after = store.updateMirror(name) {
                     it.copy(lastCheckAt = clock.now(), lastCheckResult = if (outcome.changed > 0) SyncResult.SUCCESS else SyncResult.NO_CHANGE,
-                        pendingChanges = outcome.changed, originStatus = OriginStatus.OK, lastError = null, consecutiveFailures = 0, nextRetryAt = null)
+                        pendingChanges = outcome.changed, originStatus = OriginStatus.OK, lastError = null, consecutiveFailures = 0, nextRetryAt = null,
+                        lastSuccessCheckAt = clock.now(), failingSince = null)
                 }.mirror!!
                 NotificationRules.decide(meta.name, before, after, 0, false).forEach(notifier::notify)
                 val s = settings()
@@ -211,11 +241,14 @@ class SyncCoordinator(
                             if (out.refChanges.isEmpty()) SyncResult.NO_CHANGE else SyncResult.SUCCESS,
                             out.refChanges, out.newCommitCount, out.archivedRefCount)
                         store.appendEvent(name, ev)
+                        store.appendArchives(name, out.refChanges)
                         val now = clock.now()
+                        if (out.archivedRefCount > 0) store.update(name) { it.copy(historyChangedAt = now) } // R2-01 AC2
                         val after = store.updateMirror(name) {
                             it.copy(lastCheckAt = now, lastCheckResult = SyncResult.SUCCESS, lastUpdateAt = now, lastSuccessUpdateAt = now,
                                 pendingChanges = 0, originStatus = OriginStatus.OK, lastError = null, consecutiveFailures = 0, nextRetryAt = null,
-                                waitingReason = WaitingReason.NONE, initialFetchDone = true, waitingForForeground = false)
+                                waitingReason = WaitingReason.NONE, initialFetchDone = true, waitingForForeground = false,
+                                lastSuccessCheckAt = now, failingSince = null)
                         }.mirror!!
                         runCatching { store.refreshDerived(name) }
                         NotificationRules.decide(meta.name, mir, after, out.archivedRefCount,
@@ -280,7 +313,8 @@ class SyncCoordinator(
         val after = store.updateMirror(meta.name) {
             val now = clock.now()
             it.copy(lastCheckAt = now, lastCheckResult = SyncResult.FAILED, lastUpdateAt = if (kind == SyncKind.UPDATE) now else it.lastUpdateAt,
-                originStatus = status, lastError = category, consecutiveFailures = n, nextRetryAt = now + backoff)
+                originStatus = status, lastError = category, consecutiveFailures = n, nextRetryAt = now + backoff,
+                failingSince = it.failingSince ?: now)
         }.mirror!!
         NotificationRules.decide(meta.name, mir, after, 0, false).forEach(notifier::notify)
         bulk?.onRepoStatus(meta.name, BulkItemStatus.FAILED, category.name)
@@ -437,6 +471,9 @@ enum class RepoFilter { ALL, MIRROR, LOCAL, PROBLEM }
 /** One row of the A-02 list. */
 data class RepoListItem(val meta: RepoMeta, val badges: Set<Badge>, val progress: RepoProgress?) {
     val lastActivityAt: Long get() = listOfNotNull(meta.lastPushAt, meta.mirror?.lastSuccessUpdateAt, meta.createdAt).max()
+    val needsAttention: Boolean get() = badges.any { it in Badges.problem }
+    /** R2-01 AC1: null = show "업데이트 N분 전" as before. */
+    val issue: RepoIssue? get() = Badges.issue(meta, badges)
 }
 
 /** F-05 AC3/AC4 sort, filter and search. Cheap enough for 500 repos on every keystroke. */
@@ -453,5 +490,16 @@ object RepoQuery {
                 RepoFilter.PROBLEM -> i.badges.any { it in Badges.problem }
             } && (search.isBlank() || i.meta.name.contains(search.trim(), ignoreCase = true))
         }
-        .let { l -> if (sort == RepoSort.NAME) l.sortedBy { it.meta.name.lowercase() } else l.sortedByDescending { it.lastActivityAt } }
+        // R2-01 AC5: "최근 활동순" puts repos needing attention first
+        .let { l -> if (sort == RepoSort.NAME) l.sortedBy { it.meta.name.lowercase() }
+            else l.sortedWith(compareByDescending<RepoListItem> { it.needsAttention }.thenByDescending { it.lastActivityAt }) }
+
+    /** R2-02. */
+    fun overview(items: List<RepoListItem>, s: Settings, now: Long): RepoOverview {
+        val mirrors = items.filter { it.meta.mirror != null }
+        val last = mirrors.mapNotNull { it.meta.mirror!!.lastOkAt }.maxOrNull()
+        val since = last ?: mirrors.minOfOrNull { it.meta.createdAt }
+        return RepoOverview(mirrors.size, mirrors.count { !it.needsAttention }, items.count { it.needsAttention },
+            items.size - mirrors.size, last, since != null && now - since > 3 * s.checkIntervalMillis)
+    }
 }

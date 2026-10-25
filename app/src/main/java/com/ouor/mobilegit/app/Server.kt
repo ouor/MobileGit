@@ -73,6 +73,13 @@ class ServerController(private val context: Context, private val core: () -> Cor
     private val _state = MutableStateFlow<ServerState>(ServerState.Stopped)
     val state: StateFlow<ServerState> = _state.asStateFlow()
 
+    /**
+     * R2-05 AC4 / D-8: true after a reboot or app update switched ngrok off ([BootReceiver]). The server notification
+     * then says "외부 공개는 꺼진 채로 다시 시작했어요" once (this run). Cleared when ngrok is switched on again or by [ackNgrokOff].
+     */
+    val ngrokOffAfterRestart = MutableStateFlow(false)
+    fun ackNgrokOff() { ngrokOffAfterRestart.value = false }
+
     /** F-01 AC1. Safe to call repeatedly. Returns false if Android refused to start a foreground service right now. */
     fun start(): Boolean {
         core().settings.update { it.copy(serverEnabled = true, serverBootCount = bootCount()) }
@@ -249,6 +256,7 @@ class ServerService : Service() {
             // One collector so the tunnel always starts after the re-bind, on the new loopback port.
             launch {
                 c.settings.state.map { Triple(it.ngrokEnabled, it.ngrokAuthtokenEnc, it.port) }.distinctUntilChanged().collect { (on, _, _) ->
+                    if (on) c.server.ackNgrokOff()
                     if (c.server.restart() !is ServerState.Running) {
                         c.server.desiredUp = false
                         withContext(Dispatchers.Main.immediate) { shutdown(null) }
@@ -263,10 +271,11 @@ class ServerService : Service() {
                 }
             }
             launch {
-                combine(c.network.addresses, c.tunnel.state) { a, t -> a to t }.collect { (addrs, t) ->
+                combine(c.network.addresses, c.tunnel.state, c.server.ngrokOffAfterRestart) { a, t, off -> Triple(a, t, off) }.collect { (addrs, t, offAfterRestart) ->
                     val primary = addrs.firstOrNull()?.baseUrl ?: getString(R.string.server_notif_no_network)
+                    val note = if (offAfterRestart && t == TunnelState.Off) getString(R.string.server_notif_ngrok_off_after_restart) else null
                     val ngrok = when (t) {
-                        TunnelState.Off -> null
+                        TunnelState.Off -> note
                         is TunnelState.Connected -> "ngrok: ${t.publicUrl}"
                         is TunnelState.Connecting -> getString(R.string.server_notif_ngrok_connecting)
                         is TunnelState.Retrying -> getString(R.string.server_notif_ngrok_retrying, t.reason)
@@ -281,7 +290,7 @@ class ServerService : Service() {
     private fun buildNotification(text: String, ngrok: String?): Notification {
         val stop = PendingIntent.getService(this, 1, Intent(this, ServerService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, Notifier.CH_SERVER).setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(getString(if (ngrok != null) R.string.server_notif_title_public else R.string.server_notif_title))
+            .setContentTitle(getString(if (core.tunnel.state.value != TunnelState.Off) R.string.server_notif_title_public else R.string.server_notif_title))
             .setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(listOfNotNull(text, ngrok).joinToString("\n")))
             .setOngoing(true).setOnlyAlertOnce(true)
             .setContentIntent(Notifier.openApp(this, null, "main", 0))

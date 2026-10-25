@@ -4,6 +4,7 @@ import com.ouor.mobilegit.R
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.HourglassBottom
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.Key
@@ -61,17 +62,18 @@ fun Badge.style(): BadgeStyle = when (this) {
     Badge.AUTH_REQUIRED -> BadgeStyle(str(R.string.badge_auth_required), Tone.Warning, Icons.Outlined.Key)
     Badge.DELAYED -> BadgeStyle(str(R.string.badge_delayed), Tone.Warning, Icons.Outlined.HourglassBottom)
     Badge.LFS_MISSING -> BadgeStyle(str(R.string.badge_lfs_missing), Tone.Neutral, Icons.Outlined.Inventory2)
+    Badge.HISTORY_CHANGED -> BadgeStyle(str(R.string.badge_history_changed), Tone.Warning, Icons.Outlined.History) // core R2-01; UI may restyle
 }
 
 /** Most severe first, so the first badge is the one that matters. */
-val badgeOrder = listOf(Badge.ORIGIN_GONE, Badge.FAILED, Badge.AUTH_REQUIRED, Badge.DELAYED, Badge.UPDATING, Badge.UPDATE_AVAILABLE, Badge.LFS_MISSING)
+val badgeOrder = listOf(Badge.ORIGIN_GONE, Badge.FAILED, Badge.AUTH_REQUIRED, Badge.DELAYED, Badge.HISTORY_CHANGED, Badge.UPDATING, Badge.UPDATE_AVAILABLE, Badge.LFS_MISSING)
 
 fun AddressKind.label() = when (this) {
-    AddressKind.WIFI -> str(R.string.route_wifi); AddressKind.HOTSPOT -> str(R.string.route_hotspot); AddressKind.TAILSCALE -> "Tailscale"; AddressKind.NGROK -> "ngrok"
+    AddressKind.WIFI -> str(R.string.route_wifi); AddressKind.HOTSPOT -> str(R.string.route_hotspot); AddressKind.USB_TETHER -> str(R.string.route_usb_tether); AddressKind.TAILSCALE -> "Tailscale"; AddressKind.NGROK -> "ngrok"
 }
 
 fun AccessRoute.label() = when (this) {
-    AccessRoute.WIFI -> str(R.string.route_wifi); AccessRoute.HOTSPOT -> str(R.string.route_hotspot); AccessRoute.TAILSCALE -> "Tailscale"
+    AccessRoute.WIFI -> str(R.string.route_wifi); AccessRoute.HOTSPOT -> str(R.string.route_hotspot); AccessRoute.USB_TETHER -> str(R.string.route_usb_tether); AccessRoute.TAILSCALE -> "Tailscale"
     AccessRoute.NGROK -> "ngrok"; AccessRoute.LOCALHOST -> str(R.string.route_this_phone); AccessRoute.OTHER -> str(R.string.route_other)
 }
 

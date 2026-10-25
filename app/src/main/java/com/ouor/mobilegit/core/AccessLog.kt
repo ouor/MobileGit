@@ -61,7 +61,9 @@ class AccessLogStore(private val file: File?, private val capacity: Int = 2000) 
 data class NetIface(val name: String, val ipv4: String)
 
 object NetClassifier {
-    private val hotspotIface = Regex("^(ap|swlan|softap|wlan|wigig|rndis|usb|ncm|bt-pan|eth)\\d*.*")
+    private val hotspotIface = Regex("^(ap|swlan|softap|wlan|wigig|bt-pan|eth)\\d*.*")
+    /** R2-15: USB tethering (RNDIS on most phones, NCM on newer ones). */
+    private val usbTetherIface = Regex("^(rndis|usb|ncm)\\d*.*")
 
     fun isTailscale(ip: String): Boolean {
         val p = ip.split('.').mapNotNull { it.toIntOrNull() }
@@ -77,12 +79,13 @@ object NetClassifier {
     /**
      * F-02 AC1/AC2: classify interfaces. [wifiIfaces] are the interface names of connected Wi-Fi (STA) networks,
      * taken from ConnectivityManager. Other private-address wlan/ap/usb interfaces are treated as hotspot/tethering.
-     * Result sorted by priority (Wi-Fi → hotspot → Tailscale); the ngrok URL is appended by the caller.
+     * Result sorted by priority (Wi-Fi → hotspot → USB tethering → Tailscale); the ngrok URL is appended by the caller.
      */
     fun addresses(ifaces: List<NetIface>, wifiIfaces: Set<String>, port: Int): List<ServerAddress> = ifaces.mapNotNull { i ->
         val kind = when {
             isTailscale(i.ipv4) -> AddressKind.TAILSCALE
             i.name in wifiIfaces && isPrivate(i.ipv4) -> AddressKind.WIFI
+            isPrivate(i.ipv4) && usbTetherIface.matches(i.name) -> AddressKind.USB_TETHER
             isPrivate(i.ipv4) && hotspotIface.matches(i.name) && i.name !in wifiIfaces -> AddressKind.HOTSPOT
             else -> null
         } ?: return@mapNotNull null
@@ -140,6 +143,7 @@ object NetClassifier {
         else -> when (current.firstOrNull { it.host == localIp }?.kind) {
             AddressKind.WIFI -> AccessRoute.WIFI
             AddressKind.HOTSPOT -> AccessRoute.HOTSPOT
+            AddressKind.USB_TETHER -> AccessRoute.USB_TETHER
             else -> AccessRoute.OTHER
         }
     }

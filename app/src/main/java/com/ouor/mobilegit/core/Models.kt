@@ -16,7 +16,9 @@ import kotlinx.serialization.Serializable
 @Serializable enum class ErrorCategory { NETWORK, AUTH_REQUIRED, ORIGIN_GONE, STORAGE_FULL, REMOTE_ERROR, TIMEOUT }
 
 /** F-05 AC2 상태 배지. */
-enum class Badge { UPDATE_AVAILABLE, UPDATING, FAILED, ORIGIN_GONE, AUTH_REQUIRED, DELAYED, LFS_MISSING }
+enum class Badge { UPDATE_AVAILABLE, UPDATING, FAILED, ORIGIN_GONE, AUTH_REQUIRED, DELAYED, LFS_MISSING,
+    /** R2-01 AC2: an update archived refs (F-11); cleared when the user opens the archive screen ([RepoStore.markHistorySeen]). */
+    HISTORY_CHANGED }
 
 @Serializable
 data class MirrorSource(
@@ -43,7 +45,14 @@ data class MirrorSource(
      * background, Android 12+). It starts when the app is opened ([SyncCoordinator.resumeWaitingForForeground]).
      */
     val waitingForForeground: Boolean = false,
-)
+    /** R2-02 AC3: last check or update that reached the origin. [lastCheckAt] also moves on failures. */
+    val lastSuccessCheckAt: Long? = null,
+    /** R2-01 AC1: start of the current run of failures ("3일째"); null while healthy. */
+    val failingSince: Long? = null,
+) {
+    /** Last successful contact with the origin; for data written before [lastSuccessCheckAt] existed, a best guess. */
+    val lastOkAt: Long? get() = lastSuccessCheckAt ?: lastCheckAt?.takeIf { lastCheckResult != SyncResult.FAILED } ?: lastSuccessUpdateAt
+}
 
 @Serializable
 data class RepoMeta(
@@ -64,10 +73,31 @@ data class RepoMeta(
     val forkedAt: Long? = null,
     val archivedRefCount: Int = 0,
     val mirror: MirrorSource? = null,
+    /** R2-01 AC2: when the last update archived refs and the user has not opened the archive screen since. */
+    val historyChangedAt: Long? = null,
 )
 
 @Serializable
-data class RefChange(val ref: String, val oldSha: String?, val newSha: String?, val archivedAs: String? = null)
+data class RefChange(val ref: String, val oldSha: String?, val newSha: String?, val archivedAs: String? = null) {
+    /**
+     * R2-04 AC1. Derived, so history written by older versions gets it too: non-fast-forward branch updates and
+     * deletions are always archived ([MirrorEngine]), so an unarchived branch update is a fast-forward.
+     * Review refs (refs/pull/...) are never archived and always count as [RefChangeKind.FAST_FORWARD] when moved.
+     */
+    val kind: RefChangeKind get() {
+        val tag = ref.startsWith("refs/tags/")
+        return when {
+            oldSha == null -> RefChangeKind.CREATED
+            newSha == null -> if (tag) RefChangeKind.TAG_DELETED else RefChangeKind.DELETED
+            tag -> RefChangeKind.TAG_MOVED
+            archivedAs != null -> RefChangeKind.FORCED
+            else -> RefChangeKind.FAST_FORWARD
+        }
+    }
+}
+
+/** R2-04 / R2-03: "새 커밋", "히스토리 바뀜(강제 push)", "새 브랜치·태그", "브랜치 삭제됨", "태그 이동됨", "태그 삭제됨". */
+@Serializable enum class RefChangeKind { FAST_FORWARD, FORCED, CREATED, DELETED, TAG_MOVED, TAG_DELETED }
 
 @Serializable
 data class SyncEvent(
@@ -119,7 +149,7 @@ data class BulkJob(
     fun count(s: BulkItemStatus) = items.count { it.status == s }
 }
 
-@Serializable enum class AccessRoute { WIFI, HOTSPOT, TAILSCALE, NGROK, LOCALHOST, OTHER }
+@Serializable enum class AccessRoute { WIFI, HOTSPOT, USB_TETHER, TAILSCALE, NGROK, LOCALHOST, OTHER }
 @Serializable enum class AccessAction { READ, PUSH, WEB }
 @Serializable enum class AuthResult { OK, FAILED, ANONYMOUS, BLOCKED }
 
@@ -152,8 +182,8 @@ data class PushEvent(
     val branch: String? get() = ref.takeIf { it.startsWith("refs/heads/") }?.removePrefix("refs/heads/")
 }
 
-/** F-02 주소 종류. 우선순위는 enum 순서 (와이파이 → 핫스팟 → Tailscale → ngrok). */
-enum class AddressKind { WIFI, HOTSPOT, TAILSCALE, NGROK }
+/** F-02 주소 종류. 우선순위는 enum 순서 (와이파이 → 핫스팟 → USB 테더링 → Tailscale → ngrok, R2-15). 블루투스 테더링은 HOTSPOT. */
+enum class AddressKind { WIFI, HOTSPOT, USB_TETHER, TAILSCALE, NGROK }
 
 data class ServerAddress(val kind: AddressKind, val host: String, val baseUrl: String) {
     fun cloneUrl(repo: String) = "$baseUrl/$repo.git"

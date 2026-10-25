@@ -98,12 +98,12 @@ class Authenticator(
     @Volatile private var cache: Pair<String, String>? = null // (passwordHash|username, sha256(header)) of last success
 
     /** [anonymousOk]: the request may use "anonymous read on the same network" (SEC-03: local client and direct Host). */
-    fun decide(authorization: String?, clientIp: String, isPush: Boolean, viaNgrok: Boolean, anonymousOk: Boolean = !viaNgrok): AuthDecision {
+    fun decide(authorization: String?, clientIp: String, isPush: Boolean, viaNgrok: Boolean, anonymousOk: Boolean = true): AuthDecision {
         val s = settings()
         if (limiter.isBlocked(clientIp)) return AuthDecision.BLOCKED
         if (!s.effectiveAuthEnabled) return AuthDecision.ANONYMOUS
         if (authorization == null) {
-            return if (!isPush && !viaNgrok && anonymousOk && s.effectiveAnonymousRead) AuthDecision.ANONYMOUS else AuthDecision.CHALLENGE
+            return if (!isPush && anonymousOk && s.effectiveAnonymousRead) AuthDecision.ANONYMOUS else AuthDecision.CHALLENGE
         }
         if (!authorization.startsWith("Basic ", ignoreCase = true)) return fail(clientIp, viaNgrok)
         val digest = sha256(authorization)

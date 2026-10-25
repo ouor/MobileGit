@@ -115,6 +115,9 @@ class RepoOps(
         }
     }
 
+    /** R2-03 A-15 (disk: call off the main thread). Opening the screen should also call [RepoStore.markHistorySeen]. */
+    fun archives(name: String): List<ArchiveEntryDto> = store.open(name).use { RepoBrowser.archives(it, store.archiveNotes(name)).entries }
+
     fun branches(name: String): List<String> = store.open(name).use { r -> r.refDatabase.getRefsByPrefix(Constants.R_HEADS).map { it.name.removePrefix(Constants.R_HEADS) } }
 
     companion object {

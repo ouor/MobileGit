@@ -94,6 +94,11 @@ class Core(private val context: Context) {
         repos.repos, settings.state, coordinator.running, flow { while (true) { emit(System.currentTimeMillis()); delay(60_000) } },
     ) { r, s, run, now -> RepoQuery.items(r, s, now, run) }
 
+    /** R2-02: the summary line above the list (same 1-minute tick as [repoItems]). */
+    val overview: Flow<com.ouor.mobilegit.core.RepoOverview> = combine(repoItems, settings.state) { items, s ->
+        com.ouor.mobilegit.core.RepoQuery.overview(items, s, System.currentTimeMillis())
+    }
+
     /** F-16 AC1: clone URL per address kind (no credentials, AC3). */
     fun cloneUrls(repo: String, addresses: List<ServerAddress> = network.addresses.value): List<Pair<ServerAddress, String>> =
         addresses.map { it to it.cloneUrl(repo) }
@@ -162,6 +167,11 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         val core = MobileGitApp.core(context)
+        // R2-05 AC4 / D-8: never re-open the phone to the internet unattended after a reboot or an update
+        if (core.settings.current.ngrokEnabled) {
+            core.settings.update { it.copy(ngrokEnabled = false) }
+            core.server.ngrokOffAfterRestart.value = true
+        }
         if (core.settings.current.startOnBoot && core.settings.current.serverEnabled) core.server.start()
     }
 }

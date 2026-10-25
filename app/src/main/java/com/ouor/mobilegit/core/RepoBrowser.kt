@@ -56,6 +56,19 @@ data class BlobDto(
 
 @Serializable data class ReadmeDto(val ref: String, val path: String, val format: String, val raw: String, val html: String)
 /** [truncated]: the scan limit ended this page early; older matching commits may exist (GIT-09). */
+/**
+ * R2-03 one preserved ref. [group]: the archive stamp shared by everything one update preserved (A-15 groups by it;
+ * a [RefChange.archivedAs] in the history contains it). [ref]: the original ref (refs/heads/main), [name] its short form.
+ * [kind]: FORCED, DELETED (branch), TAG_MOVED or TAG_DELETED; null for archives made before round 2 whose change is no
+ * longer in the history ("강제 push 또는 삭제"). [summary]/[committedAt]: the preserved commit (null if not a commit).
+ * [currentSha]: what the ref points to now in this repo (the origin as of the last update); null = "원본에 없음".
+ */
+@Serializable data class ArchiveEntryDto(
+    val at: Long, val group: String, val kind: RefChangeKind?, val ref: String, val name: String, val archiveRef: String,
+    val sha: String, val shortSha: String, val summary: String?, val committedAt: Long?, val currentSha: String?,
+)
+@Serializable data class ArchivesDto(val entries: List<ArchiveEntryDto>)
+
 @Serializable data class CommitPageDto(val ref: String, val path: String, val page: Int, val perPage: Int, val hasMore: Boolean, val commits: List<CommitDto>, val truncated: Boolean = false)
 
 class BrowseException(val status: Int, val code: String, message: String) : Exception(message)
@@ -283,6 +296,30 @@ object RepoBrowser {
         }
         return CommitPageDto(refName, p, pg, per, hasMore, list, truncated && !hasMore)
     }
+
+    /** R2-03 AC4: every `refs/archive/<stamp>/<ref>`, newest group first. [notes] from [RepoStore.archiveNotes]. */
+    fun archives(repo: Repository, notes: Map<String, RefChange>): ArchivesDto = RevWalk(repo).use { rw ->
+        val list = repo.refDatabase.getRefsByPrefix(RepoStore.ARCHIVE_PREFIX).mapNotNull { r ->
+            val rest = r.name.removePrefix(RepoStore.ARCHIVE_PREFIX)
+            val group = rest.substringBefore('/')
+            val original = "refs/" + rest.substringAfter('/', "").ifEmpty { return@mapNotNull null }
+            val id = r.objectId ?: return@mapNotNull null
+            val commit = runCatching { rw.peel(rw.parseAny(id)) as? RevCommit }.getOrNull()?.also { rw.parseBody(it) }
+            ArchiveEntryDto(
+                at = archiveTime(group) ?: 0L, group = group, kind = notes[r.name]?.kind, ref = original,
+                name = original.removePrefix(Constants.R_HEADS).removePrefix(Constants.R_TAGS), archiveRef = r.name,
+                sha = id.name, shortSha = id.name.take(7), summary = commit?.shortMessage,
+                committedAt = commit?.committerIdent?.whenAsInstant?.toEpochMilli(), currentSha = repo.exactRef(original)?.objectId?.name,
+            )
+        }
+        ArchivesDto(list.sortedWith(compareByDescending<ArchiveEntryDto> { it.at }.thenByDescending { it.group.length }.thenByDescending { it.group }.thenBy { it.ref }))
+    }
+
+    /** `20261025T101010Z` or `20261025T101010Z-2` (GIT-12) → epoch ms. */
+    fun archiveTime(group: String): Long? = runCatching {
+        java.text.SimpleDateFormat("yyyyMMdd'T'HHmmss'Z'", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC"); isLenient = false }
+            .parse(group.substringBefore('-'))!!.time
+    }.getOrNull()
 
     fun commitDto(c: RevCommit) = CommitDto(
         sha = c.name, shortSha = c.name.take(7), summary = c.shortMessage, message = c.fullMessage,

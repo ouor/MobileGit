@@ -156,6 +156,28 @@ class MirrorSyncTest {
         // old objects still readable
         store.open("up").use { assertTrue(it.objectDatabase.has(org.eclipse.jgit.lib.ObjectId.fromString(oldMain))) }
 
+        // R2-04: kind of each change
+        assertEquals(mapOf("refs/heads/feat" to RefChangeKind.DELETED, "refs/heads/main" to RefChangeKind.FORCED, "refs/tags/v1" to RefChangeKind.TAG_MOVED),
+            ev.refChanges.associate { it.ref to it.kind })
+        // R2-03: archive list
+        val list = ops.archives("up")
+        assertEquals(listOf("refs/heads/feat", "refs/heads/main", "refs/tags/v1"), list.map { it.ref })
+        assertTrue(list.all { it.group == stamp && it.at == now / 1000 * 1000 })
+        val main = list.single { it.name == "main" }
+        assertEquals(RefChangeKind.FORCED, main.kind); assertEquals(oldMain, main.sha); assertEquals(upRefs()["refs/heads/main"], main.currentSha)
+        assertEquals("edit b.txt", main.summary)
+        assertNull(list.single { it.name == "feat" }.currentSha)
+        assertEquals("edit README.md", list.single { it.name == "v1" }.summary) // annotated tag peeled to its commit
+        // R2-01 AC2: "히스토리 바뀜" until the archive screen is opened; persisted
+        assertTrue(Badge.HISTORY_CHANGED in Badges.of(RepoStore(store.reposDir.parentFile, clock).require("up"), settings.current, now, null))
+        store.markHistorySeen("up")
+        assertFalse(Badge.HISTORY_CHANGED in Badges.of(store.require("up"), settings.current, now, null))
+        // kinds survive the history limit (archives.json); archives from before round 2 have none
+        File(store.reposDir, "up.git/mobilegit/events.json").delete()
+        assertEquals(RefChangeKind.FORCED, ops.archives("up").single { it.name == "main" }.kind)
+        File(store.reposDir, "up.git/mobilegit/archives.json").delete()
+        assertNull(ops.archives("up").single { it.name == "main" }.kind)
+
         // AC5: archive refs are advertised to clients (git clone --mirror gets them)
         assumeTrue(GitCli.available)
         val srv = GitServer(store, Authenticator({ settings.current.copy(authEnabled = false) }, AuthRateLimiter()), AccessLogStore(null),
@@ -164,6 +186,8 @@ class MirrorSyncTest {
         try {
             val out = GitCli.ok(tempDir(), "ls-remote", "http://127.0.0.1:$port/up.git")
             assertTrue(out, out.contains("refs/archive/$stamp/heads/main"))
+            val api = java.net.URI("http://127.0.0.1:$port/api/v1/repos/up/archives").toURL().readText()
+            assertTrue(api, api.contains("\"archiveRef\":\"refs/archive/$stamp/heads/main\"") && api.contains("\"group\":\"$stamp\""))
         } finally { srv.stop(0, 100) }
     }
 

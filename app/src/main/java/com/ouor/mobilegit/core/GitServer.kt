@@ -178,9 +178,10 @@ class GitServer(
                 log(repo, action, 403)
                 call.respondText("mobilegit does not serve this network address\n", status = HttpStatusCode.Forbidden); return false
             }
-            // SEC-03: anonymous read only for clients on the phone's own networks that typed the phone's address
-            val anonymousOk = !viaNgrok && NetClassifier.isLocalNetwork(call.request.local.remoteAddress) &&
-                NetClassifier.isDirectHost(call.request.header(HttpHeaders.Host))
+            // SEC-03: anonymous read only for clients on the phone's own networks that typed the phone's address.
+            // R2-06: over ngrok the user's "비밀번호 요구" choice applies as is (they were warned when choosing it).
+            val anonymousOk = viaNgrok || (NetClassifier.isLocalNetwork(call.request.local.remoteAddress) &&
+                NetClassifier.isDirectHost(call.request.header(HttpHeaders.Host)))
             val header = call.request.header(HttpHeaders.Authorization)
             val d = withContext(Dispatchers.IO) { auth.decide(header, clientIp, isPush, viaNgrok, anonymousOk) } // SEC-02: PBKDF2 off the event loop
             authResult = when (d) { AuthDecision.OK -> AuthResult.OK; AuthDecision.ANONYMOUS -> AuthResult.ANONYMOUS; AuthDecision.BLOCKED -> AuthResult.BLOCKED; else -> AuthResult.FAILED }
@@ -477,6 +478,7 @@ class GitServer(
                                     val r = heavy { RepoBrowser.readme(repo, q["ref"], q["path"]) } ?: throw BrowseException(404, "README_NOT_FOUND", "README가 없습니다")
                                     json(call, ReadmeDto.serializer(), r)
                                 }
+                                "archives" -> json(call, ArchivesDto.serializer(), heavy { RepoBrowser.archives(repo, store.archiveNotes(meta.name)) })
                                 "commits" -> json(call, CommitPageDto.serializer(), heavy { RepoBrowser.commits(repo, q["ref"], q["path"], q["page"]?.toIntOrNull() ?: 1, q["perPage"]?.toIntOrNull() ?: 50) })
                                 "raw" -> {
                                     // GIT-14: resolve the blob once, so the length and the bytes always match
