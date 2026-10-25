@@ -43,8 +43,28 @@ sealed interface ServerState {
     data object Starting : ServerState
     data class Running(val port: Int) : ServerState
     data object Stopping : ServerState
-    /** The switch stays off (AC3). [message] e.g. "포트 8080 사용 중". */
-    data class Failed(val portInUse: Boolean, val message: String) : ServerState
+    /**
+     * The server is not running. [message] is Korean and safe to show as-is; [detail] is the raw technical cause
+     * (for a "자세히" section or logs only). [kind] tells the UI what the user can do.
+     */
+    data class Failed(
+        val portInUse: Boolean,
+        val message: String,
+        val kind: ServerFailure = if (portInUse) ServerFailure.PORT_IN_USE else ServerFailure.OTHER,
+        val detail: String? = null,
+    ) : ServerState
+}
+
+enum class ServerFailure {
+    /** F-01 AC3: pick another port. The switch is off. */
+    PORT_IN_USE,
+    /**
+     * QA-02: Android refused to start the foreground service from the background (e.g. after an app update,
+     * Android 12+). The switch stays on (`serverEnabled`); the server comes back by itself the next time the app
+     * is opened, and a notification asks the user to do that.
+     */
+    BACKGROUND_START_BLOCKED,
+    OTHER,
 }
 
 /** UI entry point for F-01/F-04/F-22. The foreground service does the work. */
@@ -61,7 +81,7 @@ class ServerController(private val context: Context, private val core: () -> Cor
             ContextCompat.startForegroundService(context, Intent(context, ServerService::class.java))
             true
         } catch (e: Exception) { // ForegroundServiceStartNotAllowedException when called from background
-            _state.value = ServerState.Failed(false, "백그라운드에서는 서버를 시작할 수 없습니다: ${e.message}")
+            blockedInBackground(e)
             false
         }
     }
@@ -106,9 +126,10 @@ class ServerController(private val context: Context, private val core: () -> Cor
         val s = when (val r = c.gitServer.start(port)) {
             is ServerStartResult.Started -> ServerState.Running(r.port)
             is ServerStartResult.PortInUse -> ServerState.Failed(true, "포트 ${r.port} 사용 중")
-            is ServerStartResult.Failed -> ServerState.Failed(false, r.message)
+            is ServerStartResult.Failed -> ServerState.Failed(false, "서버를 시작하지 못했어요", detail = r.message)
         }
         if (s is ServerState.Failed) c.settings.update { it.copy(serverEnabled = false) }
+        else androidx.core.app.NotificationManagerCompat.from(context).cancel(Notifier.ID_SERVER_BLOCKED)
         _state.value = s
         return s
     }
@@ -120,7 +141,18 @@ class ServerController(private val context: Context, private val core: () -> Cor
         _state.value = ServerState.Stopped
     }
 
-    internal fun markFailed(msg: String) { _state.value = ServerState.Failed(false, msg) }
+    /** The foreground service could not be (re)started from the background. Keeps serverEnabled so [resumeIfBlocked] retries. */
+    internal fun blockedInBackground(e: Throwable) {
+        _state.value = ServerState.Failed(false, "앱이 업데이트되었거나 백그라운드에 있어서 서버를 다시 켜지 못했어요. 앱을 열면 다시 켜져요.",
+            ServerFailure.BACKGROUND_START_BLOCKED, e.message)
+        Notifier.serverBlocked(context)
+    }
+
+    /** QA-02: called when an activity of the app becomes visible; foreground service starts are allowed then. */
+    fun resumeIfBlocked() {
+        val st = _state.value
+        if (st is ServerState.Failed && st.kind == ServerFailure.BACKGROUND_START_BLOCKED && core().settings.current.serverEnabled) start()
+    }
 }
 
 /**
@@ -160,7 +192,7 @@ class ServerService : Service() {
             ServiceCompat.startForeground(this, Notifier.ID_SERVER, n,
                 if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0)
         } catch (e: Exception) {
-            core.server.markFailed("포그라운드 서비스를 시작할 수 없습니다: ${e.message}")
+            core.server.blockedInBackground(e)
             stopSelf()
         }
     }

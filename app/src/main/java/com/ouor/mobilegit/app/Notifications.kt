@@ -49,6 +49,20 @@ class Notifier(private val context: Context, private val notifyOnSuccess: () -> 
                     .putExtra(EXTRA_REPO, repo).putExtra(EXTRA_TARGET, target),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
+        const val ID_SERVER_BLOCKED = 2
+
+        /** QA-02: the server could not restart in the background; tapping opens the app, which restarts it. */
+        @Suppress("MissingPermission")
+        fun serverBlocked(context: Context) {
+            if (!canPost(context)) return
+            NotificationManagerCompat.from(context).notify(ID_SERVER_BLOCKED, NotificationCompat.Builder(context, CH_SERVER)
+                .setSmallIcon(R.drawable.ic_launcher_foreground)
+                .setContentTitle("mobilegit 서버가 꺼져 있어요")
+                .setContentText("앱을 열면 서버가 다시 켜져요.")
+                .setContentIntent(openApp(context, null, "main", ID_SERVER_BLOCKED))
+                .setAutoCancel(true).build())
+        }
+
         fun canPost(context: Context) = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED ||
             android.os.Build.VERSION.SDK_INT < 33
 

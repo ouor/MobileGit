@@ -129,4 +129,24 @@ class OnDeviceTest {
             core.settings.setPort(oldPort)
         }
     }
+
+    /** QA-01: a busy port ends as Failed(portInUse) in the real service instead of killing the app process. */
+    @Test fun busyPortFailsWithoutCrash() = runBlocking {
+        val core = MobileGitApp.core(ctx)
+        val oldPort = core.settings.current.port
+        java.net.ServerSocket(0).use { busy ->
+            try {
+                core.settings.setPort(busy.localPort)
+                core.server.start()
+                val st = withTimeout(15_000) { core.server.state.first { it is ServerState.Failed } } as ServerState.Failed
+                assertTrue(st.portInUse)
+                assertEquals(com.ouor.mobilegit.app.ServerFailure.PORT_IN_USE, st.kind)
+                kotlinx.coroutines.delay(1_000) // an escaped coroutine exception would kill this process (and the test) here
+                assertTrue(!core.gitServer.isRunning)
+            } finally {
+                core.server.stop()
+                core.settings.setPort(oldPort)
+            }
+        }
+    }
 }
