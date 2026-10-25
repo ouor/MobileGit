@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { CodeField, CopyButton, ErrorState, ListSkeleton, ToneBadge } from "@/components/common"
 import { archiveFetchCmd, RepoLayout } from "@/components/RepoLayout"
 import { apiUrl, repoApi, useApi, usePrefetch, type ArchiveEntry, type ArchiveKind, type RepoDetail } from "@/lib/api"
-import { absoluteTime, relativeTime } from "@/lib/format"
+import { absoluteTime } from "@/lib/format"
 import { repoHref } from "@/lib/router"
 
 const archivesUrl = (repo: string) => apiUrl(repoApi(repo, "archives"))
@@ -67,10 +67,9 @@ function ArchivesBody({ detail }: { detail: RepoDetail }) {
             <section key={g.group} className="flex flex-col gap-2" aria-label={`${absoluteTime(g.at)}에 보존`}>
               <h2 className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                 <ArchiveIcon className="size-4" />
-                <time dateTime={new Date(g.at).toISOString()} title={relativeTime(g.at)}>
-                  {absoluteTime(g.at)}
-                </time>
-                · {g.entries.length}개
+                <span>
+                  <time dateTime={new Date(g.at).toISOString()}>{absoluteTime(g.at)}</time> · {g.entries.length}개
+                </span>
               </h2>
               <GroupTable repo={repo} entries={g.entries} />
               <GroupList repo={repo} entries={g.entries} />
@@ -78,8 +77,8 @@ function ArchivesBody({ detail }: { detail: RepoDetail }) {
           ))}
           <Card size="sm">
             <CardHeader>
-              <CardTitle>PC로 받기</CardTitle>
-              <CardDescription>보존된 기록은 일반 clone에 들어가지 않아요. 받은 레포에서 아래 명령을 실행하면 refs/archive/ 아래로 받아져요.</CardDescription>
+              <CardTitle className="font-semibold">PC로 받기</CardTitle>
+              <CardDescription>보존된 기록은 일반 clone에 들어가지 않아요. clone한 레포에서 아래 명령을 실행하면 refs/archive/ 아래로 받아져요.</CardDescription>
             </CardHeader>
             <CardContent>
               <CodeField value={archiveFetchCmd(repo)} label="보존된 기록 받기 명령 복사" />
@@ -115,7 +114,7 @@ function KeptCommit({ repo, entry: e }: { repo: string; entry: ArchiveEntry }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <div className="flex items-center gap-1">
-        <a href={repoHref.commits(repo, "", e.sha)} className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs hover:underline" title={`${e.sha} 기준 커밋 보기`}>
+        <a href={repoHref.commits(repo, "", e.sha)} className={shaChip} title={`${e.sha} 기준 커밋 보기`}>
           {e.shortSha}
         </a>
         <CopyButton text={e.sha} label="보존된 커밋의 전체 SHA 복사" />
@@ -126,25 +125,32 @@ function KeptCommit({ repo, entry: e }: { repo: string; entry: ArchiveEntry }) {
   )
 }
 
-function Current({ entry: e }: { entry: ArchiveEntry }) {
-  if (!e.currentSha) return <span className="text-muted-foreground">원본에 없음</span>
+// The after: box gives the small chip a 44px-tall touch target (RV2-10).
+const shaChip = "relative rounded-md bg-muted px-1.5 py-0.5 font-mono text-sm hover:underline after:absolute after:-inset-x-0.5 after:-inset-y-3 after:content-['']"
+
+/** Where the original's ref is now, shown like the kept commit (RV2-08). */
+function Current({ repo, entry: e }: { repo: string; entry: ArchiveEntry }) {
+  if (!e.currentSha) return <span className="text-muted-foreground">없음</span>
   return (
-    <code className="font-mono text-xs" title={e.currentSha}>
-      {e.currentSha.slice(0, 7)}
-    </code>
+    <span className="inline-flex items-center gap-1">
+      <a href={repoHref.commits(repo, "", e.currentSha)} className={shaChip} title={`${e.currentSha} 기준 커밋 보기`}>
+        {e.currentSha.slice(0, 7)}
+      </a>
+      <CopyButton text={e.currentSha} label="지금 원본 커밋의 전체 SHA 복사" />
+    </span>
   )
 }
 
 function Links({ repo, entry: e }: { repo: string; entry: ArchiveEntry }) {
   return (
     <div className="flex flex-wrap gap-1">
-      <Button variant="ghost" size="sm" asChild>
+      <Button variant="ghost" size="sm" className="pointer-coarse:h-11" asChild>
         <a href={repoHref.commits(repo, "", e.sha)}>
           <GitCommitHorizontalIcon />
           커밋 로그
         </a>
       </Button>
-      <Button variant="ghost" size="sm" asChild>
+      <Button variant="ghost" size="sm" className="pointer-coarse:h-11" asChild>
         <a href={repoHref.tree(repo, "", e.sha)}>
           <FolderTreeIcon />
           파일 보기
@@ -158,16 +164,14 @@ function Links({ repo, entry: e }: { repo: string; entry: ArchiveEntry }) {
 function GroupTable({ repo, entries }: { repo: string; entries: ArchiveEntry[] }) {
   return (
     <div className="hidden overflow-hidden rounded-xl border bg-card md:block">
-      <Table>
+      <Table className="table-fixed text-sm">
         <TableHeader>
           <TableRow>
-            <TableHead className="w-40 pl-4">종류</TableHead>
-            <TableHead className="w-48">브랜치·태그</TableHead>
+            <TableHead className="w-36 pl-4">종류</TableHead>
+            <TableHead className="w-44">브랜치·태그</TableHead>
             <TableHead>보존된 커밋</TableHead>
-            <TableHead className="w-28">지금 원본</TableHead>
-            <TableHead className="w-52 pr-4">
-              <span className="sr-only">이동</span>
-            </TableHead>
+            <TableHead className="w-36">지금 원본</TableHead>
+            <TableHead className="w-48 pr-4">이동</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -183,7 +187,7 @@ function GroupTable({ repo, entries }: { repo: string; entries: ArchiveEntry[] }
                 <KeptCommit repo={repo} entry={e} />
               </TableCell>
               <TableCell>
-                <Current entry={e} />
+                <Current repo={repo} entry={e} />
               </TableCell>
               <TableCell className="pr-4">
                 <Links repo={repo} entry={e} />
@@ -207,8 +211,8 @@ function GroupList({ repo, entries }: { repo: string; entries: ArchiveEntry[] })
             <KindBadge kind={e.kind} />
           </div>
           <KeptCommit repo={repo} entry={e} />
-          <Field label="지금 원본">
-            <Current entry={e} />
+          <Field label="지금 원본:">
+            <Current repo={repo} entry={e} />
           </Field>
           <Links repo={repo} entry={e} />
         </li>

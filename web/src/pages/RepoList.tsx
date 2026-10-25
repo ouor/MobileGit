@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react"
-import { ArrowDownUpIcon, InboxIcon, SearchIcon, UploadIcon, XIcon } from "lucide-react"
+import { ArrowDownUpIcon, HourglassIcon, InboxIcon, SearchIcon, UploadIcon, XIcon } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -15,8 +16,8 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { CodeField, ErrorState, LfsBadge, ListSkeleton, IssueBadge, LocalIcon, MirrorIcon, Time } from "@/components/common"
-import { apiUrl, useApi, type RepoSummary } from "@/lib/api"
-import { formatBytes, shortUrl } from "@/lib/format"
+import { apiUrl, useApi, type Overview, type RepoSummary } from "@/lib/api"
+import { ago, formatBytes, shortUrl } from "@/lib/format"
 import { repoHref } from "@/lib/router"
 
 type Filter = "all" | "mirror" | "local" | "problem"
@@ -29,6 +30,7 @@ const matches = (r: RepoSummary, f: Filter) =>
 /** W-01. Words and filters follow the app's main screen (design-system 8). */
 export function RepoList() {
   const { data: repos, error } = useApi<RepoSummary[]>(apiUrl("repos"))
+  const { data: overview } = useApi<Overview>(apiUrl("overview"))
   const [q, setQ] = useState("")
   const [filter, setFilter] = useState<Filter>("all")
   const [sort, setSort] = useState<Sort>("recent")
@@ -56,12 +58,22 @@ export function RepoList() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold">레포</h1>
-          <p className="text-sm text-muted-foreground">
-            미러는 원본을 자동으로 따라가는 읽기 전용 사본, 로컬 레포는 PC에서 push한 레포예요.
-          </p>
+          {overview ? (
+            <Summary o={overview} onProblems={() => setFilter("problem")} />
+          ) : (
+            <p className="text-sm text-muted-foreground">미러는 원본을 자동으로 따라가는 읽기 전용 레포, 로컬 레포는 PC에서 push한 레포예요</p>
+          )}
         </div>
         <PushGuide />
       </div>
+
+      {overview?.checksStalled && (
+        <Alert className="border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200">
+          <HourglassIcon />
+          <AlertTitle>백그라운드 확인이 멈춘 것 같아요</AlertTitle>
+          <AlertDescription className="text-current">백그라운드 확인이 멈췄어요. 폰의 배터리 최적화에서 mobilegit을 빼면 다시 확인해요.</AlertDescription>
+        </Alert>
+      )}
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <InputGroup className="bg-card sm:max-w-sm">
@@ -135,6 +147,38 @@ export function RepoList() {
   )
 }
 
+/**
+ * CR-11: the app's main summary, from the same numbers (GET /api/v1/overview), e.g.
+ * "미러 12개 · 정상 10 · 오류 1 · 주의 1 · 마지막 확인 10분 전 · 로컬 3개". 오류/주의 open the "주의 필요" filter.
+ */
+function Summary({ o, onProblems }: { o: Overview; onProblems: () => void }) {
+  const parts: { text: string; tone?: string }[] = []
+  if (o.mirrors > 0) parts.push({ text: `미러 ${o.mirrors}개` })
+  if (o.mirrors > 0 && o.errors + o.warnings > 0) parts.push({ text: `정상 ${o.healthy}` })
+  if (o.errors > 0) parts.push({ text: `오류 ${o.errors}`, tone: "text-red-700 dark:text-red-400" })
+  if (o.warnings > 0) parts.push({ text: `주의 ${o.warnings}`, tone: "text-amber-800 dark:text-amber-300" })
+  if (o.mirrors > 0 && o.errors + o.warnings === 0) parts.push({ text: "모두 정상", tone: "text-emerald-700 dark:text-emerald-400" })
+  if (o.lastCheckAt) parts.push({ text: `마지막 확인 ${ago(o.lastCheckAt)}` })
+  if (o.locals > 0) parts.push({ text: `로컬 ${o.locals}개` })
+  return (
+    <p className="text-sm text-muted-foreground">
+      {parts.map((p, i) => (
+        // Each part keeps its own " · " so a wrapped line never starts with the separator.
+        <span key={p.text} className="whitespace-nowrap">
+          {p.tone && p.text !== "모두 정상" ? (
+            <button type="button" onClick={onProblems} className={`tap font-semibold hover:underline ${p.tone}`}>
+              {p.text}
+            </button>
+          ) : (
+            <span className={p.tone ? `font-semibold ${p.tone}` : undefined}>{p.text}</span>
+          )}
+          {i < parts.length - 1 && " ·"}
+        </span>
+      )).flatMap((el, i) => (i ? [" ", el] : [el]))}
+    </p>
+  )
+}
+
 function RepoRow({ repo: r }: { repo: RepoSummary }) {
   const mirror = r.type === "MIRROR"
   const meta = [mirror ? "미러" : "로컬", mirror && r.originUrl ? shortUrl(r.originUrl) : null, r.defaultBranch].filter(Boolean)
@@ -153,7 +197,7 @@ function RepoRow({ repo: r }: { repo: RepoSummary }) {
           <a href={repoHref.tree(r.name)} className="font-semibold break-all text-foreground after:absolute after:inset-0 hover:underline">
             {r.name}
           </a>
-          <IssueBadge issue={r.issue} />
+          <IssueBadge repo={r} />
           {r.hasLfs && <LfsBadge />}
         </div>
         {r.description && <p className="line-clamp-2 text-sm">{r.description}</p>}
@@ -162,13 +206,13 @@ function RepoRow({ repo: r }: { repo: RepoSummary }) {
           {/* On narrow screens time and size join the meta line; on wide screens they get their own columns. */}
           <span className="sm:hidden">
             {" · "}
-            {mirror ? <Time ms={r.lastUpdateAt} prefix="업데이트 " /> : <Time ms={r.lastPushAt} prefix="push " />}
+            {mirror ? <Time ms={r.lastUpdateAt} prefix="업데이트 " empty="첫 받기 전" /> : <Time ms={r.lastPushAt} prefix="push " empty="push 전" />}
             {r.sizeBytes > 0 && ` · ${formatBytes(r.sizeBytes)}`}
           </span>
         </p>
       </div>
       <div className="hidden w-32 shrink-0 text-right text-sm text-muted-foreground sm:block">
-        {mirror ? <Time ms={r.lastUpdateAt} prefix="업데이트 " /> : <Time ms={r.lastPushAt} prefix="push " />}
+        {mirror ? <Time ms={r.lastUpdateAt} prefix="업데이트 " empty="첫 받기 전" /> : <Time ms={r.lastPushAt} prefix="push " empty="push 전" />}
       </div>
       <div className="hidden w-16 shrink-0 text-right text-sm text-muted-foreground tabular-nums sm:block">{r.sizeBytes > 0 ? formatBytes(r.sizeBytes) : ""}</div>
     </li>

@@ -21,7 +21,7 @@ export default function App() {
   useEffect(() => {
     const [, repo, view, ...rest] = JSON.parse(pathKey) as string[]
     const path = rest.join("/")
-    document.title = repo ? `${path ? `${path} · ` : ""}${{ commits: "커밋 · ", archives: "보존 기록 · " }[view as string] ?? ""}${repo} · mobilegit` : "mobilegit"
+    document.title = repo ? `${path ? `${path} · ` : ""}${{ commits: "커밋 · ", archives: "보존된 기록 · " }[view as string] ?? ""}${repo} · mobilegit` : "mobilegit"
     if (first.current) first.current = false
     else main.current?.focus({ preventScroll: true })
   }, [pathKey])
@@ -99,16 +99,16 @@ function ThemeToggle() {
   }, [theme])
   const next: Record<Theme, Theme> = { system: "light", light: "dark", dark: "system" }
   const label = { system: "시스템 설정 따름", light: "밝게", dark: "어둡게" }[theme]
-  // Icon plus words: the icon alone was not recognised as a theme switch (round 1 review).
+  // Icon plus the one word "테마" (round 1: the icon alone was not recognised; round 2: the full state was too long).
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Button variant="ghost" onClick={() => setTheme(next[theme])} aria-label={`화면 테마: ${label}. 눌러서 바꾸기`}>
           {theme === "system" ? <MonitorIcon /> : theme === "light" ? <SunIcon /> : <MoonIcon />}
-          <span className="hidden sm:inline">테마: {label}</span>
+          <span className="hidden sm:inline">테마</span>
         </Button>
       </TooltipTrigger>
-      <TooltipContent>누를 때마다 시스템 설정 따름 → 밝게 → 어둡게</TooltipContent>
+      <TooltipContent>지금: {label}. 누를 때마다 시스템 설정 따름 → 밝게 → 어둡게</TooltipContent>
     </Tooltip>
   )
 }
@@ -134,9 +134,10 @@ function AppHeader() {
 function AppFooter() {
   const { data: info } = useApi<Info>(apiUrl("info"))
   return (
-    <footer className="border-t py-4 text-center text-xs text-muted-foreground">
-      mobilegit{info ? ` ${info.version}` : ""} · 웹에서는 보기만 할 수 있어요. 미러 업데이트와 레포 관리는 폰 앱에서, push는 PC의 git으로 해요.
-      {info && !info.authRequired && " · 비밀번호 요구 꺼짐"}
+    // The header already says the web is view-only, so the footer does not repeat it (round 2 review).
+    <footer className="border-t px-4 py-4 text-center text-sm text-muted-foreground">
+      mobilegit{info ? ` ${info.version}` : ""} · 미러 업데이트와 레포 관리는 폰 앱에서, push는 PC의 git으로 해요.
+      {info && !info.authRequired && " · 비밀번호 요구: 안 함"}
       {/* The setting only applies on the LAN and Tailscale; loopback and ngrok always ask (SEC-03). */}
       {info?.anonymousRead && " · 같은 Wi-Fi·Tailscale에서는 로그인 없이 보기 허용"}
     </footer>

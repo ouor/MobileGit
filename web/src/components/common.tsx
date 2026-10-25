@@ -49,7 +49,7 @@ export const LocalIcon = FolderIcon
 
 export function RepoTypeBadge({ repo }: { repo: RepoSummary }) {
   return repo.type === "MIRROR" ? (
-    <ToneBadge t="info" title="원본을 자동으로 따라가는 사본이에요. clone·pull만 되고 push는 안 돼요">
+    <ToneBadge t="info" title="원본을 자동으로 따라가는 읽기 전용 미러예요. clone·pull만 되고 push는 안 돼요">
       <MirrorIcon />
       읽기 전용 미러
     </ToneBadge>
@@ -70,17 +70,18 @@ const issueIcon: Record<RepoIssue["badge"], ReactNode> = {
   HISTORY_CHANGED: <HistoryIcon />,
 }
 const issueHint: Record<RepoIssue["badge"], string> = {
-  ORIGIN_GONE: "원본이 삭제되었거나 비공개로 바뀌었어요. 이 미러가 남은 사본일 수 있어요",
+  ORIGIN_GONE: "원본이 삭제되었거나 비공개로 바뀌었어요. 이 미러가 마지막 남은 복사본일 수 있어요",
   AUTH_REQUIRED: "원본에 접근하려면 앱에서 원본 접속 토큰을 확인해야 해요",
-  FAILED: "마지막 업데이트가 실패했어요. 앱의 동기화 이력에서 자세히 볼 수 있어요",
+  FAILED: "마지막 업데이트가 실패했어요. 앱의 업데이트 기록에서 자세히 볼 수 있어요",
   DELAYED: "확인 주기보다 오래 원본을 확인하지 못했어요. 폰의 배터리 최적화 설정을 확인하세요",
   HISTORY_CHANGED: "원본이 강제 push하거나 브랜치·태그를 지워 사라지기 전 상태를 보존했어요",
 }
 
-export function IssueBadge({ issue }: { issue: RepoIssue | null }) {
+export function IssueBadge({ repo }: { repo: RepoSummary }) {
+  const issue = repo.issue
   if (!issue) return null
   return (
-    <ToneBadge t={issueTone(issue)} title={issueHint[issue.badge]}>
+    <ToneBadge t={issueTone(repo)} title={issueHint[issue.badge]}>
       {issueIcon[issue.badge]}
       {issueText(issue)}
     </ToneBadge>
@@ -89,14 +90,16 @@ export function IssueBadge({ issue }: { issue: RepoIssue | null }) {
 
 export function LfsBadge() {
   return (
-    <ToneBadge t="neutral" title="이 레포는 Git LFS를 쓰지만 LFS 파일은 저장하지 않고 포인터 파일만 보존해요">
+    <ToneBadge t="neutral" title="LFS 파일은 받지 않아요. 큰 파일을 가리키는 작은 표시 파일(포인터)만 있어요">
       <PackageIcon />
-      LFS 파일 없음
+      LFS 포인터만
     </ToneBadge>
   )
 }
 
-export function Time({ ms, prefix }: { ms: number | null | undefined; prefix?: string }) {
+/** Relative time with the absolute one on hover; `empty` is said instead (without the prefix) when there is no time yet. */
+export function Time({ ms, prefix, empty }: { ms: number | null | undefined; prefix?: string; empty?: string }) {
+  if (!ms && empty) return <span>{empty}</span>
   return (
     <time dateTime={ms ? new Date(ms).toISOString() : undefined} title={absoluteTime(ms)}>
       {prefix}
@@ -141,7 +144,7 @@ export function CopyButton({ text, label, className }: { text: string; label: st
         <Button
           variant="ghost"
           size="icon-sm"
-          className={className}
+          className={cn("relative after:absolute after:-inset-2 after:content-['']", className)}
           onClick={(e) => copyText(text, e.currentTarget).then((ok) => setResult(ok ? "ok" : "fail"))}
           aria-label={label}
         >
@@ -177,10 +180,10 @@ export function BreakableText({ text }: { text: string }) {
 /** A copyable code field (clone address, commands). */
 export function CodeField({ value, label }: { value: string; label: string }) {
   return (
-    <div className="flex min-w-0 items-start gap-1 rounded-lg border bg-muted/50 pl-2.5">
-      {/* overflow-x-auto only matters for a single piece longer than the box. */}
-      <code className="min-w-0 flex-1 overflow-x-auto py-1.5 font-mono text-[13px] leading-5 select-all">
-        <BreakableText text={value} />
+    <div className="flex min-w-0 items-center gap-1 rounded-lg border bg-muted/50 pl-2.5">
+      {/* RV2-08 / design-system 8.3: commands and addresses never wrap; they scroll sideways. */}
+      <code tabIndex={0} className="min-w-0 flex-1 overflow-x-auto py-2 font-mono text-sm leading-5 whitespace-pre select-all">
+        {value}
       </code>
       <CopyButton text={value} label={label} />
     </div>

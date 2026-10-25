@@ -1,29 +1,25 @@
-const rtf = new Intl.RelativeTimeFormat("ko", { numeric: "auto" })
-const dtf = new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" })
-const dayFmt = new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "long" })
-
-export function relativeTime(ms: number | null | undefined, now = Date.now()) {
-  if (!ms) return "기록 없음"
-  const sec = Math.round((ms - now) / 1000)
-  const abs = Math.abs(sec)
-  if (abs < 45) return "방금 전"
-  const units: [Intl.RelativeTimeFormatUnit, number][] = [
-    ["minute", 60],
-    ["hour", 3600],
-    ["day", 86400],
-    ["week", 604800],
-    ["month", 2629800],
-    ["year", 31557600],
-  ]
-  let unit = units[0]
-  for (const u of units) if (abs >= u[1]) unit = u
-  return rtf.format(Math.round(sec / unit[1]), unit[0])
+// Times follow design-system 8.2: absolute "2026.10.25 16:35" (24h, never the browser locale), relative only for recency.
+const pad = (n: number) => String(n).padStart(2, "0")
+const ymd = (d: Date) => `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())}`
+export const clockTime = (ms: number) => {
+  const d = new Date(ms)
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+export const absoluteTime = (ms: number | null | undefined) => (ms ? `${ymd(new Date(ms))} ${clockTime(ms)}` : "")
+/** "방금", "5분 전", "3시간 전", "2일 전", then "2026.10.01" (app `ago`). */
+export function ago(t: number, now = Date.now()) {
+  const d = Math.floor(Math.max(0, now - t) / 1000)
+  if (d < 60) return "방금"
+  if (d < 3600) return `${Math.floor(d / 60)}분 전`
+  if (d < 86400) return `${Math.floor(d / 3600)}시간 전`
+  if (d < 86400 * 7) return `${Math.floor(d / 86400)}일 전`
+  const x = new Date(t)
+  return `${x.getFullYear()}.${String(x.getMonth() + 1).padStart(2, "0")}.${String(x.getDate()).padStart(2, "0")}`
 }
 
-export const absoluteTime = (ms: number | null | undefined) => (ms ? dtf.format(ms) : "")
-export const dayLabel = (ms: number) => dayFmt.format(ms)
-const clockFmt = new Intl.DateTimeFormat("ko-KR", { hour: "numeric", minute: "2-digit" })
-export const clockTime = (ms: number) => clockFmt.format(ms)
+export const relativeTime = (ms: number | null | undefined, now = Date.now()) => (ms ? ago(ms, now) : "없음")
+/** "2026.10.25 (일)" for commit day groups. */
+export const dayLabel = (ms: number) => `${ymd(new Date(ms))} (${"일월화수목금토"[new Date(ms).getDay()]})`
 
 export function formatBytes(n: number | null | undefined) {
   if (n === null || n === undefined) return ""

@@ -74,7 +74,7 @@ function TreeBody({ detail, path, refParam }: { detail: RepoDetail; path: string
         <ListSkeleton />
       ) : (
         <>
-          <FileList repo={repo} tree={tree} refParam={refParam} />
+          <FileList repo={repo} tree={tree} refParam={refParam} hasLfs={detail.repo.hasLfs} />
           <ReadmeCard repo={repo} refParam={refParam} path={path} hasReadme={tree.entries.some((e) => /^readme(\.md|\.markdown|\.txt)?$/i.test(e.name))} />
         </>
       )}
@@ -105,7 +105,7 @@ function TreeBody({ detail, path, refParam }: { detail: RepoDetail; path: string
   )
 }
 
-function FileList({ repo, tree, refParam }: { repo: string; tree: Tree; refParam: string | null }) {
+function FileList({ repo, tree, refParam, hasLfs }: { repo: string; tree: Tree; refParam: string | null; hasLfs: boolean }) {
   // Directories first like Gitea/GitHub; the API returns git tree order.
   const entries = useMemo(
     () => [...tree.entries].sort((a, b) => Number(b.type === "dir") - Number(a.type === "dir") || a.name.localeCompare(b.name)),
@@ -138,7 +138,7 @@ function FileList({ repo, tree, refParam }: { repo: string; tree: Tree; refParam
           </li>
         )}
         {entries.map((e) => (
-          <EntryRow key={e.path} repo={repo} entry={e} refParam={refParam} />
+          <EntryRow key={e.path} repo={repo} entry={e} refParam={refParam} lfs={isLfsPointer(e, hasLfs)} />
         ))}
         {entries.length === 0 && <li className="px-4 py-6 text-center text-muted-foreground">빈 폴더예요</li>}
       </ul>
@@ -146,7 +146,14 @@ function FileList({ repo, tree, refParam }: { repo: string; tree: Tree; refParam
   )
 }
 
-function EntryRow({ repo, entry: e, refParam }: { repo: string; entry: TreeEntry; refParam: string | null }) {
+/**
+ * RV2-09: mark LFS pointer files in the list. Uses the core's flag when it sends one (WR-7);
+ * shortcut: until then, guesses from size — a pointer file is always 126–140 bytes — in a repo that uses LFS.
+ * A small ordinary file of that size in an LFS repo would be mislabelled; drop the guess once WR-7 ships.
+ */
+const isLfsPointer = (e: TreeEntry, hasLfs: boolean) => e.lfs ?? (hasLfs && e.type === "file" && e.size !== null && e.size >= 126 && e.size <= 140)
+
+function EntryRow({ repo, entry: e, refParam, lfs }: { repo: string; entry: TreeEntry; refParam: string | null; lfs: boolean }) {
   const icon =
     e.type === "dir" ? (
       <FolderIcon className="size-4 shrink-0 fill-primary/20 text-primary" />
@@ -173,6 +180,11 @@ function EntryRow({ repo, entry: e, refParam }: { repo: string; entry: TreeEntry
       >
         {icon}
         <span className="min-w-0 truncate hover:underline">{e.name}</span>
+        {lfs && (
+          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" title="LFS 파일은 받지 않아요. 큰 파일을 가리키는 작은 표시 파일이에요">
+            LFS 포인터
+          </span>
+        )}
         {e.size !== null && <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">{formatBytes(e.size)}</span>}
       </a>
     </li>
@@ -215,13 +227,13 @@ function OriginAlerts({ detail }: { detail: RepoDetail }) {
         <Alert variant="destructive">
           <CloudOffIcon />
           <AlertTitle>원본에 접근할 수 없어요</AlertTitle>
-          <AlertDescription>원본이 삭제되었거나 비공개로 바뀌었어요. 이 미러가 남은 사본일 수 있으니 앱에서 백업을 내보내세요.</AlertDescription>
+          <AlertDescription>원본이 삭제되었거나 비공개로 바뀌었어요. 이 미러가 마지막 남은 복사본일 수 있으니 앱에서 내보내기로 백업하세요.</AlertDescription>
         </Alert>
       )}
       {r.originStatus === "AUTH_REQUIRED" && (
         <Alert>
           <KeyRoundIcon />
-          <AlertTitle>원본 인증이 필요해요</AlertTitle>
+          <AlertTitle>원본 접속 토큰을 확인해야 해요</AlertTitle>
           <AlertDescription>앱에서 원본 접속 토큰을 등록하면 다시 업데이트돼요.</AlertDescription>
         </Alert>
       )}
@@ -235,8 +247,8 @@ function ContentAlerts({ detail }: { detail: RepoDetail }) {
       {detail.repo.hasLfs && (
         <Alert>
           <AlertTriangleIcon />
-          <AlertTitle>LFS 파일은 저장되지 않아요</AlertTitle>
-          <AlertDescription>이 레포는 Git LFS를 써요. LFS 파일은 저장하지 않고 포인터 파일만 보존해요.</AlertDescription>
+          <AlertTitle>LFS 파일은 받지 않아요 (포인터만)</AlertTitle>
+          <AlertDescription>이 레포는 Git LFS를 써요. 큰 파일 본체는 받지 않고, 그 파일을 가리키는 작은 포인터 파일만 저장해요. 파일 목록에서 &lsquo;LFS 포인터&rsquo;로 표시돼요.</AlertDescription>
         </Alert>
       )}
       {detail.submoduleUrls.length > 0 && (
@@ -264,29 +276,25 @@ function AboutCard({ detail }: { detail: RepoDetail }) {
   const rows: [string, ReactNode][] = [
     ["종류", r.type === "MIRROR" ? "미러 (읽기 전용)" : "로컬 레포"],
   ]
-  if (r.type === "MIRROR") {
-    rows.push(["마지막 업데이트", <Time key="u" ms={r.lastUpdateAt} />])
-  } else {
-    rows.push(["마지막 push", <Time key="p" ms={r.lastPushAt} />])
-  }
+  // The last update / push time is in the header already (RV2 review), so it is not repeated here.
   rows.push(["기본 브랜치", detail.head ?? "-"])
-  // R2-07: say plainly what is kept; LFS files never are.
-  rows.push([
-    "받는 범위",
-    <span key="s" className="flex flex-col">
-      <span>{r.type === "LOCAL" ? "push된 브랜치·태그" : "모든 브랜치·태그"}</span>
-      {r.includePullRefs !== null && <span className="text-muted-foreground">{r.includePullRefs ? "PR 브랜치 포함" : "PR 브랜치 제외"}</span>}
-      <span className="text-muted-foreground">LFS 파일 저장 안 함</span>
-    </span>,
-  ])
-  if (r.hasLfs) rows.push(["LFS", <span key="l" className="text-amber-800 dark:text-amber-300">LFS 파일 없음(포인터만)</span>])
-  rows.push(["브랜치 · 태그", `${detail.branches.length} · ${detail.tags.length}`])
+  // R2-07: what a mirror fetches. Local repos hold just what was pushed, so they get no row (RV2-09).
+  if (r.type === "MIRROR")
+    rows.push([
+      "받는 범위",
+      <span key="s" className="flex flex-col">
+        <span>모든 브랜치·태그</span>
+        {r.includePullRefs !== null && <span className="text-muted-foreground">{r.includePullRefs ? "PR 브랜치 포함" : "PR 브랜치 제외"}</span>}
+      </span>,
+    ])
+  if (r.hasLfs) rows.push(["LFS", "포인터만 (파일은 받지 않음)"])
+  rows.push(["브랜치·태그", `브랜치 ${detail.branches.length} · 태그 ${detail.tags.length}`])
   if (r.sizeBytes > 0) rows.push(["용량", formatBytes(r.sizeBytes)])
   const showArchives = r.type === "MIRROR" || detail.archivedRefCount > 0
   if (showArchives)
     rows.push([
       "보존된 기록",
-      <a key="a" href={repoHref.archives(r.name)} className="inline-flex items-center gap-1 text-primary hover:underline">
+      <a key="a" href={repoHref.archives(r.name)} className="tap inline-flex items-center gap-1 text-primary hover:underline">
         <ArchiveIcon className="size-3.5" />
         {detail.archivedRefCount}개 보기
       </a>,
@@ -299,7 +307,7 @@ function AboutCard({ detail }: { detail: RepoDetail }) {
       <CardContent className="flex flex-col gap-3 text-sm">
         {r.description && <p>{r.description}</p>}
         {r.originUrl && (
-          <a href={r.originUrl.replace(/\.git$/, "")} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+          <a href={r.originUrl.replace(/\.git$/, "")} target="_blank" rel="noopener noreferrer" className="tap break-all text-primary hover:underline">
             <BreakableText text={shortUrl(r.originUrl)} />
           </a>
         )}

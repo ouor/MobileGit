@@ -26,16 +26,11 @@ export function ClonePanel({ detail }: { detail: RepoDetail }) {
           읽기 전용이라 push는 거부돼요. 고치려면 앱에서 로컬 레포로 분리하세요.
         </p>
       )}
+      {/* The fetch command lives on the 보존된 기록 page only (RV2 review: one place, not two). */}
       {detail.archivedRefCount > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <p className="text-xs text-muted-foreground">
-            원본에서 강제 push나 삭제로 사라진 브랜치·태그 {detail.archivedRefCount}개를 보존했어요. 일반 clone에는 들어가지 않으니 clone한 뒤 아래 명령으로 받으세요.{" "}
-            <a href={repoHref.archives(detail.repo.name)} className="text-primary hover:underline">
-              보존된 기록 보기
-            </a>
-          </p>
-          <CodeField value={archiveFetchCmd(detail.repo.name)} label="보존된 기록 받기 명령 복사" />
-        </div>
+        <a href={repoHref.archives(detail.repo.name)} className="tap self-start text-sm text-primary hover:underline">
+          보존된 기록 {detail.archivedRefCount}개 →
+        </a>
       )}
     </div>
   )
@@ -77,12 +72,12 @@ export function RepoLayout({
                 </a>
               </h1>
               <RepoTypeBadge repo={r} />
-              <IssueBadge issue={r.issue} />
+              <IssueBadge repo={r} />
               {r.hasLfs && <LfsBadge />}
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
               {r.originUrl && (
-                <a href={r.originUrl.replace(/\.git$/, "")} target="_blank" rel="noopener noreferrer" className="inline-flex min-w-0 items-center gap-1 hover:text-foreground hover:underline">
+                <a href={r.originUrl.replace(/\.git$/, "")} target="_blank" rel="noopener noreferrer" className="tap inline-flex min-w-0 items-center gap-1 hover:text-foreground hover:underline">
                   <ExternalLinkIcon className="size-3.5 shrink-0" />
                   <span className="truncate">{shortUrl(r.originUrl)}</span>
                 </a>
@@ -93,7 +88,7 @@ export function RepoLayout({
                   {shortUrl(detail.forkedFromUrl)}에서 분리
                 </span>
               )}
-              {r.type === "MIRROR" ? <Time ms={r.lastUpdateAt} prefix="업데이트 " /> : <Time ms={r.lastPushAt} prefix="마지막 push " />}
+              {r.type === "MIRROR" ? <Time ms={r.lastUpdateAt} prefix="업데이트 " empty="첫 받기 전" /> : <Time ms={r.lastPushAt} prefix="마지막 push " empty="push 전" />}
             </div>
           </div>
           {!detail.empty && (

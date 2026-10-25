@@ -171,7 +171,7 @@ function NotShown({ blob, rawUrl }: { blob: Blob; rawUrl: string }) {
       </div>
     )
   const [title, desc] = blob.lfs
-    ? ["LFS 파일 (저장되지 않음)", `이 파일은 Git LFS 포인터예요. 실제 파일(${formatBytes(blob.lfs.size)})은 폰에 저장되지 않았어요. OID ${blob.lfs.oid.slice(0, 12)}…`]
+    ? ["LFS 포인터만 있어요", `큰 파일을 가리키는 작은 표시 파일(포인터)이에요. LFS 파일은 받지 않아서 실제 파일(${formatBytes(blob.lfs.size)})은 폰에 없어요. OID ${blob.lfs.oid.slice(0, 12)}…`]
     : blob.tooLarge
       ? imageExt.test(blob.path)
         ? ["이미지가 커서 미리 보지 않아요", `20MB를 넘는 이미지는 내려받아 보세요. 크기 ${formatBytes(blob.size)}`]

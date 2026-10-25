@@ -26,8 +26,22 @@ export interface RepoSummary {
   /** Same as the app's "주의 필요" (WR-6). */
   needsAttention: boolean
   issue: RepoIssue | null
+  /** CR-11: ERROR = 오류 (red), WARNING = 주의 (orange), null = fine. */
+  severity: "ERROR" | "WARNING" | null
   /** Whether the mirror fetches PR branches; null for local repos. */
   includePullRefs: boolean | null
+}
+
+/** GET /api/v1/overview (CR-11): the same numbers as the app's main summary. */
+export interface Overview {
+  mirrors: number
+  healthy: number
+  attention: number
+  locals: number
+  lastCheckAt: number | null
+  checksStalled: boolean
+  errors: number
+  warnings: number
 }
 
 export interface RepoIssue {
@@ -72,6 +86,8 @@ export interface TreeEntry {
   type: "dir" | "file" | "submodule" | "symlink"
   size: number | null
   mode: string
+  /** WR-7 (requested): whether the file is a Git LFS pointer. Absent on cores without it. */
+  lfs?: boolean
 }
 
 export interface Tree {

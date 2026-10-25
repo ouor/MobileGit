@@ -72,3 +72,10 @@
 - 백그라운드 확인이 모든 미러에서 멈춘 동안(`checksStalled`)은 `DELAYED`를 레포별 문제로 세지 않는다. `RepoSummaryDto.needsAttention`·`issue`도 그 규칙을 따른다.
 - `RepoSummaryDto.severity: "ERROR" | "WARNING" | null` 추가(오류 = 실패·원본 없음·토큰 확인 필요, 주의 = 지연·히스토리 바뀜). 목록의 위험 색/주의 색은 이 값으로.
 - `GET /api/v1/overview` 추가: `{"mirrors","healthy","attention","locals","lastCheckAt","checksStalled","errors","warnings"}`. 앱 메인 요약과 같은 숫자다. `attention = errors + warnings`이고 "주의 필요" 필터 결과 수와 같다.
+
+## WR-7. tree 항목에 LFS 포인터 여부 (2차 사용자 리뷰, RV2-09)
+
+- **무엇**: `TreeEntryDto`에 `lfs: Boolean`(파일이 Git LFS 포인터면 true)을 더해 주세요. blob 응답의 `lfs`와 같은 판정(`parseLfsPointer`)이면 됩니다. 크기가 200바이트 이하인 파일만 읽어 보면 되니 비용은 작습니다.
+- **왜**: 리뷰에서 파일 목록에 포인터 파일을 표시해 달라고 했습니다(예: 130 B짜리 logo.psd). 지금 tree 응답에는 그 정보가 없습니다.
+- **지금 웹**: LFS를 쓰는 레포에서 크기가 126~140바이트(포인터 파일의 크기 범위)인 파일에 "LFS 포인터" 표시를 붙입니다. 그 크기의 평범한 파일도 잘못 표시될 수 있습니다.
+- **반영되면**: `lfs` 값이 있으면 그것만 씁니다(웹 코드는 이미 `e.lfs`를 먼저 봅니다). 추측 코드는 지웁니다.

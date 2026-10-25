@@ -57,7 +57,7 @@
     --card-foreground: #191f28;
     --popover: #ffffff;
     --popover-foreground: #191f28;
-    --primary: #3366ff;
+    --primary: #2b5ae6; /* RV2-10: 4.5:1 on the page background; buttons keep --brand */
     /* Solid fill for buttons and selected chips; white text on it is 4.7:1 in both themes (round 1 review). */
     --brand: #3366ff;
     --primary-foreground: #ffffff;
@@ -122,12 +122,28 @@
     --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* RV2-10: grows a small link's touch target to 44px tall without moving the layout. */
+@utility tap {
+  position: relative;
+  &::after {
+    content: "";
+    position: absolute;
+    inset: -12px -4px;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
     }
   body {
     @apply bg-background text-foreground;
+    /* RV2-07: Korean words never split mid-word; a long URL or path may still break anywhere rather than overflow. */
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+    }
+  code, pre, kbd {
+    word-break: normal;
     }
   html {
     @apply font-sans;
