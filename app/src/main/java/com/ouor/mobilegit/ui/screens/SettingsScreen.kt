@@ -1,5 +1,18 @@
 package com.ouor.mobilegit.ui.screens
 
+import com.ouor.mobilegit.ui.components.AdvancedSection
+import com.ouor.mobilegit.ui.components.SectionCard
+import com.ouor.mobilegit.ui.theme.tone
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Alignment
 import com.ouor.mobilegit.R
 import com.ouor.mobilegit.ui.str
 import android.content.Intent
@@ -83,17 +96,42 @@ fun SettingsScreen(nav: Nav) {
                 Divider()
                 NavRow(str(R.string.settings_003), { dialog = "password" }, subtitle = str(R.string.settings_004))
                 Divider()
-                SwitchRow(str(R.string.settings_005), !s.authEnabled, { off -> if (off) dialog = "authOff" else core.settings.update { it.copy(authEnabled = true) } },
-                    subtitle = if (s.ngrokEnabled) str(R.string.settings_006) else str(R.string.settings_007), enabled = !s.ngrokEnabled)
-                Divider()
-                SwitchRow(str(R.string.settings_008), s.anonymousReadOnLan, { v -> core.settings.update { it.copy(anonymousReadOnLan = v) } },
-                    subtitle = if (s.ngrokEnabled) str(R.string.settings_009) else str(R.string.settings_010),
-                    enabled = !s.ngrokEnabled && s.authEnabled)
+                Column(Modifier.padding(horizontal = Space.lg, vertical = Space.md)) {
+                    Text(str(R.string.settings_005), style = MaterialTheme.typography.bodyLarge)
+                    val level = when { s.ngrokEnabled -> 0; !s.authEnabled -> 2; s.anonymousReadOnLan -> 1; else -> 0 }
+                    Text(if (s.ngrokEnabled) str(R.string.settings_006) else listOf(str(R.string.settings_auth_all_sub), str(R.string.settings_010), str(R.string.settings_007))[level],
+                        style = MaterialTheme.typography.bodySmall, color = if (level == 2) tone(Tone.Danger).content else MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(Space.sm))
+                    val opts = listOf(str(R.string.settings_auth_all), str(R.string.settings_auth_push), str(R.string.settings_auth_off))
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        opts.forEachIndexed { i, label ->
+                            SegmentedButton(level == i, {
+                                when (i) {
+                                    0 -> core.settings.update { it.copy(authEnabled = true, anonymousReadOnLan = false) }
+                                    1 -> core.settings.update { it.copy(authEnabled = true, anonymousReadOnLan = true) }
+                                    else -> if (s.authEnabled) dialog = "authOff"
+                                }
+                            }, SegmentedButtonDefaults.itemShape(i, opts.size), enabled = !s.ngrokEnabled) { Text(label, maxLines = 1) }
+                        }
+                    }
+                }
                 Divider()
                 SwitchRow(str(R.string.manage_050), s.startOnBoot, { v -> core.settings.update { it.copy(startOnBoot = v) } }, subtitle = str(R.string.settings_011))
             }
-            Banner(Tone.Neutral, Icons.Outlined.Shield, str(R.string.settings_012),
-                str(R.string.settings_013))
+            SectionCard(title = str(R.string.settings_012)) {
+                listOf(
+                    Triple(Tone.Warning, str(R.string.settings_sec_wifi), str(R.string.settings_sec_wifi_body)),
+                    Triple(Tone.Success, "Tailscale", str(R.string.settings_sec_ts_body)),
+                    Triple(Tone.Danger, "ngrok", str(R.string.settings_sec_ngrok_body)),
+                ).forEach { (t, name, body) ->
+                    Row(Modifier.padding(vertical = Space.xs), verticalAlignment = Alignment.Top) {
+                        Box(Modifier.padding(top = 6.dp).size(10.dp).clip(CircleShape).background(tone(t).content))
+                        Spacer(Modifier.width(Space.md))
+                        Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(88.dp))
+                        Text(body, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    }
+                }
+            }
 
             SectionHeader(str(R.string.settings_014))
             RowGroup {
@@ -130,9 +168,12 @@ fun SettingsScreen(nav: Nav) {
                 SwitchRow(str(R.string.settings_027), s.updateChargingOnly, { v -> core.settings.update { it.copy(updateChargingOnly = v) } }, enabled = s.autoUpdate)
                 Divider()
                 SwitchRow(str(R.string.settings_028), s.checkWifiOnly, { v -> core.settings.update { it.copy(checkWifiOnly = v) } }, subtitle = str(R.string.settings_029))
-                Divider()
-                SwitchRow(str(R.string.settings_030), s.mirrorPullRefs, { v -> if (v) core.settings.update { it.copy(mirrorPullRefs = true) } else dialog = "pullOff" },
-                    subtitle = str(R.string.settings_031))
+            }
+            AdvancedSection {
+                RowGroup {
+                    SwitchRow(str(R.string.settings_030), s.mirrorPullRefs, { v -> if (v) core.settings.update { it.copy(mirrorPullRefs = true) } else dialog = "pullOff" },
+                        subtitle = str(R.string.settings_031))
+                }
             }
 
             SectionHeader(str(R.string.settings_032))
@@ -180,7 +221,7 @@ fun SettingsScreen(nav: Nav) {
             if (it.isBlank()) core.settings.update { st -> st.copy(ngrokEnabled = false) }
             snack(if (it.isBlank()) str(R.string.manage_013) else str(R.string.settings_048))
         }
-        "authOff" -> ConfirmDialog(str(R.string.settings_049), str(R.string.settings_050), str(R.string.settings_005),
+        "authOff" -> ConfirmDialog(str(R.string.settings_049), str(R.string.settings_050), str(R.string.settings_auth_off_confirm),
             destructive = true, onConfirm = { core.settings.update { it.copy(authEnabled = false) }; dialog = null }, onDismiss = { dialog = null })
         "ngrokWarn" -> ConfirmDialog(
             str(R.string.settings_051), str(R.string.settings_052), str(R.string.settings_053),

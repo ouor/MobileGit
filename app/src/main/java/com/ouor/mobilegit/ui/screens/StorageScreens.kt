@@ -1,5 +1,10 @@
 package com.ouor.mobilegit.ui.screens
 
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.RadioButton
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.draw.clip
 import com.ouor.mobilegit.R
 import com.ouor.mobilegit.ui.str
 import androidx.compose.foundation.clickable
@@ -75,6 +80,7 @@ fun StorageScreen(nav: Nav) {
     val repos by core.repos.repos.collectAsStateWithLifecycle()
     var measuring by remember { mutableStateOf(false) }
     var tick by remember { mutableIntStateOf(0) }
+    var floorDialog by remember { mutableStateOf(false) }
     val summary by produceState<StorageSummary?>(null, repos, tick) { value = withContext(Dispatchers.IO) { core.storageSummary() } }
 
     AppScaffold(str(R.string.main_007), onBack = nav::back, actions = {
@@ -93,7 +99,14 @@ fun StorageScreen(nav: Nav) {
                         color = if (s.belowFloor) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, drawStopIndicator = {})
                     Spacer(Modifier.height(Space.sm))
                     InfoRow(str(R.string.storage_003), "${bytes(s.freeBytes)} / ${bytes(s.totalBytes)}", valueTone = if (s.belowFloor) Tone.Danger else null)
-                    InfoRow(str(R.string.storage_004), str(R.string.storage_005, bytes(s.floorBytes)))
+                    Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable(onClickLabel = str(R.string.storage_floor_change)) { floorDialog = true }, verticalAlignment = Alignment.CenterVertically) {
+                        InfoRow(str(R.string.storage_004), bytes(s.floorBytes), Modifier.weight(1f))
+                        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.outline)
+                    }
+                    Text(str(R.string.storage_005, bytes(s.floorBytes)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    s.reposBySize.mapNotNull { it.sizeMeasuredAt }.minOrNull()?.let {
+                        Text(str(R.string.storage_measured_once, ago(it)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.xs))
+                    }
                     if (measuring) Text(str(R.string.storage_006), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 }
             }
@@ -109,15 +122,32 @@ fun StorageScreen(nav: Nav) {
                     Column(Modifier.clickable { nav.go(Routes.repo(m.name)) }.padding(Space.md)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(m.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                            Text(bytes(m.sizeBytes), style = MaterialTheme.typography.titleSmall)
+                            Text(if (m.sizeMeasuredAt != null) bytes(m.sizeBytes) else str(R.string.detail_012), style = MaterialTheme.typography.titleSmall)
+                            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.outline)
                         }
-                        LinearProgressIndicator(progress = { m.sizeBytes.toFloat() / max }, Modifier.fillMaxWidth().padding(vertical = Space.xs), drawStopIndicator = {})
-                        Text(m.sizeMeasuredAt?.let { str(R.string.detail_011, ago(it)) } ?: str(R.string.detail_012), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        LinearProgressIndicator(progress = { m.sizeBytes.toFloat() / max }, Modifier.fillMaxWidth().padding(top = Space.xs), drawStopIndicator = {})
                     }
                 }
             }
         }
     }
+    if (floorDialog) AlertDialog(
+        onDismissRequest = { floorDialog = false },
+        title = { Text(str(R.string.storage_floor_change)) },
+        text = {
+            Column {
+                Text(str(R.string.storage_floor_body), style = MaterialTheme.typography.bodyMedium)
+                listOf(512L, 1024L, 2048L, 5120L).map { it * 1024 * 1024 }.forEach { v ->
+                    Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable(role = Role.RadioButton) { core.settings.update { it.copy(storageFloorBytes = v) }; floorDialog = false; tick++ },
+                        verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = core.settings.current.storageFloorBytes == v, onClick = null, modifier = Modifier.padding(Space.sm))
+                        Text(bytes(v), style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { floorDialog = false }) { Text(str(R.string.common_005)) } },
+    )
 }
 
 /** A-14 전체 백업 (F-19 AC2, AC4~AC7). */

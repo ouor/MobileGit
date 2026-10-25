@@ -1,5 +1,11 @@
 package com.ouor.mobilegit.ui.components
 
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.ui.graphics.Color
+import com.ouor.mobilegit.ui.breakable
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.ouor.mobilegit.R
 import com.ouor.mobilegit.ui.str
 import android.content.ClipData
@@ -166,7 +172,7 @@ fun PrimaryButton(label: String, modifier: Modifier = Modifier, enabled: Boolean
 fun SecondaryButton(label: String, modifier: Modifier = Modifier, enabled: Boolean = true, icon: ImageVector? = null, onClick: () -> Unit) {
     Button(
         onClick = onClick, enabled = enabled, modifier = modifier.height(44.dp), shape = MaterialTheme.shapes.small,
-        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
+        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer),
         contentPadding = PaddingValues(horizontal = Space.lg),
     ) {
         if (icon != null) { Icon(icon, null, Modifier.size(18.dp)); Spacer(Modifier.width(Space.xs + Space.xxs)) }
@@ -314,7 +320,7 @@ fun AddressBar(label: String, url: String, modifier: Modifier = Modifier, large:
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             // large: host:port only so the primary address fits one line; copy/QR still use the full URL.
-            Text(if (large) url.removePrefix("http://") else url, style = if (large) CodeText.large else CodeText.body, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            Text(breakable(if (large) url.removePrefix("http://") else url), style = if (large) CodeText.large else CodeText.body, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (!large) IconButton(onClick = { copy(url) }) { Icon(Icons.Outlined.ContentCopy, str(R.string.common_010, label), Modifier.size(20.dp)) }
@@ -331,7 +337,7 @@ fun CommandBlock(command: String, modifier: Modifier = Modifier) {
             .clickable(onClickLabel = str(R.string.common_012)) { copy(command) }.padding(start = Space.md, top = Space.xs, bottom = Space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(command, style = CodeText.small, modifier = Modifier.weight(1f).padding(vertical = Space.xs))
+        Text(breakable(command), style = CodeText.small, modifier = Modifier.weight(1f).padding(vertical = Space.xs))
         IconButton(onClick = { copy(command) }) { Icon(Icons.Outlined.ContentCopy, str(R.string.common_012), Modifier.size(18.dp)) }
     }
 }
@@ -357,9 +363,13 @@ fun SwitchRow(title: String, checked: Boolean, onChange: (Boolean) -> Unit, subt
             if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.width(Space.md))
-        Switch(checked = checked, onCheckedChange = null, enabled = enabled)
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled, colors = appSwitchColors())
     }
 }
+
+/** White thumb in both themes so "on" reads at a glance (review #13: the dark-mode thumb was navy on light blue). */
+@Composable
+fun appSwitchColors() = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = MaterialTheme.colorScheme.primary, checkedBorderColor = MaterialTheme.colorScheme.primary)
 
 @Composable
 fun NavRow(title: String, onClick: () -> Unit, subtitle: String? = null, icon: ImageVector? = null, value: String? = null, enabled: Boolean = true) {
@@ -420,15 +430,11 @@ fun RepoRow(item: RepoListItem, onClick: () -> Unit, onUpdate: (() -> Unit)?) {
                         p.progress?.task?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
                     }
                 }
-                if (onUpdate != null) {
-                    Box {
-                        IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, str(R.string.common_020, m.name), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                            DropdownMenuItem(text = { Text(str(R.string.common_021)) }, enabled = item.progress == null, onClick = { menu = false; onUpdate() })
-                            DropdownMenuItem(text = { Text(str(R.string.common_022)) }, onClick = { menu = false; onClick() })
-                        }
-                    }
-                } else Spacer(Modifier.width(Space.md))
+                Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.padding(horizontal = Space.sm))
+                if (onUpdate != null) DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text(str(R.string.common_021)) }, enabled = item.progress == null, onClick = { menu = false; onUpdate() })
+                    DropdownMenuItem(text = { Text(str(R.string.common_022)) }, onClick = { menu = false; onClick() })
+                }
             }
         }
     }
@@ -460,4 +466,18 @@ fun ScreenColumn(padding: PaddingValues, content: @Composable ColumnScope.() -> 
         Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = Space.screen).padding(bottom = Space.xxl),
         verticalArrangement = Arrangement.spacedBy(Space.md), content = content,
     )
+}
+
+/** "고급" fold for expert options (PR branches, default branch): closed by default (review #3). */
+@Composable
+fun AdvancedSection(title: String = str(R.string.common_advanced), content: @Composable ColumnScope.() -> Unit) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable(role = Role.Button, onClickLabel = title) { open = !open }.padding(vertical = Space.sm),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (open) Column(verticalArrangement = Arrangement.spacedBy(Space.md), content = content)
+    }
 }

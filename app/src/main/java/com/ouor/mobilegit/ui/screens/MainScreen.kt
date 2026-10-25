@@ -1,5 +1,18 @@
 package com.ouor.mobilegit.ui.screens
 
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.outlined.QrCode2
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Computer
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.ouor.mobilegit.ui.components.rememberCopy
+import com.ouor.mobilegit.ui.components.appSwitchColors
+import com.ouor.mobilegit.ui.breakable
+import com.ouor.mobilegit.ui.theme.CodeText
 import com.ouor.mobilegit.R
 import com.ouor.mobilegit.ui.str
 import androidx.compose.foundation.background
@@ -132,15 +145,18 @@ fun MainScreen(nav: Nav) {
     val delayed = all.count { Badge.DELAYED in it.badges }
     val problems = all.count { it.badges.any { b -> b in com.ouor.mobilegit.core.Badges.problem } }
 
+    val list = rememberLazyListState()
+    var pushGuide by remember { mutableStateOf(false) }
     androidx.compose.material3.Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
             ExtendedFloatingActionButton(onClick = { addSheet = true }, icon = { Icon(Icons.Outlined.Add, null) }, text = { Text(str(R.string.main_001)) },
-                shape = MaterialTheme.shapes.large)
+                expanded = list.firstVisibleItemIndex == 0, shape = MaterialTheme.shapes.large,
+                containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)
         },
     ) { padding ->
         LazyColumn(
-            Modifier.fillMaxSize(),
+            Modifier.fillMaxSize(), state = list,
             contentPadding = PaddingValues(start = Space.screen, end = Space.screen, top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding() + 96.dp),
             verticalArrangement = Arrangement.spacedBy(Space.sm),
         ) {
@@ -171,13 +187,16 @@ fun MainScreen(nav: Nav) {
                     onToggle = { on -> if (on) core.server.start() else core.server.stop() },
                     onQr = { nav.go(Routes.qr(null)) }, onPort = { nav.go(Routes.SETTINGS) }, onTailscale = { dialog = "tailscale" })
             }
-            val chips = !settings.effectiveAuthEnabled || batteryHint || delayed > 0
+            if (batteryHint) item(key = "battery") {
+                Banner(Tone.Warning, Icons.Outlined.BatteryAlert, str(R.string.main_battery_title), str(R.string.main_battery_body),
+                    actionLabel = str(R.string.main_battery_action), onAction = { nav.go(Routes.BATTERY) },
+                    onDismiss = { core.settings.update { it.copy(batteryHintDismissedAt = System.currentTimeMillis()) }; snack(str(R.string.main_battery_later)) })
+            }
+            val chips = !settings.effectiveAuthEnabled || delayed > 0
             if (chips) item(key = "chips") {
                 FlowRow(Modifier.fillMaxWidth().padding(top = Space.xs), horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
                     if (!settings.effectiveAuthEnabled) WarningChip(str(R.string.main_016), Icons.Outlined.LockOpen, Tone.Danger) { nav.go(Routes.SETTINGS) }
                     if (delayed > 0) WarningChip(str(R.string.main_017, delayed), Icons.Outlined.HourglassBottom) { dialog = "delayed" }
-                    if (batteryHint) WarningChip(str(R.string.main_018), Icons.Outlined.BatteryAlert,
-                        onDismiss = { core.settings.update { it.copy(batteryHintDismissedAt = System.currentTimeMillis()) } }) { nav.go(Routes.BATTERY) }
                 }
             }
             item(key = "repoHeader") {
@@ -185,7 +204,7 @@ fun MainScreen(nav: Nav) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(str(R.string.main_019), style = MaterialTheme.typography.titleLarge)
                         Spacer(Modifier.width(Space.sm))
-                        Text("${all.size}", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+                        Text("${all.size}", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.weight(1f))
                         TextButton(onClick = { sort = if (sort == RepoSort.RECENT) RepoSort.NAME else RepoSort.RECENT }) {
                             Icon(Icons.AutoMirrored.Outlined.Sort, null, Modifier.size(18.dp)); Spacer(Modifier.width(Space.xs))
@@ -196,8 +215,12 @@ fun MainScreen(nav: Nav) {
                         SearchField(query) { query = it }
                         LazyRow(Modifier.padding(top = Space.sm), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
                             val opts = listOf(RepoFilter.ALL to str(R.string.main_022), RepoFilter.MIRROR to str(R.string.main_023, all.count { it.meta.type == RepoType.MIRROR }),
-                                RepoFilter.LOCAL to str(R.string.main_024, all.count { it.meta.type == RepoType.LOCAL }), RepoFilter.PROBLEM to str(R.string.main_025, problems))
-                            items(opts) { (f, label) -> FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(label) }) }
+                                RepoFilter.LOCAL to str(R.string.main_024, all.count { it.meta.type == RepoType.LOCAL })) +
+                                (if (problems > 0 || filter == RepoFilter.PROBLEM) listOf(RepoFilter.PROBLEM to str(R.string.main_025, problems)) else emptyList())
+                            items(opts) { (f, label) ->
+                                FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(label) },
+                                    leadingIcon = if (filter == f) ({ Icon(Icons.Outlined.Check, null, Modifier.size(18.dp)) }) else null)
+                            }
                         }
                     }
                 }
@@ -212,10 +235,8 @@ fun MainScreen(nav: Nav) {
                         }
                         Spacer(Modifier.height(Space.sm))
                         SecondaryButton(str(R.string.main_029), icon = Icons.Outlined.Groups) { nav.go(Routes.BULK) }
-                        Spacer(Modifier.height(Space.lg))
-                        Text(str(R.string.main_030), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
-                        Spacer(Modifier.height(Space.xs))
-                        CommandBlock("git push ${addrs.firstOrNull()?.baseUrl ?: str(R.string.main_031, settings.port)}/my-project.git main")
+                        Spacer(Modifier.height(Space.sm))
+                        SecondaryButton(str(R.string.main_push_title), icon = Icons.Outlined.Computer) { pushGuide = true }
                     }
                 }
                 shown.isEmpty() -> item(key = "noMatch") {
@@ -236,9 +257,12 @@ fun MainScreen(nav: Nav) {
             Text(str(R.string.main_001), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = Space.sm, vertical = Space.sm))
             AddOption(Icons.Outlined.SyncAlt, str(R.string.add_006), str(R.string.main_036)) { addSheet = false; nav.go(Routes.add()) }
             AddOption(Icons.Outlined.Groups, str(R.string.add_047), str(R.string.main_037)) { addSheet = false; nav.go(Routes.BULK) }
+            AddOption(Icons.Outlined.Computer, str(R.string.main_push_title), str(R.string.main_push_sub)) { addSheet = false; pushGuide = true }
             AddOption(Icons.Outlined.CreateNewFolder, str(R.string.add_087), str(R.string.main_038)) { addSheet = false; nav.go(Routes.CREATE) }
         }
     }
+
+    if (pushGuide) PushGuideSheet(addrs.firstOrNull()?.baseUrl, settings.port, settings.username) { pushGuide = false }
 
     when (dialog) {
         "delayed" -> AlertDialog(
@@ -289,23 +313,32 @@ private fun ServerCard(
     val running = server is ServerState.Running
     val blocked = server is ServerState.Failed && server.kind == ServerFailure.BACKGROUND_START_BLOCKED
     val on = running || server is ServerState.Starting || blocked // blocked: the core restarts it once the app is open
-    val (title, sub, t) = when (server) {
-        is ServerState.Running -> Triple(str(R.string.main_054), str(R.string.main_055, server.port) + when { !auth -> str(R.string.main_056); anon -> str(R.string.main_057); else -> str(R.string.main_058) }, Tone.Success)
-        ServerState.Starting -> Triple(str(R.string.main_059), str(R.string.main_060, port), Tone.Info)
-        ServerState.Stopping -> Triple(str(R.string.main_061), str(R.string.main_062), Tone.Neutral)
-        ServerState.Stopped -> Triple(str(R.string.main_063), str(R.string.main_064), Tone.Neutral)
-        is ServerState.Failed -> Triple(str(R.string.main_063), str(R.string.main_065), Tone.Danger)
+    val primary = addrs.firstOrNull()
+    var open by rememberSaveable { mutableStateOf(false) }
+    val copy = rememberCopy()
+    val (title, sub) = when (server) {
+        is ServerState.Running -> str(R.string.main_054) to (primary?.baseUrl?.removePrefix("http://") ?: str(R.string.main_068))
+        ServerState.Starting -> str(R.string.main_059) to str(R.string.main_060, port)
+        ServerState.Stopping -> str(R.string.main_061) to str(R.string.main_062)
+        ServerState.Stopped -> str(R.string.main_063) to str(R.string.main_064)
+        is ServerState.Failed -> str(R.string.main_063) to str(R.string.main_065)
     }
-    com.ouor.mobilegit.ui.components.SectionCard {
-        Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable(role = Role.Switch, enabled = server !is ServerState.Stopping) { onToggle(!on) },
-            verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(12.dp).clip(CircleShape).background(if (running) tone(Tone.Success).content else MaterialTheme.colorScheme.outline))
+    val showAddr = running && primary != null
+    com.ouor.mobilegit.ui.components.SectionCard(padding = PaddingValues(start = Space.lg, end = Space.sm, top = Space.md, bottom = Space.md)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(10.dp).clip(CircleShape).background(if (running) tone(Tone.Success).content else MaterialTheme.colorScheme.outline))
             Spacer(Modifier.width(Space.md))
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleLarge)
-                Text(sub, style = MaterialTheme.typography.bodySmall, color = if (t == Tone.Danger) tone(t).content else MaterialTheme.colorScheme.onSurfaceVariant)
+            // the address itself copies on tap (main use); the chevron opens the details
+            Column(Modifier.weight(1f).clip(MaterialTheme.shapes.small)
+                .clickable(onClickLabel = if (showAddr) str(R.string.common_009) else str(R.string.main_server_details)) { if (showAddr) copy(primary!!.baseUrl) else open = !open }) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(if (showAddr) breakable(sub) else sub, style = if (showAddr) CodeText.body else MaterialTheme.typography.bodySmall,
+                    color = if (server is ServerState.Failed) tone(Tone.Danger).content else if (showAddr) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Switch(checked = on, onCheckedChange = null, enabled = server !is ServerState.Stopping)
+            if (showAddr) IconButton(onClick = onQr) { Icon(Icons.Outlined.QrCode2, str(R.string.common_011)) }
+            IconButton(onClick = { open = !open }) { Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, str(R.string.main_server_details)) }
+            Switch(checked = on, onCheckedChange = { onToggle(it) }, enabled = server !is ServerState.Stopping, colors = appSwitchColors(),
+                modifier = Modifier.semantics { contentDescription = str(R.string.main_server_switch) })
         }
         if (server is ServerState.Failed) {
             Spacer(Modifier.height(Space.md))
@@ -314,22 +347,42 @@ private fun ServerCard(
                 when { portBusy -> str(R.string.main_066); blocked -> str(R.string.server_blocked_hint); else -> null },
                 actionLabel = if (portBusy) str(R.string.main_067) else null, onAction = onPort, detail = server.detail)
         }
-        Spacer(Modifier.height(Space.md))
         if (addrs.isEmpty()) {
-            Banner(Tone.Warning, Icons.Outlined.WifiOff, str(R.string.main_068), str(R.string.main_069),
-                actionLabel = str(R.string.main_070), onAction = onTailscale)
-        } else {
-            val primary = addrs.first()
-            AddressBar(str(R.string.main_071, primary.kind.label()), primary.baseUrl, large = true, enabled = running, onQr = onQr)
-            addrs.drop(1).forEach { a -> Spacer(Modifier.height(Space.xs)); AddressBar(str(R.string.main_071, a.kind.label()), a.baseUrl, enabled = running) }
-            Text(
-                if (running) str(R.string.main_072) else str(R.string.main_073),
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm, start = Space.xs),
-            )
+            Spacer(Modifier.height(Space.md))
+            Banner(Tone.Warning, Icons.Outlined.WifiOff, str(R.string.main_068), str(R.string.main_069), actionLabel = str(R.string.main_070), onAction = onTailscale)
+        }
+        if (open) Column(Modifier.padding(top = Space.md, end = Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+            Text(str(R.string.main_055, port) + when { !auth -> str(R.string.main_056); anon -> str(R.string.main_057); else -> str(R.string.main_058) },
+                style = MaterialTheme.typography.bodyMedium)
+            addrs.forEach { a -> AddressBar(str(R.string.main_071, a.kind.label()), a.baseUrl, enabled = running) }
+            if (addrs.isNotEmpty()) Text(if (running) str(R.string.main_072) else str(R.string.main_073), style = MaterialTheme.typography.bodyMedium)
+            // review #11: the plain-HTTP warning belongs next to the address, not only in settings
+            if (addrs.any { it.kind == AddressKind.WIFI || it.kind == AddressKind.HOTSPOT }) Banner(Tone.Warning, Icons.Outlined.Shield, str(R.string.main_plain_http), str(R.string.main_plain_http_body))
             if (addrs.none { it.kind == AddressKind.TAILSCALE }) {
-                Text(str(R.string.main_074), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = Space.xs).clip(MaterialTheme.shapes.extraSmall).clickable(role = Role.Button, onClick = onTailscale).padding(Space.xs))
+                Text(str(R.string.main_074), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clip(MaterialTheme.shapes.extraSmall).clickable(role = Role.Button, onClick = onTailscale).padding(vertical = Space.xs))
             }
+        }
+    }
+}
+
+/** Review #1: how to turn a PC project into a repo on this phone (push creates it). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PushGuideSheet(baseUrl: String?, port: Int, username: String, onDismiss: () -> Unit) {
+    var name by rememberSaveable { mutableStateOf("my-project") }
+    val n = name.trim().ifBlank { "my-project" }
+    val url = "${baseUrl ?: str(R.string.main_031, port)}/$n.git"
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+        Column(Modifier.padding(horizontal = Space.screen).padding(bottom = Space.xl).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+            Text(str(R.string.main_push_title), style = MaterialTheme.typography.titleLarge)
+            Text(str(R.string.main_push_body), style = MaterialTheme.typography.bodyMedium)
+            androidx.compose.material3.OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(str(R.string.main_push_name)) },
+                shape = MaterialTheme.shapes.medium)
+            Text(str(R.string.main_push_step), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = Space.xs))
+            core().ops.pushCommands(url).forEach { CommandBlock(it) }
+            Text(str(R.string.main_push_account, username), style = MaterialTheme.typography.bodyMedium)
+            Text(str(R.string.main_push_vscode), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

@@ -1,5 +1,8 @@
 package com.ouor.mobilegit.ui.screens
 
+import com.ouor.mobilegit.ui.components.AdvancedSection
+import androidx.compose.material.icons.outlined.Check
+import com.ouor.mobilegit.ui.theme.tone
 import com.ouor.mobilegit.R
 import com.ouor.mobilegit.ui.str
 import android.content.ClipboardManager
@@ -143,6 +146,7 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
     var nameEdited by rememberSaveable { mutableStateOf(false) }
     var credId by rememberSaveable { mutableStateOf<String?>(null) }
     val settings by core.settings.state.collectAsStateWithLifecycle()
+    val addrs by core.network.addresses.collectAsStateWithLifecycle()
     var includePull by rememberSaveable { mutableStateOf<Boolean?>(null) } // null = 전역 설정 따름 (CR-2)
     val pullOn = includePull ?: settings.mirrorPullRefs
     var preview by remember { mutableStateOf<AddPreview?>(null) }
@@ -235,14 +239,17 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
                             Text(p.normalized!!.url, style = CodeText.body)
                             Spacer(Modifier.size(Space.md))
                             OutlinedTextField(name, { name = it; nameEdited = true }, Modifier.fillMaxWidth(), label = { Text(str(R.string.add_023)) }, singleLine = true,
-                                isError = nameError != null, supportingText = { Text(nameError ?: str(R.string.add_025, name.ifBlank { str(R.string.add_024) })) }, shape = MaterialTheme.shapes.medium,
+                                isError = nameError != null, supportingText = { Text(nameError ?: str(R.string.add_025, "${addrs.firstOrNull()?.baseUrl ?: str(R.string.main_031, settings.port)}/${name.ifBlank { str(R.string.add_024) }}.git")) }, shape = MaterialTheme.shapes.medium,
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done))
+                            Spacer(Modifier.size(Space.sm))
                             CredentialPicker(creds.filter { it.host == host }, credId, { credId = it }, host) { nav.go(Routes.credentials(host)) }
                         }
                         ProbeView(probing, probe, pullOn) { nav.go(Routes.credentials(host)) }
-                        if ((probe as? ProbeResult.Reachable)?.pullRefCount?.let { it > 0 } == true || includePull != null) com.ouor.mobilegit.ui.components.RowGroup {
-                            com.ouor.mobilegit.ui.components.SwitchRow(str(R.string.add_026), pullOn, { v -> includePull = if (v == settings.mirrorPullRefs) null else v },
-                                subtitle = str(R.string.add_027))
+                        if ((probe as? ProbeResult.Reachable)?.pullRefCount?.let { it > 0 } == true || includePull != null) AdvancedSection {
+                            com.ouor.mobilegit.ui.components.RowGroup {
+                                com.ouor.mobilegit.ui.components.SwitchRow(str(R.string.add_026), pullOn, { v -> includePull = if (v == settings.mirrorPullRefs) null else v },
+                                    subtitle = str(R.string.add_027))
+                            }
                         }
                     }
                 }
@@ -259,7 +266,7 @@ private fun ProbeView(probing: Boolean, probe: ProbeResult?, includePull: Boolea
             Text(str(R.string.add_029), style = MaterialTheme.typography.bodyMedium)
         }
         probe is ProbeResult.Reachable -> Banner(Tone.Success, Icons.Outlined.CheckCircle, str(R.string.add_030),
-            (if (!includePull && probe.pullRefCount > 0) str(R.string.add_031, probe.refCount - probe.pullRefCount, probe.pullRefCount) else str(R.string.add_032, probe.refCount)) +
+            (if (!includePull && probe.pullRefCount > 0) str(R.string.add_031, probe.refCount - probe.pullRefCount, probe.pullRefCount) else str(R.string.add_probe_refs, probe.refCount)) +
                 (probe.defaultBranch?.let { str(R.string.add_033, it) } ?: ""))
         probe is ProbeResult.AuthRequired -> Banner(Tone.Warning, Icons.Outlined.Key, str(R.string.add_034), str(R.string.add_035),
             actionLabel = str(R.string.add_036), onAction = onAddToken)
@@ -342,7 +349,8 @@ fun BulkMirrorScreen(nav: Nav) {
             item {
                 SectionCard {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-                        sourceLabels.forEach { (k, l) -> FilterChip(selected = kind == k, onClick = { kind = k; credId = null }, label = { Text(l) }) }
+                        sourceLabels.forEach { (k, l) -> FilterChip(selected = kind == k, onClick = { kind = k; credId = null }, label = { Text(l) },
+                            leadingIcon = if (kind == k) ({ Icon(Icons.Outlined.Check, null, Modifier.size(18.dp)) }) else null) }
                     }
                     OutlinedTextField(account, { account = it }, Modifier.fillMaxWidth(), singleLine = true, shape = MaterialTheme.shapes.medium,
                         label = { Text(if (kind == BulkSourceKind.GITHUB_ORG || kind == BulkSourceKind.GITLAB_GROUP) str(R.string.add_053) else str(R.string.add_054)) })
@@ -362,9 +370,9 @@ fun BulkMirrorScreen(nav: Nav) {
             list?.let { l ->
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = Space.sm)) {
-                        FilterChip(noForks, { noForks = !noForks }, { Text(str(R.string.add_061)) })
+                        FilterChip(noForks, { noForks = !noForks }, { Text(str(R.string.add_061)) }, leadingIcon = if (noForks) ({ Icon(Icons.Outlined.Check, null, Modifier.size(18.dp)) }) else null)
                         Spacer(Modifier.width(Space.sm))
-                        FilterChip(noArchived, { noArchived = !noArchived }, { Text(str(R.string.add_062)) })
+                        FilterChip(noArchived, { noArchived = !noArchived }, { Text(str(R.string.add_062)) }, leadingIcon = if (noArchived) ({ Icon(Icons.Outlined.Check, null, Modifier.size(18.dp)) }) else null)
                         Spacer(Modifier.weight(1f))
                         val allOn = selectable.isNotEmpty() && selectable.all { it.cloneUrl in selected }
                         TextButton(onClick = { if (allOn) selected.removeAll(selectable.map { it.cloneUrl }) else selectable.forEach { if (it.cloneUrl !in selected) selected += it.cloneUrl } }) {
@@ -380,15 +388,16 @@ fun BulkMirrorScreen(nav: Nav) {
                     Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
                         Row(Modifier.clickable(enabled = !done) { if (on) selected.remove(r.cloneUrl) else selected.add(r.cloneUrl) }.padding(end = Space.md, top = Space.xs, bottom = Space.xs),
                             verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = on || done, onCheckedChange = null, enabled = !done, modifier = Modifier.padding(Space.md))
+                            if (done) Icon(Icons.Outlined.CheckCircle, null, tint = tone(Tone.Success).content, modifier = Modifier.padding(Space.md + 2.dp).size(20.dp))
+                            else Checkbox(checked = on, onCheckedChange = null, modifier = Modifier.padding(Space.md))
                             Column(Modifier.weight(1f).padding(vertical = Space.xs)) {
                                 Text(r.name, style = MaterialTheme.typography.titleSmall)
                                 r.description?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                                 FlowRow(Modifier.padding(top = Space.xs), horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
                                     if (done) Pill(str(R.string.add_068), Tone.Success)
                                     r.sizeBytes?.let { Pill(bytes(it), Tone.Neutral) }
-                                    if (r.fork) Pill("fork", Tone.Neutral)
-                                    if (r.archived) Pill("archived", Tone.Warning)
+                                    if (r.fork) Pill(str(R.string.add_fork_pill), Tone.Neutral)
+                                    if (r.archived) Pill(str(R.string.add_archived_pill), Tone.Warning)
                                     if (r.isPrivate) Pill(str(R.string.add_069), Tone.Info)
                                 }
                             }

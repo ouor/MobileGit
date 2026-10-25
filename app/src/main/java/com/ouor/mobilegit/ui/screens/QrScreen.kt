@@ -1,5 +1,13 @@
 package com.ouor.mobilegit.ui.screens
 
+import com.ouor.mobilegit.ui.breakable
+import com.ouor.mobilegit.ui.components.copyText
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import com.ouor.mobilegit.R
 import com.ouor.mobilegit.ui.str
 import android.app.Activity
@@ -94,9 +102,22 @@ fun QrScreen(repo: String?, nav: Nav) {
         Spacer(Modifier.height(Space.lg))
         Image(qr, str(R.string.qr_004, url), Modifier.fillMaxWidth().widthIn(max = 420.dp).aspectRatio(1f), filterQuality = FilterQuality.None)
         Spacer(Modifier.height(Space.lg))
-        Text(url, color = Color(0xFF191F28), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = when { url.length > 40 -> 16.sp; url.length > 24 -> 20.sp; else -> 26.sp },
+        Text(breakable(url), color = Color(0xFF191F28), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = when { url.length > 40 -> 16.sp; url.length > 24 -> 20.sp; else -> 26.sp },
             lineHeight = 30.sp, textAlign = TextAlign.Center)
-        if (repo != null) Text("git clone ${url}", color = Color(0xFF4E5968), fontFamily = Mono, fontSize = 16.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = Space.sm))
+        if (repo != null) Text(breakable("git clone $url"), color = Color(0xFF4E5968), fontFamily = Mono, fontSize = 16.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = Space.sm))
+        // review #10: say who scans this, and give copy/share for the PC case
+        Text(str(R.string.qr_who), color = Color(0xFF333D4B), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, modifier = Modifier.padding(top = Space.lg))
+        Row(Modifier.padding(top = Space.md), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+            val colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF191F28))
+            OutlinedButton(onClick = { ctx.copyText("mobilegit", url); android.widget.Toast.makeText(ctx, str(R.string.common_001), android.widget.Toast.LENGTH_SHORT).show() }, colors = colors) {
+                Icon(Icons.Outlined.ContentCopy, null, Modifier.size(18.dp)); Spacer(Modifier.width(Space.xs)); Text(str(R.string.common_009))
+            }
+            OutlinedButton(onClick = {
+                ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, url), null))
+            }, colors = colors) {
+                Icon(Icons.Outlined.Share, null, Modifier.size(18.dp)); Spacer(Modifier.width(Space.xs)); Text(str(R.string.qr_share))
+            }
+        }
         Spacer(Modifier.height(Space.xl))
         if (addrs.size > 1) Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
             addrs.forEach { a ->
@@ -104,6 +125,6 @@ fun QrScreen(repo: String?, nav: Nav) {
                     colors = FilterChipDefaults.filterChipColors(labelColor = Color(0xFF191F28), selectedContainerColor = Color(0xFFE5ECFF), selectedLabelColor = Color(0xFF0B2A80)))
             }
         }
-        Text(str(R.string.qr_005), color = Color(0xFF6B7684), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = Space.lg))
+        Text(str(R.string.qr_005), color = Color(0xFF4E5968), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = Space.lg))
     }
 }

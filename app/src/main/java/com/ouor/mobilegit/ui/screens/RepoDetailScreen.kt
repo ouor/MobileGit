@@ -1,5 +1,8 @@
 package com.ouor.mobilegit.ui.screens
 
+import com.ouor.mobilegit.ui.components.AdvancedSection
+import com.ouor.mobilegit.ui.components.SecondaryButton
+import androidx.compose.material.icons.outlined.Refresh
 import com.ouor.mobilegit.R
 import com.ouor.mobilegit.ui.str
 import androidx.compose.animation.animateContentSize
@@ -131,11 +134,15 @@ fun RepoDetailScreen(name: String, nav: Nav) {
     val screenScope = rememberCoroutineScope() // outlives dialogs: delete removes the repo, which disposes the dialog
     var sheet by remember { mutableStateOf<String?>(null) } // export | fork | delete
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    val snack = LocalSnack.current
 
     AppScaffold(item?.meta?.name ?: name, onBack = nav::back, actions = {
         if (item != null) OverflowMenu {
             item(str(R.string.detail_001)) { sheet = "export" }
-            if (item.meta.mirror != null) item(str(R.string.detail_002)) { sheet = "fork" }
+            if (item.meta.mirror != null) {
+                if (item.progress == null) item(str(R.string.detail_056)) { runCatching { core.mirrors.checkNow(item.meta.name) }.onSuccess { snack(str(R.string.main_006)) } }
+                item(str(R.string.detail_002)) { sheet = "fork" }
+            }
             item(str(R.string.manage_012)) { sheet = "delete" }
         }
     }) { padding ->
@@ -177,12 +184,10 @@ private fun Header(item: RepoListItem) {
     val m = item.meta
     Column(Modifier.padding(top = Space.xs)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(if (m.mirror != null) Icons.Outlined.SyncAlt else Icons.Outlined.Folder, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(Space.xs + Space.xxs))
-            Text(if (m.mirror != null) str(R.string.detail_009) else str(R.string.detail_010), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            Pill(if (m.mirror != null) str(R.string.detail_009) else str(R.string.detail_010), Tone.Neutral, if (m.mirror != null) Icons.Outlined.SyncAlt else Icons.Outlined.Folder)
         }
         if (m.description.isNotBlank()) Text(m.description, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = Space.xs))
-        Text("${bytes(m.sizeBytes)} · ${m.sizeMeasuredAt?.let { str(R.string.detail_011, ago(it)) } ?: str(R.string.detail_012)}" + (m.defaultBranch?.let { str(R.string.add_033, it) } ?: ""),
+        Text((if (m.sizeMeasuredAt != null) bytes(m.sizeBytes) else str(R.string.detail_012)) + (m.defaultBranch?.let { str(R.string.add_033, it) } ?: ""),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.xs))
         BadgeRow(item.badges, Modifier.padding(top = Space.sm))
     }
@@ -198,21 +203,10 @@ private fun InfoTab(item: RepoListItem, export: ExportRunner, onSheet: (String) 
     Column(verticalArrangement = Arrangement.spacedBy(Space.md)) {
         if (export.running) Banner(Tone.Info, Icons.Outlined.Upload, str(R.string.detail_013), str(R.string.detail_014))
         val mir = m.mirror
-        if (mir != null) {
-            if (mir.originStatus == OriginStatus.GONE) Banner(Tone.Danger, Icons.Outlined.CloudOff, str(R.string.detail_015),
-                str(R.string.detail_016), actionLabel = str(R.string.detail_017), onAction = { onSheet("export") })
-            OriginCard(item, nav)
-        } else LocalInfoCard(m)
+        if (mir != null && mir.originStatus == OriginStatus.GONE) Banner(Tone.Danger, Icons.Outlined.CloudOff, str(R.string.detail_015),
+            str(R.string.detail_016), actionLabel = str(R.string.detail_017), onAction = { onSheet("export") })
 
-        if (m.mirror == null && m.lastPushAt == null && m.forkedFromUrl == null) SectionCard(title = str(R.string.detail_018)) {
-            Text(str(R.string.detail_019), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(Space.sm))
-            core.ops.pushCommands(urls.firstOrNull()?.second ?: str(R.string.detail_020, core.settings.current.port, m.name)).forEach {
-                CommandBlock(it); Spacer(Modifier.height(Space.xs))
-            }
-        }
-
-        // clone card (F-16)
+        // clone card (F-16): first for every repo, it is what the PC needs
         SectionCard(title = str(R.string.detail_021), trailing = {
             if (urls.isNotEmpty()) IconButton(onClick = { nav.go(Routes.qr(m.name)) }) { Icon(Icons.Outlined.QrCode2, str(R.string.detail_022)) }
         }) {
@@ -221,15 +215,24 @@ private fun InfoTab(item: RepoListItem, export: ExportRunner, onSheet: (String) 
                 Spacer(Modifier.height(Space.sm))
             }
             if (urls.isEmpty()) Text(str(R.string.detail_026), style = MaterialTheme.typography.bodyMedium)
-            urls.forEach { (a, u) -> AddressBar(a.kind.label(), u); Spacer(Modifier.height(Space.xs)) }
+            urls.forEach { (a, u) -> AddressBar(str(R.string.main_071, a.kind.label()), u); Spacer(Modifier.height(Space.xs)) }
             urls.firstOrNull()?.let {
                 Spacer(Modifier.height(Space.xs))
                 Text(str(R.string.detail_027), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 CommandBlock("git clone ${it.second}")
             }
-            Text(str(R.string.detail_028), style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
+            Text(str(R.string.detail_account_hint, core.settings.current.username), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = Space.sm))
         }
+
+        if (m.mirror == null && m.lastPushAt == null && m.forkedFromUrl == null) SectionCard(title = str(R.string.detail_018)) {
+            Text(str(R.string.detail_019), style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(Space.sm))
+            core.ops.pushCommands(urls.firstOrNull()?.second ?: str(R.string.detail_020, core.settings.current.port, m.name)).forEach {
+                CommandBlock(it); Spacer(Modifier.height(Space.xs))
+            }
+        }
+
+        if (mir != null) OriginCard(item, nav, onSheet) else LocalInfoCard(m)
 
         if (m.hasLfs) {
             Banner(Tone.Warning, Icons.Outlined.Inventory2, str(R.string.detail_029), str(R.string.detail_030) + " " + str(R.string.detail_lfs_push_hint))
@@ -257,7 +260,9 @@ private fun InfoTab(item: RepoListItem, export: ExportRunner, onSheet: (String) 
         RowGroup {
             NavRow(str(R.string.detail_001), { onSheet("export") }, subtitle = str(R.string.detail_037), icon = Icons.Outlined.Upload)
             if (m.mirror != null) { Divider(); NavRow(str(R.string.detail_002), { onSheet("fork") }, subtitle = str(R.string.detail_038), icon = Icons.Outlined.CallSplit) }
-            Divider()
+        }
+        Spacer(Modifier.height(Space.lg))
+        RowGroup {
             Row(Modifier.fillMaxWidth().clickable(role = Role.Button) { onSheet("delete") }.padding(horizontal = Space.lg, vertical = Space.md + Space.xxs), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.DeleteOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(22.dp)); Spacer(Modifier.width(Space.md + Space.xs))
                 Text(str(R.string.detail_039), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.error)
@@ -268,7 +273,7 @@ private fun InfoTab(item: RepoListItem, export: ExportRunner, onSheet: (String) 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun OriginCard(item: RepoListItem, nav: Nav) {
+private fun OriginCard(item: RepoListItem, nav: Nav, onSheet: (String) -> Unit) {
     val core = core()
     val snack = LocalSnack.current
     val scope = rememberCoroutineScope()
@@ -277,11 +282,15 @@ private fun OriginCard(item: RepoListItem, nav: Nav) {
     val creds by core.credentials.items.collectAsStateWithLifecycle()
     val host = CredentialStore.hostOf(mir.remoteUrl)
     val (statusText, statusTone) = mir.originStatus.style()
-    SectionCard(title = str(R.string.add_022), trailing = { Pill(statusText, statusTone) }) {
+    SectionCard(title = str(R.string.add_022), trailing = { if (mir.originStatus != OriginStatus.OK) Pill(statusText, statusTone) }) {
         AddressBar(str(R.string.detail_040), mir.remoteUrl)
         Spacer(Modifier.height(Space.sm))
-        InfoRow(str(R.string.detail_041), mir.lastCheckAt?.let { "${ago(it)} (${dateTime(it)})" } ?: str(R.string.detail_042))
-        InfoRow(str(R.string.detail_043), mir.lastSuccessUpdateAt?.let { "${ago(it)} (${dateTime(it)})" } ?: str(R.string.detail_042))
+        val sameTime = mir.lastCheckAt != null && mir.lastCheckAt == mir.lastSuccessUpdateAt
+        if (sameTime) InfoRow(str(R.string.detail_checked_updated), ago(mir.lastCheckAt!!))
+        else {
+            InfoRow(str(R.string.detail_041), mir.lastCheckAt?.let { ago(it) } ?: str(R.string.detail_042))
+            InfoRow(str(R.string.detail_043), mir.lastSuccessUpdateAt?.let { ago(it) } ?: str(R.string.detail_042))
+        }
         if (mir.pendingChanges > 0) InfoRow(str(R.string.detail_044), str(R.string.detail_045, mir.pendingChanges), valueTone = Tone.Info)
         mir.waitingReason.label()?.let { InfoRow(str(R.string.add_084), it, valueTone = Tone.Warning) }
         mir.lastError?.let { InfoRow(str(R.string.detail_046), Notifier.categoryText(it) + if (mir.consecutiveFailures > 1) str(R.string.detail_047, mir.consecutiveFailures) else "", valueTone = Tone.Danger) }
@@ -297,24 +306,25 @@ private fun OriginCard(item: RepoListItem, nav: Nav) {
                 ?: LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = Space.xs))
         }
         Spacer(Modifier.height(Space.md))
-        PrimaryButton(if (item.progress?.kind == SyncKind.CHECK) str(R.string.detail_052) else if (item.progress != null) str(R.string.detail_054) else str(R.string.common_021), enabled = item.progress == null) {
+        SecondaryButton(if (item.progress?.kind == SyncKind.CHECK) str(R.string.detail_052) else if (item.progress != null) str(R.string.detail_054) else str(R.string.common_021),
+            Modifier.fillMaxWidth(), enabled = item.progress == null, icon = Icons.Outlined.Refresh) {
             core.mirrors.updateNow(m.name); snack(str(R.string.detail_055))
         }
-        TextButton(onClick = { runCatching { core.mirrors.checkNow(m.name) }.onSuccess { snack(str(R.string.main_006)) } },
-            enabled = item.progress == null, modifier = Modifier.fillMaxWidth()) { Text(str(R.string.detail_056)) }
-        Text(str(R.string.detail_057), style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
+        Row(Modifier.padding(top = Space.sm), verticalAlignment = Alignment.CenterVertically) {
+            Text(str(R.string.detail_057), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            TextButton(onClick = { onSheet("fork") }) { Text(str(R.string.detail_fork_short)) }
+        }
     }
     RowGroup {
-        SwitchRow(str(R.string.detail_058), mir.autoUpdateExcluded, { v -> scope.launch(Dispatchers.IO) { core.mirrors.setAutoUpdateExcluded(m.name, v) } },
+        SwitchRow(str(R.string.detail_058), !mir.autoUpdateExcluded, { v -> scope.launch(Dispatchers.IO) { core.mirrors.setAutoUpdateExcluded(m.name, !v) } },
             subtitle = str(R.string.detail_059))
-        PullRefsRow(m.name, mir.includePullRefs)
         Box(Modifier.padding(horizontal = Space.lg, vertical = Space.sm)) {
             CredentialPicker(creds.filter { it.host == host }, mir.credentialId, { id -> scope.launch(Dispatchers.IO) { core.mirrors.setCredential(m.name, id) } }, host) {
                 nav.go(Routes.credentials(host))
             }
         }
     }
+    AdvancedSection { RowGroup { PullRefsRow(m.name, mir.includePullRefs) } }
 }
 
 /** CR-2: per-repo PR ref mirroring (null = 전역 설정). Turning it off warns that fetched PR refs are deleted without archive. */
@@ -354,6 +364,12 @@ private fun LocalInfoCard(m: RepoMeta) {
     val branches by produceState(emptyList<String>(), m) { value = withContext(Dispatchers.IO) { runCatching { core.ops.branches(m.name) }.getOrDefault(emptyList()) } }
     var open by remember { mutableStateOf(false) }
     SectionCard(title = str(R.string.detail_005)) {
+        InfoRow(str(R.string.detail_071), m.lastPushAt?.let { "${ago(it)} · ${m.lastPushIp ?: str(R.string.detail_072)}" } ?: str(R.string.detail_042))
+        InfoRow(str(R.string.detail_073), when (m.createdBy) { CreatedBy.PUSH -> str(R.string.detail_074); CreatedBy.APP_EMPTY -> str(R.string.detail_075); CreatedBy.FORK -> str(R.string.detail_076); else -> str(R.string.common_014) } + " · ${dateTime(m.createdAt)}")
+        m.forkedFromUrl?.let { InfoRow(str(R.string.detail_077), "${it}\n${dateTime(m.forkedAt)}") }
+    }
+    if (branches.isNotEmpty()) AdvancedSection {
+        SectionCard {
         if (branches.isNotEmpty()) {
             ExposedDropdownMenuBox(open, { open = it }) {
                 OutlinedTextField(m.defaultBranch ?: "-", {}, readOnly = true, label = { Text(str(R.string.detail_068)) }, shape = MaterialTheme.shapes.medium,
@@ -367,11 +383,9 @@ private fun LocalInfoCard(m: RepoMeta) {
                     }
                 }
             }
-            Spacer(Modifier.height(Space.sm))
         }
-        InfoRow(str(R.string.detail_071), m.lastPushAt?.let { "${ago(it)} · ${m.lastPushIp ?: str(R.string.detail_072)}" } ?: str(R.string.detail_042))
-        InfoRow(str(R.string.detail_073), when (m.createdBy) { CreatedBy.PUSH -> str(R.string.detail_074); CreatedBy.APP_EMPTY -> str(R.string.detail_075); CreatedBy.FORK -> str(R.string.detail_076); else -> str(R.string.common_014) } + " · ${dateTime(m.createdAt)}")
-        m.forkedFromUrl?.let { InfoRow(str(R.string.detail_077), "${it}\n${dateTime(m.forkedAt)}") }
+            Text(str(R.string.detail_branch_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
+        }
     }
 }
 
