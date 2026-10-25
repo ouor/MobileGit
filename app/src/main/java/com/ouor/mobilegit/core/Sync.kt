@@ -1,6 +1,8 @@
 package com.ouor.mobilegit.core
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -116,8 +118,8 @@ class SyncCoordinator(
         return slots.withPermit {
             setRunning(name, RepoProgress(SyncKind.CHECK, trigger))
             try {
-                val cred = credentials.effective(mir)
-                val outcome = withContext(Dispatchers.IO) { store.open(meta.name).use { engine.check(it, mir.remoteUrl, credentials.provider(cred), mir.includePullRefs ?: settings().mirrorPullRefs) } }
+                val creds = provider(mir)
+                val outcome = withContext(Dispatchers.IO) { store.open(meta.name).use { engine.check(it, mir.remoteUrl, creds, mir.includePullRefs ?: settings().mirrorPullRefs) } }
                 val ev = if (outcome.changed > 0) SyncEvent(started, clock.now() - started, trigger, SyncKind.CHECK, SyncResult.SUCCESS) else null
                 ev?.let { store.appendEvent(name, it) }
                 val before = mir
@@ -128,8 +130,11 @@ class SyncCoordinator(
                 NotificationRules.decide(meta.name, before, after, 0, false).forEach(notifier::notify)
                 val s = settings()
                 CheckDecision(ev, outcome.changed, outcome.changed > 0 && s.autoUpdate && !mir.autoUpdateExcluded && trigger == SyncTrigger.AUTO)
-            } catch (f: SyncFailure) {
-                CheckDecision(fail(meta, f, SyncKind.CHECK, trigger, started), 0, false)
+            } catch (e: CancellationException) { throw e
+            } catch (e: Exception) {
+                if (!currentCoroutineContext().isActive) throw CancellationException("check cancelled")
+                if (!store.exists(name)) return@withPermit CheckDecision(null, 0, false) // deleted meanwhile
+                CheckDecision(fail(meta, MirrorEngine.classify(e), SyncKind.CHECK, trigger, started), 0, false)
             } finally { clearRunning(name) }
         }
     }
@@ -152,8 +157,19 @@ class SyncCoordinator(
             store.appendEvent(name, SyncEvent(clock.now(), 0, SyncTrigger.AUTO, SyncKind.UPDATE, SyncResult.WAITING, waitingReason = reason))
     }
 
-    /** Full archive-preserving update (F-09, F-11). Waits for the repo lock (one update per repo at a time). */
-    suspend fun update(name: String, trigger: SyncTrigger): SyncEvent {
+    /**
+     * Full archive-preserving update (F-09, F-11). Waits for a slot and the repo lock (one update per repo at a time).
+     *
+     * [onStart] runs once the slot and the lock are held, right before the transfer (AND-05: the worker becomes a
+     * foreground job only then). It returns false when the work could not become a foreground job; a first fetch is
+     * then not started in the background, where the 10-minute job limit would cut it off again and again (GIT-08):
+     * the mirror is marked [MirrorSource.waitingForForeground] and resumed by [resumeWaitingForForeground].
+     *
+     * Cancellation (WorkManager stop, constraint lost, repo deleted) is not a failure (AND-04): no history entry, no
+     * backoff, no notification; the [CancellationException] propagates. Any other error becomes a classified
+     * failure (AND-11).
+     */
+    suspend fun update(name: String, trigger: SyncTrigger, onStart: suspend () -> Boolean = { true }): SyncEvent {
         val meta0 = store.require(name)
         meta0.mirror ?: throw RepoException(RepoException.Code.NOT_A_MIRROR, "미러가 아닙니다")
         val wait = waitingReason(trigger)
@@ -167,17 +183,27 @@ class SyncCoordinator(
         try {
             return slots.withPermit {
                 store.withRepoLock(name) {
-                    val meta = store.require(name)
-                    val mir = meta.mirror!!
+                    val meta = store.get(name)
+                    // GIT-16: converted to a local repo (or deleted) while this update waited for the lock
+                    val mir = meta?.mirror ?: return@withRepoLock SyncEvent(clock.now(), 0, trigger, SyncKind.UPDATE, SyncResult.NO_CHANGE)
+                    if (!onStart() && !mir.initialFetchDone) {
+                        store.updateMirror(name) { it.copy(waitingForForeground = true) }
+                        bulk?.onRepoStatus(name, BulkItemStatus.QUEUED, null)
+                        return@withRepoLock SyncEvent(clock.now(), 0, trigger, SyncKind.UPDATE, SyncResult.WAITING)
+                    }
+                    store.sweepLocks(meta.name) // GIT-01: we hold the repo lock, so any ref lock left is stale
                     val started = clock.now()
+                    val ctx = currentCoroutineContext()
+                    val space = SpaceGuard(trigger)
                     try {
-                        val cred = credentials.effective(mir)
-                        val ctx = currentCoroutineContext()
-                        val out = withContext(Dispatchers.IO) {
+                        val creds = provider(mir)
+                        // NonCancellable: once refs are applied, the history/meta below must be written too (GIT-12).
+                        // The transfer itself still stops on cancellation through isCancelled.
+                        val out = withContext(Dispatchers.IO + NonCancellable) {
                             store.open(meta.name).use { repo ->
-                                engine.update(repo, mir.remoteUrl, credentials.provider(cred),
+                                engine.update(repo, mir.remoteUrl, creds,
                                     onProgress = { p -> setRunning(name, RepoProgress(SyncKind.UPDATE, trigger, p)) },
-                                    isCancelled = { !ctx.isActive },
+                                    isCancelled = { !ctx.isActive || space.low() },
                                     includePullRefs = mir.includePullRefs ?: settings().mirrorPullRefs)
                             }
                         }
@@ -189,19 +215,50 @@ class SyncCoordinator(
                         val after = store.updateMirror(name) {
                             it.copy(lastCheckAt = now, lastCheckResult = SyncResult.SUCCESS, lastUpdateAt = now, lastSuccessUpdateAt = now,
                                 pendingChanges = 0, originStatus = OriginStatus.OK, lastError = null, consecutiveFailures = 0, nextRetryAt = null,
-                                waitingReason = WaitingReason.NONE, initialFetchDone = true)
+                                waitingReason = WaitingReason.NONE, initialFetchDone = true, waitingForForeground = false)
                         }.mirror!!
                         runCatching { store.refreshDerived(name) }
                         NotificationRules.decide(meta.name, mir, after, out.archivedRefCount,
                             out.refChanges.isNotEmpty() && settings().notifyOnSuccess && trigger != SyncTrigger.MANUAL).forEach(notifier::notify)
                         bulk?.onRepoStatus(name, BulkItemStatus.DONE, null)
                         ev
-                    } catch (f: SyncFailure) {
+                    } catch (e: CancellationException) { throw e
+                    } catch (e: Exception) {
+                        if (!ctx.isActive && !space.wasLow) {
+                            if (store.exists(name)) bulk?.onRepoStatus(name, BulkItemStatus.QUEUED, null)
+                            throw CancellationException("update cancelled")
+                        }
+                        val f = if (space.wasLow) SyncFailure(ErrorCategory.STORAGE_FULL, "남은 공간이 하한 아래로 내려가 받기를 멈췄습니다", e)
+                            else MirrorEngine.classify(e)
                         fail(meta, f, SyncKind.UPDATE, trigger, started)
                     }
                 }
             }
         } finally { clearRunning(name) }
+    }
+
+    /** GIT-08: first fetches deferred because the worker could not run in the foreground; call when the app is visible. */
+    fun resumeWaitingForForeground(scheduler: SyncScheduler) =
+        store.repos.value.filter { it.mirror?.waitingForForeground == true }.forEach { scheduler.enqueueUpdate(it.name, SyncTrigger.INITIAL) }
+
+    /**
+     * GIT-08: stops a transfer when free space drops below the floor (automatic) or 64 MB (any trigger), so a large
+     * fetch cannot fill the phone. StatFs is read at most every 2 s.
+     */
+    private inner class SpaceGuard(trigger: SyncTrigger) {
+        private val limit = if (trigger == SyncTrigger.MANUAL) MIN_FREE_BYTES else maxOf(MIN_FREE_BYTES, settings().storageFloorBytes)
+        private var checkedAt = 0L
+        @Volatile var wasLow = false; private set
+        fun low(): Boolean {
+            val now = System.currentTimeMillis()
+            if (!wasLow && now - checkedAt >= 2_000) { checkedAt = now; wasLow = env.freeBytes() < limit }
+            return wasLow
+        }
+    }
+
+    /** ARC-16 / AND-13: a token that can no longer be decrypted (Keystore reset) is "re-enter the token", not a crash. */
+    private fun provider(mir: MirrorSource) = try { credentials.provider(credentials.effective(mir)) } catch (e: Exception) {
+        throw SyncFailure(ErrorCategory.AUTH_REQUIRED, "저장된 토큰을 읽을 수 없습니다. 자격 증명에서 토큰을 다시 입력해 주세요 (${e.javaClass.simpleName})", e)
     }
 
     private fun fail(meta: RepoMeta, f: SyncFailure, kind: SyncKind, trigger: SyncTrigger, started: Long): SyncEvent {
@@ -234,6 +291,11 @@ class SyncCoordinator(
     private fun clearRunning(name: String) = _running.update { it - key(name) }
 
     fun isRunning(name: String) = _running.value.containsKey(key(name))
+
+    /** GIT-16: a running check must not swallow a manual update request; only a running update does. */
+    fun isUpdating(name: String) = _running.value[key(name)]?.kind == SyncKind.UPDATE
+
+    companion object { const val MIN_FREE_BYTES = 64L shl 20 }
 
     /** Blocking helper for Java/WorkManager callers. */
     fun updateBlocking(name: String, trigger: SyncTrigger) = runBlocking { update(name, trigger) }

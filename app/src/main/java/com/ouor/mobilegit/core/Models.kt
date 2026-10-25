@@ -38,6 +38,11 @@ data class MirrorSource(
     val initialFetchDone: Boolean = false,
     /** CR-2: mirror review refs (refs/pull/..., refs/merge-requests/...). null = follow [Settings.mirrorPullRefs]. */
     val includePullRefs: Boolean? = null,
+    /**
+     * GIT-08: the first fetch was not started because Android did not let the worker run in the foreground (app in
+     * background, Android 12+). It starts when the app is opened ([SyncCoordinator.resumeWaitingForForeground]).
+     */
+    val waitingForForeground: Boolean = false,
 )
 
 @Serializable

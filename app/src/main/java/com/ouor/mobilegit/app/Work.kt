@@ -38,7 +38,7 @@ class WorkScheduler(private val context: Context, private val settings: () -> Se
 
     override fun enqueueUpdate(name: String, trigger: SyncTrigger) {
         val c = core()
-        if (c.coordinator.isRunning(name)) return // F-09 AC2: one update per repo
+        if (c.coordinator.isUpdating(name)) return // F-09 AC2: one update per repo (a running check does not block it, GIT-16)
         val s = settings()
         val constraints = if (trigger == SyncTrigger.AUTO) Constraints.Builder()
             .setRequiredNetworkType(if (s.updateWifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED)
@@ -80,8 +80,12 @@ class WorkScheduler(private val context: Context, private val settings: () -> Se
 
     /** F-19: returns the work id; observe with WorkManager.getWorkInfoByIdFlow(id). Output key [ExportWorker.K_OUT_FILE]. */
     fun enqueueExport(kind: ExportKind, repos: List<String>, ref: String? = null, targetUri: Uri? = null): UUID {
+        // AND-10: WorkManager Data is limited to 10 KB, so a long selection goes through a file (empty list = all repos).
+        val listFile = if (repos.joinToString("\n").length > 4_000) File(File(context.filesDir, "state"), "export-${UUID.randomUUID()}.txt")
+            .apply { parentFile?.mkdirs(); writeText(repos.joinToString("\n")) } else null
         val req = OneTimeWorkRequestBuilder<ExportWorker>().setInputData(workDataOf(
-            ExportWorker.K_KIND to kind.name, ExportWorker.K_REPOS to repos.toTypedArray(), ExportWorker.K_REF to ref,
+            ExportWorker.K_KIND to kind.name, ExportWorker.K_REPOS to (if (listFile == null) repos.toTypedArray() else emptyArray()),
+            ExportWorker.K_REPOS_FILE to listFile?.absolutePath, ExportWorker.K_REF to ref,
             ExportWorker.K_URI to targetUri?.toString())).addTag(TAG_EXPORT).build()
         wm.enqueue(req)
         return req.id
@@ -107,9 +111,11 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         val name = inputData.getString(K_NAME) ?: return Result.failure()
         val trigger = SyncTrigger.valueOf(inputData.getString(K_TRIGGER) ?: SyncTrigger.AUTO.name)
         if (core.repos.get(name)?.mirror == null) return Result.success()
-        // Long transfers: try to run as a foreground job; Android 12+ may refuse when started from background.
-        runCatching { setForeground(progressInfo(applicationContext, name.hashCode(), "$name 받는 중", "업데이트")) }
-        core.coordinator.update(name, trigger)
+        // AND-05: become a foreground job only once a slot and the repo lock are ours (not while queued).
+        // Android 12+ may refuse when started from the background; the coordinator then defers a first fetch (GIT-08).
+        core.coordinator.update(name, trigger) {
+            runCatching { setForeground(progressInfo(applicationContext, name.hashCode(), "$name 받는 중", "업데이트")) }.isSuccess
+        }
         return Result.success()
     }
 
@@ -137,17 +143,32 @@ class PeriodicCheckWorker(context: Context, params: WorkerParameters) : Coroutin
     }
 }
 
-/** F-19 AC4/AC5: writes to an app cache file first, then copies to the SAF Uri; failures leave no partial file. */
+/**
+ * F-19 AC4/AC5: "save to file" streams into the SAF document (deleted again on failure); "share" writes
+ * `cacheDir/exports/<file>` via a `.part` file. Neither leaves a partial file behind.
+ */
 class ExportWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
-    companion object { const val K_KIND = "kind"; const val K_REPOS = "repos"; const val K_REF = "ref"; const val K_URI = "uri"; const val K_OUT_FILE = "file"; const val K_ERROR = "error" }
+    companion object {
+        const val K_KIND = "kind"; const val K_REPOS = "repos"; const val K_REPOS_FILE = "reposFile"; const val K_REF = "ref"; const val K_URI = "uri"
+        const val K_OUT_FILE = "file"; const val K_ERROR = "error"
+
+        /** AND-12: shared export files are kept a day (the receiving app may read late), then removed. */
+        fun sweepCache(context: Context, maxAgeMs: Long = 24 * 3_600_000L) {
+            val now = System.currentTimeMillis()
+            File(context.cacheDir, "exports").listFiles()?.forEach { if (it.name.endsWith(".part") || now - it.lastModified() > maxAgeMs) it.delete() }
+        }
+    }
 
     override suspend fun doWork(): Result {
         val core = MobileGitApp.core(applicationContext)
         val kind = ExportKind.valueOf(inputData.getString(K_KIND)!!)
-        val repos = inputData.getStringArray(K_REPOS)?.toList().orEmpty().ifEmpty { core.repos.repos.value.map { it.name } }
+        val listFile = inputData.getString(K_REPOS_FILE)?.let(::File)
+        val selected = listFile?.takeIf { it.isFile }?.readLines()?.filter { it.isNotBlank() } ?: inputData.getStringArray(K_REPOS)?.toList().orEmpty()
+        val repos = selected.ifEmpty { core.repos.repos.value.map { it.name } }
         val uri = inputData.getString(K_URI)?.let(Uri::parse)
         val nid = id.hashCode()
         runCatching { setForeground(progressInfo(applicationContext, nid, "내보내기", repos.joinToString(", ").take(60))) }
+        sweepCache(applicationContext)
         val dir = File(applicationContext.cacheDir, "exports").apply { mkdirs() }
         val now = System.currentTimeMillis()
         val fileName = when (kind) {
@@ -155,28 +176,36 @@ class ExportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             ExportKind.SOURCE_ZIP -> Exporter.suggestedFileName(repos.first(), "zip", now)
             ExportKind.FULL_BACKUP -> Exporter.suggestedFileName("", "backup", now)
         }
-        return try {
-            val file = Exporter.toFileAtomically(File(dir, fileName)) { out ->
-                when (kind) {
-                    ExportKind.BUNDLE -> core.exporter.writeBundle(repos.first(), out)
-                    ExportKind.SOURCE_ZIP -> core.exporter.writeSourceZip(repos.first(), inputData.getString(K_REF), out)
-                    ExportKind.FULL_BACKUP -> core.exporter.writeFullBackup(repos, out) { d, t ->
-                        setProgressAsync(workDataOf("done" to d, "total" to t))
-                    }
+        val write: (java.io.OutputStream) -> Unit = { out ->
+            when (kind) {
+                ExportKind.BUNDLE -> core.exporter.writeBundle(repos.first(), out)
+                ExportKind.SOURCE_ZIP -> core.exporter.writeSourceZip(repos.first(), inputData.getString(K_REF), out)
+                ExportKind.FULL_BACKUP -> core.exporter.writeFullBackup(repos, out) { d, t ->
+                    setProgressAsync(workDataOf("done" to d, "total" to t))
                 }
             }
+        }
+        return try {
             if (uri != null) {
+                // ARC-07: straight into the chosen document; no second full copy in the app cache
                 try {
-                    applicationContext.contentResolver.openOutputStream(uri, "wt")!!.use { o -> file.inputStream().use { it.copyTo(o) } }
+                    applicationContext.contentResolver.openOutputStream(uri, "wt")!!.buffered().use { o -> write(o) }
                 } catch (e: Exception) {
                     runCatching { DocumentsContract.deleteDocument(applicationContext.contentResolver, uri) }
                     throw e
-                } finally { file.delete() }
+                }
                 Result.success(workDataOf(K_OUT_FILE to null))
-            } else Result.success(workDataOf(K_OUT_FILE to file.absolutePath)) // share via FileProvider
+            } else {
+                // Share: needs a local file. Refuse up front when it would push free space under the floor (ARC-07).
+                val estimate = repos.sumOf { core.repos.get(it)?.sizeBytes ?: 0L }
+                if (core.env.freeBytes() - estimate < core.settings.current.storageFloorBytes)
+                    throw java.io.IOException("저장 공간이 부족해 공유용 파일을 만들 수 없습니다. 파일로 저장을 선택해 주세요.")
+                val file = Exporter.toFileAtomically(File(dir, fileName), write)
+                Result.success(workDataOf(K_OUT_FILE to file.absolutePath)) // share via FileProvider
+            }
         } catch (e: Exception) {
             Result.failure(Data.Builder().putString(K_ERROR, e.message ?: e.javaClass.simpleName).build())
-        }
+        } finally { listFile?.delete() }
     }
 
     override suspend fun getForegroundInfo() = progressInfo(applicationContext, id.hashCode(), "내보내기", "")

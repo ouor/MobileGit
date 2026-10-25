@@ -117,6 +117,7 @@ class Core(private val context: Context) {
     suspend fun refreshSizes() = withContext(Dispatchers.IO) { repos.repos.value.forEach { runCatching { repos.refreshDerived(it.name) } } }
 
     fun start() {
+        scope.launch(Dispatchers.IO) { ExportWorker.sweepCache(context) } // AND-12
         scheduler.schedulePeriodicCheck()
         scope.launch {
             settings.state.map { it.checkIntervalHours to it.checkWifiOnly }.distinctUntilChanged().drop(1).collect { scheduler.schedulePeriodicCheck() }
@@ -136,7 +137,11 @@ class MobileGitApp : Application() {
         core.start()
         // QA-02: a blocked background restart (e.g. after an app update) is retried as soon as the user opens the app.
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
-            override fun onActivityStarted(activity: android.app.Activity) = core.server.resumeIfBlocked()
+            override fun onActivityStarted(activity: android.app.Activity) {
+                core.server.resumeIfBlocked()
+                // GIT-08: first fetches that could not start in the background run now, as foreground work
+                core.coordinator.resumeWaitingForForeground(core.scheduler)
+            }
             override fun onActivityCreated(activity: android.app.Activity, savedInstanceState: android.os.Bundle?) {}
             override fun onActivityResumed(activity: android.app.Activity) {}
             override fun onActivityPaused(activity: android.app.Activity) {}

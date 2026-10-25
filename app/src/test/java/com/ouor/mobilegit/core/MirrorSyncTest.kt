@@ -1,6 +1,9 @@
 package com.ouor.mobilegit.core
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.take
@@ -381,5 +384,90 @@ class MirrorSyncTest {
         assertEquals(AddPreviewError.ALREADY_MIRRORED, again.errorKind)
         assertEquals("up", again.existing?.name)
         assertEquals(RepoException.Code.ALREADY_MIRRORED, (runCatching { mirrors.add(upUrl, "up2") }.exceptionOrNull() as RepoException).code)
+    }
+
+    // ---- code review round 1 ----
+
+    @Test fun cancellationIsNotRecordedAsFailure() = runBlocking {
+        val meta = mirrors.add(upUrl, "up")
+        val d = async(Dispatchers.IO) { coordinator.update(meta.name, SyncTrigger.INITIAL) { currentCoroutineContext().cancel(); true } }
+        try { d.await(); error("expected cancellation") } catch (_: CancellationException) {}
+        val m = store.require("up").mirror!!
+        assertTrue(store.events("up").isEmpty()) // AND-04: no FAILED entry
+        assertEquals(0, m.consecutiveFailures); assertNull(m.lastError); assertNull(m.nextRetryAt)
+        assertTrue(notices.isEmpty())
+        assertFalse(coordinator.isRunning("up"))
+    }
+
+    @Test fun lowSpaceDuringFetchStopsWithStorageFull() {
+        val meta = mirrors.add(upUrl, "up")
+        val ev = runBlocking { coordinator.update(meta.name, SyncTrigger.MANUAL) { env.free = 1; true } }
+        assertEquals(SyncResult.FAILED, ev.result)
+        assertEquals(ErrorCategory.STORAGE_FULL, ev.errorCategory)
+        assertTrue(myRefs().isEmpty())
+    }
+
+    @Test fun firstFetchWaitsForForeground() {
+        val meta = mirrors.add(upUrl, "up"); enqueued.clear()
+        val ev = runBlocking { coordinator.update(meta.name, SyncTrigger.BULK) { false } }
+        assertEquals(SyncResult.WAITING, ev.result)
+        assertTrue(store.require("up").mirror!!.waitingForForeground)
+        assertTrue(myRefs().isEmpty())
+        val sched = object : SyncScheduler {
+            override fun enqueueUpdate(name: String, trigger: SyncTrigger) { enqueued += name to trigger }
+            override fun enqueueCheckNow(name: String) {}
+            override fun cancel(name: String) {}
+        }
+        coordinator.resumeWaitingForForeground(sched)
+        assertEquals(listOf("up" to SyncTrigger.INITIAL), enqueued)
+        runBlocking { coordinator.update("up", SyncTrigger.INITIAL) }
+        assertFalse(store.require("up").mirror!!.waitingForForeground)
+        // an incremental update still runs without the foreground (only first fetches are deferred)
+        assertEquals(SyncResult.NO_CHANGE, runBlocking { coordinator.update("up", SyncTrigger.AUTO) { false } }.result)
+    }
+
+    @Test fun convertWhileWaitingForLockIsNotACrash() = runBlocking {
+        addAndFetch()
+        val d = store.withRepoLock("up") {
+            val d = async(Dispatchers.IO) { coordinator.update("up", SyncTrigger.MANUAL) }
+            delay(300)
+            store.update("up") { it.copy(type = RepoType.LOCAL, mirror = null) }
+            d
+        }
+        assertEquals(SyncResult.NO_CHANGE, d.await().result) // GIT-16: no NPE
+    }
+
+    @Test fun unreadableTokenIsAuthRequired() {
+        val meta = mirrors.add(upUrl, "up")
+        val broken = CredentialStore(File(tempDir(), "c.json"), object : SecretCipher {
+            override fun encrypt(plain: String) = "x"
+            override fun decrypt(cipherText: String): String = throw javax.crypto.AEADBadTagException("key gone")
+        }, clock)
+        broken.add("127.0.0.1", "tok")
+        val c2 = SyncCoordinator(store, MirrorEngine(clock), broken, { settings.current }, env, { notices += it }, bulk, clock)
+        val ev = runBlocking { c2.update(meta.name, SyncTrigger.INITIAL) }
+        assertEquals(ErrorCategory.AUTH_REQUIRED, ev.errorCategory) // AND-11 / ARC-16: recorded, not a worker crash
+        assertEquals(1, store.events("up").size)
+    }
+
+    @Test fun archiveStampsDoNotCollideWithinOneSecond() {
+        addAndFetch()
+        val feat0 = myRefs()["refs/heads/feat"]
+        work.checkout().setName("feat").call()
+        Commits.commit(work, "x.txt", "1")
+        pushUpstream("up", "+refs/heads/feat:refs/heads/feat")
+        runBlocking { coordinator.update("up", SyncTrigger.MANUAL) }
+        work.reset().setMode(org.eclipse.jgit.api.ResetCommand.ResetType.HARD).setRef(feat0).call()
+        pushUpstream("up", "+refs/heads/feat:refs/heads/feat") // rewrite 1 (same clock second)
+        runBlocking { coordinator.update("up", SyncTrigger.MANUAL) }
+        Commits.commit(work, "y.txt", "2")
+        pushUpstream("up", "+refs/heads/feat:refs/heads/feat")
+        runBlocking { coordinator.update("up", SyncTrigger.MANUAL) }
+        work.reset().setMode(org.eclipse.jgit.api.ResetCommand.ResetType.HARD).setRef(feat0).call()
+        pushUpstream("up", "+refs/heads/feat:refs/heads/feat") // rewrite 2, same second
+        val ev = runBlocking { coordinator.update("up", SyncTrigger.MANUAL) }
+        assertEquals(SyncResult.SUCCESS, ev.result)
+        val stamps = myRefs().keys.filter { it.startsWith("refs/archive/") }.map { it.split('/')[2] }.toSet()
+        assertEquals(2, stamps.size)
     }
 }

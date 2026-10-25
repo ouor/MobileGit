@@ -108,10 +108,14 @@ class MirrorEngine(private val clock: Clock = SystemClock, private val timeoutSe
 
     private fun applyRefs(repo: Repository, remote: Map<String, ObjectId>, remoteHead: String?): UpdateOutcome {
         val local = localMirrorRefs(repo)
-        val stamp = archiveStamp(clock.now())
+        // GIT-12: two updates in the same second must not collide on the archive ref name (LOCK_FAILURE)
+        val base = archiveStamp(clock.now())
+        val stamp = generateSequence(1) { it + 1 }.map { if (it == 1) base else "$base-$it" }
+            .first { repo.refDatabase.getRefsByPrefix("${RepoStore.ARCHIVE_PREFIX}$it/").isEmpty() }
         val batch = repo.refDatabase.newBatchUpdate().setAtomic(true).setAllowNonFastForwards(true)
         val changes = mutableListOf<RefChange>()
         RevWalk(repo).use { rw ->
+            rw.isRetainBody = false // GIT-02: FF checks only need the commit graph
             for (name in (local.keys + remote.keys).sorted()) {
                 val old = local[name]
                 val new = remote[name]
@@ -134,7 +138,7 @@ class MirrorEngine(private val clock: Clock = SystemClock, private val timeoutSe
             val cur = repo.exactRef(Constants.HEAD)?.target?.name
             if (cur != remoteHead) repo.updateRef(Constants.HEAD).link(remoteHead)
         }
-        val newCommits = countNewCommits(repo, local.values, remote.values)
+        val newCommits = countNewCommits(repo, local.filterKeys { !isReviewRef(it) }.values, remote.filterKeys { !isReviewRef(it) }.values)
         return UpdateOutcome(changes, newCommits, changes.count { it.archivedAs != null })
     }
 
@@ -146,12 +150,19 @@ class MirrorEngine(private val clock: Clock = SystemClock, private val timeoutSe
         } catch (_: IOException) { false } finally { rw.reset() }
     }
 
+    /**
+     * GIT-02: bodies are not kept and the walk stops at [MAX_COUNTED_COMMITS] (shown as "N+" by the UI), so the first
+     * fetch of a huge history does not hold every commit in memory. Review refs are not counted.
+     */
     private fun countNewCommits(repo: Repository, oldTips: Collection<ObjectId>, newTips: Collection<ObjectId>): Int =
         RevWalk(repo).use { rw ->
+            rw.isRetainBody = false
             fun peel(id: ObjectId) = runCatching { rw.peel(rw.parseAny(id)) as? RevCommit }.getOrNull()
             newTips.mapNotNull(::peel).forEach(rw::markStart)
             oldTips.mapNotNull(::peel).forEach(rw::markUninteresting)
-            rw.count()
+            var n = 0
+            while (n < MAX_COUNTED_COMMITS && rw.next() != null) n++
+            n
         }
 
     private fun lsRemote(url: String, creds: CredentialsProvider?): Map<String, Ref> {
@@ -185,6 +196,9 @@ class MirrorEngine(private val clock: Clock = SystemClock, private val timeoutSe
     }
 
     companion object {
+        /** Upper bound of [UpdateOutcome.newCommitCount]; the real number may be larger. */
+        const val MAX_COUNTED_COMMITS = 10_000
+
         /** Everything the remote advertises except HEAD (handled as a symref) and our own archive namespace. */
         fun isMirrorable(name: String) = name.startsWith("refs/") && !name.startsWith(RepoStore.ARCHIVE_PREFIX) && !name.endsWith("^{}")
 
