@@ -55,7 +55,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 - `ServerAddress.cloneUrl(repo)`는 `<baseUrl>/<repo>.git`을 돌려준다.
 
 ### F-03 HTTP Basic 인증
-- 설정 필드: `authEnabled`(기본 true), `username`(기본 `git`), `anonymousReadOnLan`, 그리고 파생값 `effectiveAuthEnabled = authEnabled || ngrokEnabled`.
+- 설정 필드: `authEnabled`(기본 true), `username`(기본 `git`), `anonymousReadOnLan`, 그리고 파생값 `effectiveAuthEnabled`(2차부터 `= authEnabled`, 8절 R2-06). 세 단계 표현은 `Settings.authLevel`/`withAuthLevel`(8절 R2ARC-02).
 - 계정 변경:
   - `settings.setUsername(name)`: `SettingsException` 발생 가능.
   - `settings.setPassword(pw)`: 8자 미만이면 `SettingsException`.
@@ -276,23 +276,23 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 | 503 | `BUSY`: tree/blob/readme/commits는 동시에 2개까지 처리하고 10초 안에 자리가 안 나면 이 응답(GIT-09). 잠시 뒤 다시 시도 |
 | 500 | `INTERNAL`. message는 `서버 오류가 발생했습니다 (오류 ID xxxxxxxx)`뿐이고 상세는 앱 로그에만(SEC-10) |
 
-- 익명 읽기(`anonymousRead`)는 설정값이다. 실제로는 사설망·링크로컬·ULA·Tailscale에서 Host가 IP·`localhost`·점 없는 이름·`.local`·`.ts.net`인 요청, 그리고 ngrok 경로(2차 R2-06)만 익명으로 통과한다. 루프백과 그 밖의 Host는 익명 설정이어도 401(SEC-03)
+- 익명 읽기(`anonymousRead`)는 설정값이다. 실제로는 사설망·링크로컬·ULA·Tailscale에서 Host가 IP·`localhost`·점 없는 이름·`.local`·`.ts.net`인 요청, 그리고 ngrok 경로(2차 R2-06)만 익명으로 통과한다. ngrok 경로란 ngrok이 켜져 있고 터널이 연결된 동안 ngrok 전용 루프백 포트로 들어온 요청이다. 그 밖의 경우 그 포트는 보통 루프백과 같다(R2SEC-01) 루프백과 그 밖의 Host는 익명 설정이어도 401(SEC-03)
 - 쿼리: `ref`는 브랜치, 태그, 커밋 SHA. 생략하면 기본 브랜치. `path`는 `/`로 구분하며 `..`은 거부한다.
 
 | 메서드/경로 | 응답 |
 |---|---|
 | `GET /api/v1/info` | `{"app":"mobilegit","version":"0.1.0","baseUrl":"http://192.168.31.120:8080","authRequired":true,"anonymousRead":false}` |
 | `GET /api/v1/overview` | `RepoOverview`(8절 CR-11). 앱 메인 요약과 같은 숫자 |
-| `GET /api/v1/repos` | `RepoSummaryDto[]`. 2차부터 `needsAttention`, `issue`, `includePullRefs` 포함(8절 WR-6) |
+| `GET /api/v1/repos` | `RepoSummaryDto[]`. 2차부터 `needsAttention`, `issue`, `severity`, `includePullRefs` 포함(8절 WR-6, CR-11). `lastActivityAt`은 앱 목록과 같은 값(R2ARC-03) |
 | `GET /api/v1/repos/{name}` | `RepoDetailDto` |
 | `GET /api/v1/repos/{name}/tree?ref=&path=` | `TreeDto` |
 | `GET /api/v1/repos/{name}/blob?ref=&path=` | `BlobDto` (텍스트는 1MB까지) |
 | `GET /api/v1/repos/{name}/raw?ref=&path=[&download=1]` | 파일 바이트. 정확한 `Content-Length`, chunked 아님, 압축 안 함. 이미지(png, jpg/jpeg, gif, webp, avif, bmp, ico, svg)는 해당 `image/*` 타입 + `Content-Disposition: inline`이라 `<img src>`에 바로 쓸 수 있다(QA-14). 그 밖의 파일(HTML, 텍스트 포함)은 `application/octet-stream` + `attachment`. `download=1`이면 이미지도 attachment. 모든 raw 응답에 `X-Content-Type-Options: nosniff`와 `Content-Security-Policy: default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox`가 붙어, SVG를 직접 열어도 안의 스크립트가 실행되지 않는다. 다운로드 버튼은 `download=1`을 붙이거나 `<a download>`를 쓴다 |
 | `GET /api/v1/repos/{name}/readme?ref=&path=` | `ReadmeDto`. path가 디렉터리면 그 안의 README(없으면 404 `README_NOT_FOUND`). path가 `.md`/`.markdown` 파일이면 그 파일을 같은 렌더러로(WR-5). 그 밖의 파일(이진, LFS 포인터 포함)은 400 `NOT_MARKDOWN`, 1MB 초과는 400 `TOO_LARGE` |
-| `GET /api/v1/repos/{name}/archives` | `ArchivesDto` (R2-03, 8절). 동시 처리 제한(503 `BUSY`) 대상 |
+| `GET /api/v1/repos/{name}/archives` | `ArchivesDto` (R2-03, 8절). 최신 500개까지, 넘으면 `truncated: true`. 동시 처리 제한(503 `BUSY`) 대상 |
 | `GET /api/v1/repos/{name}/commits?ref=&path=&page=1&perPage=50` | `CommitPageDto`. perPage는 1~100으로 맞춰짐. page는 1000까지(넘으면 400 `PAGE_TOO_DEEP`). 한 요청은 커밋을 20만 개까지만 훑는다. 그 안에서 페이지를 다 못 채우고 멈추면 `truncated: true`, `hasMore: false`(GIT-09, SEC-11) |
 
-응답 예시(실기기에서 받은 형태):
+응답 예시(실기기에서 받은 1차 형태. 2차에 더해진 필드는 8절):
 
 ```json
 // GET /api/v1/repos
@@ -309,7 +309,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 {"ref":"main","commit":{CommitDto},"path":"src",
  "entries":[{"name":"lib","path":"src/lib","type":"dir","size":null,"mode":"40000"},
             {"name":"a.kt","path":"src/a.kt","type":"file","size":120,"mode":"100644"}]}
-// 각 항목에 "lfs": true|false (WR-7): 파일이 Git LFS 포인터(첫 줄 `version https://git-lfs.github.com/spec/v1`)면 true. 200바이트 이하 파일만 읽어 판정한다.
+// 각 항목에 "lfs": true|false (WR-7): 파일이 Git LFS 포인터(첫 줄 `version https://git-lfs.github.com/spec/v1`)면 true. 100~200바이트 파일만, 디렉터리당 1,000개까지 읽어 판정한다(R2GIT-07, R2SEC-05). 나머지는 false.
 // type: "dir" | "file" | "submodule" | "symlink". 순서는 디렉터리 먼저, 그다음 이름순(대소문자 무시). 웹은 받은 순서 그대로 보여 준다.
 
 // GET /api/v1/repos/demo/blob?path=README.md
@@ -439,25 +439,27 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 진행 기록: `progress.md` 11절. 코드 커밋 `f2af10d`.
 
 ### R2-01 목록의 주의 상태
-- `Badge.HISTORY_CHANGED`: 업데이트가 ref를 보존(F-11)하면 붙는다. 로컬로 분리된 레포에도 남는다. 저장 위치는 `RepoMeta.historyChangedAt: Long?`이라 앱을 다시 켜도 유지된다.
-- 지우기: 보존 기록 화면(A-15)을 열 때 `core.repos.markHistorySeen(name)`.
+- `Badge.HISTORY_CHANGED`: 업데이트가 ref를 보존(F-11)하면 붙는다. 로컬로 분리된 레포에도 남는다. 판정은 `RepoMeta.historyUnseen`(= `lastArchivedAt > historySeenAt`)이고 meta.json에 저장돼 앱을 다시 켜도 유지된다(R2ARC-01).
+  - `RepoMeta.lastArchivedAt: Long?`: 마지막으로 ref를 보존한 시각. 지워지지 않는다. 상세의 "마지막 보존 HH:mm"에 쓴다. 2차 빌드가 쓴 `historyChangedAt`은 이 값으로 읽는다.
+  - `RepoMeta.historySeenAt: Long?`: 보존 기록 화면을 연 시각.
+- 지우기: 보존 기록 화면(A-15)을 열 때, 목록을 읽기 **전에** `core.repos.markHistorySeen(name)`(기본 seenAt = 지금). 그 뒤에 끝난 보존은 배지가 남는다(R2GIT-08).
 - "주의 필요" = `Badges.problem` = `FAILED`, `ORIGIN_GONE`, `AUTH_REQUIRED`, `DELAYED`, `HISTORY_CHANGED`. 필터 값은 그대로 `RepoFilter.PROBLEM`이다(화면 이름만 "주의 필요"). `RepoListItem.needsAttention`.
 - 행 둘째 줄: `RepoListItem.issue: RepoIssue?`. null이면 지금처럼 "업데이트 N분 전". `RepoIssue(badge, since, category)`. 우선순위는 원본 없음 → 토큰 확인 필요 → 실패 → 지연 → 히스토리 바뀜.
   - 실패류의 `since`는 `MirrorSource.failingSince`(이번 연속 실패의 시작, "3일째"). 2차 이전에 시작된 실패는 null이라 기간 없이 보여 준다.
-  - `DELAYED`의 `since`는 마지막 확인 시각("6시간 주기인데 2일째 확인 못 함"). `HISTORY_CHANGED`는 보존 시각.
+  - `DELAYED`의 `since`는 마지막 확인 시각("6시간 주기인데 2일째 확인 못 함"). `HISTORY_CHANGED`는 `lastArchivedAt`.
 - 정렬 `RepoSort.RECENT`는 주의 필요 레포를 맨 위에 둔다.
 
 ### R2-02 메인 요약
-- `core.overview: Flow<RepoOverview>`(1분마다 다시 계산). `RepoOverview(mirrors, healthy, attention, locals, lastCheckAt, checksStalled)`.
+- `core.overview: Flow<RepoOverview>`(1분마다 다시 계산, `repoItems`와 같은 계산 결과에서 나옴). `RepoOverview(mirrors, healthy, attention, locals, lastCheckAt, checksStalled, errors, warnings)`.
   - `attention`: 주의 필요 레포 수(필터와 같음, 로컬 포함). `healthy`: 주의가 없는 미러 수.
   - `lastCheckAt`: 모든 미러 중 원본에 마지막으로 성공적으로 닿은 시각(`MirrorSource.lastOkAt`). 미러가 없으면 null.
-  - `checksStalled`: 그 시각(없으면 가장 오래된 미러의 추가 시각)이 확인 주기의 3배보다 오래됐다 → "백그라운드 확인이 멈춘 것 같아요".
+  - `checksStalled`: 주기 확인 작업이 확인 주기의 3배보다 오래 돌지 않았다 → "백그라운드 확인이 멈춘 것 같아요". 기준은 아래 CR-11.
 - 새 필드 `MirrorSource.lastSuccessCheckAt`(확인·업데이트 성공 시각). `lastCheckAt`은 실패해도 움직인다.
 - "서버를 꺼도 …" 안내를 닫은 상태: `Settings.serverOffHintDismissed`. 닫기: `settings.update { it.copy(serverOffHintDismissed = true) }`.
 
 ### R2-03 보존 기록
 - 앱: `core.ops.archives(name): List<ArchiveEntryDto>`(디스크 읽기, IO에서). 화면을 열면 `repos.markHistorySeen(name)`도 부른다.
-- 웹: `GET /api/v1/repos/{name}/archives` → `{"entries":[ArchiveEntryDto…]}`.
+- 웹: `GET /api/v1/repos/{name}/archives` → `{"entries":[ArchiveEntryDto…],"truncated":false}`. 최신 500개(`RepoBrowser.MAX_ARCHIVES`)까지만 읽고 주며, 더 있으면 `truncated: true`(R2SEC-05). 앱 `ops.archives`도 같은 500개다.
 - `ArchiveEntryDto(at, group, kind, ref, name, archiveRef, sha, shortSha, summary, committedAt, currentSha)`. 최신 묶음이 처음, 묶음 안은 ref 이름순.
   - `group`: 한 번의 업데이트가 보존한 묶음 이름(`20261025T101010Z`, 같은 초면 `…Z-2`). `at`은 그 시각(epoch ms, 초 단위).
   - `kind: RefChangeKind?`: `FORCED`(히스토리 바뀜), `DELETED`(브랜치 삭제됨), `TAG_MOVED`, `TAG_DELETED`. **null이면 "강제 push 또는 삭제"**(2차 이전 보존이고 이력에서도 사라진 경우).
@@ -465,15 +467,18 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
   - `currentSha`: 지금 이 레포에서 그 ref의 값(마지막 업데이트 기준 원본 값). null = "원본에 없음".
 - 받는 명령은 그대로 `git fetch <URL> 'refs/archive/*:refs/archive/*'`.
 - AC6(이력 → A-15 묶음): `RefChange.archivedAs`가 `refs/archive/<group>/…`이므로 그 `group`으로 찾는다.
-- 종류 저장: 업데이트마다 `mobilegit/archives.json`에 보존 ref별 변경을 남긴다(이력 200개 한도와 무관). 2차 이전 보존은 남은 이력에서 찾는다.
+- 종류 저장: 업데이트마다 `mobilegit/archives.json`에 보존 ref별 변경을 남긴다(이력 200개 한도와 무관). 2차 이전 보존은 레포마다 한 번 이력에서 `archives.json`으로 옮기고(`archives.migrated` 표시 파일), 그 뒤로는 `archives.json`만 읽는다(R2GIT-10).
 
 ### R2-04 변화 종류
-- `RefChange.kind: RefChangeKind`(파생 속성이라 예전 이력에도 나옴): `FAST_FORWARD`(새 커밋), `FORCED`(히스토리 바뀜), `CREATED`(새 브랜치·태그), `DELETED`(브랜치 삭제됨), `TAG_MOVED`, `TAG_DELETED`.
-- PR ref(`refs/pull/…`)는 보존하지 않으므로 움직이면 항상 `FAST_FORWARD`로 나온다.
+- `RefChange.kind: RefChangeKind`(파생 속성이라 예전 이력에도 나옴): `FAST_FORWARD`(새 커밋), `FORCED`(히스토리 바뀜), `CREATED`(새 브랜치·태그), `DELETED`(브랜치 삭제됨), `TAG_MOVED`, `TAG_DELETED`, `REVIEW`.
+- PR ref(`refs/pull/…`, `refs/merge-requests/…`)는 생기거나 움직이거나 사라지면 항상 `REVIEW`("PR 브랜치 변경")다. 보존하지 않는다(R2GIT-05).
 - 실패 제목은 기존 `SyncEvent.errorCategory`.
 
 ### R2-05 AC4 / D-8 재부팅·업데이트 뒤 ngrok
-- `BootReceiver`(부팅 완료, 앱 업데이트)는 ngrok이 켜져 있었으면 `ngrokEnabled = false`로 바꾸고 `core.server.ngrokOffAfterRestart`(`MutableStateFlow<Boolean>`)를 true로 둔다. 서버 알림에 "외부 공개는 꺼진 채로 다시 시작했어요"가 나온다. ngrok을 다시 켜거나 `core.server.ackNgrokOff()`를 부르면 사라진다. 프로세스가 끝나도 사라진다.
+- 판정은 프로세스가 뜰 때마다 `Core.start()`에서 한다(R2SEC-02, R2AND-05). 저장된 부팅 횟수나 앱 `versionCode`(`Settings.lastStartBootCount`/`lastStartVersionCode`)가 바뀌었으면 서버를 복원하기 **전에** `ngrokEnabled = false`로 바꾸고 바로 디스크에 쓴다. `BootReceiver`는 서버 자동 시작만 한다.
+- ngrok이 켜져 있다가 꺼졌으면 두 플래그가 켜진다(메모리, 프로세스가 끝나면 사라짐):
+  - `core.server.ngrokOffAfterRestart: MutableStateFlow<Boolean>`: 앱 배너용. `core.server.ackNgrokOff()`(배너 닫기)나 ngrok 다시 켜기로 꺼진다.
+  - 서버 알림의 "외부 공개는 꺼진 채로 다시 시작했어요" 줄(QA2-04): 배너와 따로, 그 서버 실행 동안 남는다.
 - 같은 부팅 안의 프로세스 재시작(START_STICKY)은 ngrok을 그대로 둔다.
 - 부팅 후 서버 자동 시작은 새 설치 기본 켜짐(`startOnBoot = true`, CR-6). 기존 설치는 저장값을 유지한다.
 
@@ -484,6 +489,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
   - 끄기(`authEnabled = false`): ngrok으로도 모두 익명(push 포함).
 - `Settings.effectiveAuthEnabled`/`effectiveAnonymousRead`는 이제 저장값 그대로다(ngrok과 무관).
 - `Settings.exposedWithoutPassword`: ngrok 켜짐 + "push만" 또는 "끄기". 위험 배너·경고 표시용.
+- 실제로 익명이 되는 것은 ngrok이 켜져 있고 **터널이 연결된 동안**뿐이다. 그 밖에는 ngrok 포트도 루프백처럼 비밀번호를 묻는다(R2SEC-01).
 - 접속 기록 경로는 지금처럼 `NGROK`. 실패 한도(IP별, ngrok 전체 분당 30회)는 그대로.
 - `/api/v1/info`의 `authRequired`, `anonymousRead`는 저장값이다.
 
@@ -496,7 +502,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 - 예: `{"name":"x",…,"needsAttention":true,"issue":{"badge":"FAILED","since":1792886934344,"category":"NETWORK"},"includePullRefs":false}`
 
 ### CR-11 확인이 멈춘 동안의 지연, 오류·주의 구분
-- `RepoQuery.checksStalled(repos, settings, now)`: 모든 미러 가운데 가장 최근의 확인 **시도**(실패 포함, `lastCheckAt`, 없으면 추가 시각)가 주기의 3배보다 오래됐다. `RepoOverview.checksStalled`도 이 값이다(이전에는 마지막 성공 기준이라 원본이 모두 실패하는 동안에도 "멈춤"이 됐다).
+- `RepoQuery.checksStalled(repos, settings, now)`: 미러가 있고, 주기 확인 작업이 마지막으로 돈 시각(`Settings.lastPeriodicCheckAt`, `PeriodicCheckWorker`가 기록)이 주기의 3배보다 오래됐다. 수동 확인이나 새 미러로는 풀리지 않는다(R2GIT-04). 작업이 아직 한 번도 기록하지 않았으면(이전 데이터) 모든 미러 가운데 가장 최근의 확인 시도(`lastCheckAt`, 없으면 추가 시각)를 쓴다. `RepoOverview.checksStalled`도 이 값이다.
 - 멈춘 동안에는 `DELAYED` 배지를 레포에 붙이지 않는다(`Badges.of(..., checksStalled)`). 그래서 `needsAttention`, `issue`, `RepoFilter.PROBLEM`, 최근 활동순 정렬, `overview`의 개수, 웹 `needsAttention`·`issue`가 모두 지연을 빼고 센다. 멈춤은 요약의 `checksStalled` 하나로 알린다. 일부 미러만 늦으면 지금처럼 그 레포의 지연이다.
 - 심각도: `Severity { ERROR, WARNING }`. 오류 = `FAILED`·`ORIGIN_GONE`·`AUTH_REQUIRED`(`Badges.errors`), 주의 = `DELAYED`·`HISTORY_CHANGED`. `RepoListItem.severity`, `RepoIssue.severity`(행 사유의 배지 기준).
 - `RepoOverview`에 `errors`, `warnings` 추가. `attention = errors + warnings` = "주의 필요" 필터에 드는 레포 수(로컬 포함). `healthy`는 문제가 없는 미러 수.
@@ -513,6 +519,20 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 - 접속 기록 `AccessRoute.USB_TETHER`.
 - 실기기에서 USB 테더링을 켜서 확인하지는 않았다(인터페이스 이름은 기기마다 다를 수 있음).
 
+### 2차 코드 리뷰 반영 (`docs/code-review/round2/`, 진행 기록 `progress.md` 13절)
+- 실패 분류(R2GIT-01): JGit이 만든 고정 문구만 보고, 문구의 **시작**에 맞춘다(`not authorized`, `authentication is required`, `authentication not supported`, `git-… not permitted on`, 상태 `401`/`403`/`404`). 원격이 보낸 본문(`invalid advertisement of <html>…`)과 URL(`…/timeout-utils.git`)은 판정에 쓰지 않는다. `invalid advertisement of`(공용 Wi-Fi 로그인 페이지 등)와 `Redirection blocked`는 `NETWORK`. 429·503·410·500은 `REMOTE_ERROR`.
+- 원본 상태 전이:
+  - 확인 성공(R2GIT-02): `originStatus = OK`, `lastSuccessCheckAt` 갱신. 다만 마지막 업데이트가 원본 문제가 아닌 이유(네트워크, 시간 초과, 저장 공간, 원격 오류)로 실패했고 받을 변경이 남아 있으면 `lastError`, `failingSince`, `consecutiveFailures`를 그대로 둔다. 그래서 "N일째"가 이어지고 복구·실패 알림이 번갈아 오지 않는다.
+  - 원본에 닿지 못한 실패(`NETWORK`, `TIMEOUT`, R2GIT-03): 확인된 `GONE`/`AUTH_REQUIRED`와 그 `lastError`를 유지한다(알림 없음). 이력 항목에는 실제 분류가 남는다. `REMOTE_ERROR`만 `GONE`/`AUTH_REQUIRED`를 `UNKNOWN`으로 낮춘다.
+- 업데이트 저장 순서(R2GIT-06): ref 적용 → meta 한 번 쓰기(`lastArchivedAt`, 미러 상태) → 이력·`archives.json`(실패해도 무시). 새 커밋 수 계산이 실패하면 0.
+- 비밀번호 요구 3단계(R2ARC-02): `Settings.authLevel`(0 = 읽기·쓰기, 1 = push만, 2 = 끄기), `Settings.withAuthLevel(level)`, `Settings.becomesExposed(next)` = 바꾼 뒤가 처음으로 `exposedWithoutPassword`가 되는가(R2-06 경고를 띄울 조건, 두 순서 모두).
+- 익명 인터넷 사용자가 보는 범위(R2SEC-04, 문구는 UI): "push만"·"끄기" + ngrok 연결 중이면 clone과 웹 화면 외에 보존 기록 목록(`/archives`, 강제 push로 지워진 커밋 포함, `refs/archive/*`로 받기 가능), 원본 주소(`originUrl`), 상태(`issue`, `severity`), `/overview` 집계가 보인다. "끄기"면 push로 **새 레포를 만들 수 있다**(저장 공간을 채울 수 있음).
+- 서버 상태 알림(R2SEC-03): 터널 연결 중이고 `exposedWithoutPassword`면 제목 "mobilegit 서버 (비밀번호 없이 외부 공개 중)"(`server_notif_title_public_no_password`). 잠금 화면용 공개 버전은 제목만 있고 주소가 없다(잠금 화면 설정이 "민감한 내용 숨기기"일 때 적용).
+- 내보내기(R2ARC-05, R2AND-04): "파일로 저장"이 끝나면 워커 출력에 `ExportWorker.K_SAVED_NAME`(표시 이름)과 `K_SAVED_FOLDER`(폴더 이름, 모르면 null)를 담는다. 워커 스레드에서 한 번 조회한 값이고 알림과 같다. 앱 스낵바는 이것을 읽으면 된다(ContentResolver 조회 불필요).
+- 알림 ID(R2AND-01): 진행 알림 `0x10000..0x1FFFF`, 저장 완료 알림 `0x20000..0x2FFFF`(`Notifier.progressId`, `Notifier.savedId`, 하위 16비트 마스크).
+- `core.repoItems`와 `core.overview`는 같은 계산 결과를 공유한다(R2AND-13, `Dispatchers.Default`, 구독이 없으면 5초 뒤 멈춤).
+
 ### UI 코드에 넣은 것 (빌드 유지용)
 - `ui/Format.kt`: 새 enum 값 때문에 `when`이 깨지지 않도록 `Badge.HISTORY_CHANGED`(경고 톤, History 아이콘, "히스토리 바뀜"), `AddressKind.USB_TETHER`·`AccessRoute.USB_TETHER`("USB 테더링") 분기와 `badgeOrder` 위치만 넣었다. 모양은 UI가 바꿔도 된다.
-- 문자열: `badge_history_changed`, `route_usb_tether`, `server_notif_ngrok_off_after_restart`.
+- 문자열: `badge_history_changed`, `route_usb_tether`, `server_notif_ngrok_off_after_restart`, `change_review`, `server_notif_title_public_no_password`.
+- 2차 코드 리뷰: `RefChangeKind.REVIEW`의 `label`/`tone` 분기("PR 브랜치 변경", 중립 톤), `RepoDetailScreen`의 `historyChangedAt` → `lastArchivedAt` 한 곳.

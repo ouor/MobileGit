@@ -260,3 +260,36 @@ JVM 테스트 78개 통과(신규 `StorageTest` 12개 포함). 실기기 `OnDevi
 | QA2-04 재시작 안내가 상태 알림에 없음 | 업데이트 직후에는 백그라운드 서버 시작이 막혀 보이는 상태 알림이 "서버가 꺼져 있어요"였고, 서버 알림의 안내는 앱 안 배너를 닫으면(`ackNgrokOff`) 같이 사라졌다 | 알림용 플래그를 배너와 분리(`ngrokOffNotice`). "서버가 꺼져 있어요" 알림 본문에 한 줄 추가, 서버가 켜지면 서버 알림에 그 실행 동안 표시(ngrok을 켜면 사라짐) | 빌드. 실기기 재현(ngrok 켜고 `install -r`)은 설정에 가짜 토큰이 남아 하지 않음, QA 재확인 필요 |
 
 - 실기기: 7절 절차로 백업 후 `installDebug`. 레포 15개 유지, 서버 8080 수신, 크래시 없음. JVM 테스트 81개 통과.
+
+## 13. 2차 코드 리뷰 반영 (`docs/code-review/round2/`)
+
+| ID | 결과 |
+|---|---|
+| R2SEC-01 / R2GIT-09 | 고침. ngrok 포트 요청을 "ngrok 경로"로 보는 조건을 `ngrokEnabled && 터널 Connected`로 좁힘(`GitServer(tunnelConnected = …)`). 그 밖에는 보통 루프백(익명 없음, 클라이언트 IP = 실제 주소). 회귀 테스트: ngrok 꺼짐·켜짐+미연결에서 ngrok 포트 익명 401, 연결되면 200 |
+| R2ARC-07 | 고침. `Authenticator.decide`의 `anonymousOk`는 필수 인자. `effective*` 속성 정리는 나중(호출부가 많고 동작 차이 없음) |
+| R2ARC-01 / R2AND-03 | 고침. `RepoMeta.lastArchivedAt`(지우지 않음, 2차의 `historyChangedAt`을 `@JsonNames`로 읽음) + `historySeenAt`, 배지 = `historyUnseen`. 상세의 마지막 보존 시각이 유지됨 |
+| R2GIT-08 | 고침. `markHistorySeen(name, seenAt = 지금)`은 그 시각까지의 보존만 본 것으로 처리 |
+| R2ARC-15 | 고침. `StorageTest.roundOneAndTwoFilesReload`: 1차 meta(새 필드 없음) + `archivedAs` 이력 → 배지 없음, kind 파생, `lastOkAt` 추정, 이력에서 kind 이전. 2차 `historyChangedAt` → `lastArchivedAt`, seenAt 경계. 앱·웹 `lastActivityAt` 동일성 단언 추가 |
+| R2GIT-01 | 고침. 고정 문구는 `startsWith`, 원격 본문·URL 제외, `invalid advertisement`/`Redirection blocked` → NETWORK. 리뷰어의 JGit 7.8.0 메시지를 그대로 고정값으로(`ClassifyTest.remoteTextDoesNotDecide`) |
+| R2GIT-02 | 고침. 확인 성공은 원본 문제가 아닌 업데이트 실패 기록을 지우지 않음(변경이 남은 동안). `MirrorSyncTest.checkSuccessKeepsUpdateFailure`(저장 공간 실패 → 확인 성공 → 같은 `failingSince`, 알림 반복 없음 → 성공 시 RECOVERED) |
+| R2GIT-03 | 고침. NETWORK/TIMEOUT은 확인된 GONE/AUTH와 그 `lastError` 유지, REMOTE_ERROR만 UNKNOWN. QA2-01 테스트의 마지막 단계를 "연결 거부 뒤에도 원본 없음, 새 알림 없음"으로 바꿈(QA2-01의 오판 자체는 R2GIT-01 분류로 막음) |
+| R2GIT-04 | 고침. `Settings.lastPeriodicCheckAt`(PeriodicCheckWorker가 기록·flush) 기준. 기록 전 데이터는 기존 규칙. Wi-Fi 조건 대기와의 구분은 나중(UI 문구와 함께 정할 일) |
+| R2GIT-05 | 고침. `RefChangeKind.REVIEW`. PR 정리를 "N개" 한 줄로 묶는 표시는 UI 몫(나중). `refs/notes/*`의 "브랜치" 표기는 나중(드묾) |
+| R2GIT-06 | 고침. meta(배지 포함) 먼저 한 번에, 이력·archives.json은 `runCatching`, `countNewCommits` 실패는 0 |
+| R2GIT-07 | 고침. 트리 LFS 판정은 100~200바이트만, 디렉터리당 1,000개. `hasLfs`로 건너뛰기는 하지 않음(`.gitattributes` 없이 올린 포인터도 표시하려고). blob(1,024바이트)과의 차이는 spec에 적음 |
+| R2GIT-10 | 고침. 이력 스캔은 레포마다 한 번 `archives.json`으로 이전(`archives.migrated`), 쓰기는 레포별 모니터 |
+| R2GIT-11 | 고침(위 테스트들). 실기기 OkHttp 문구 재검증은 QA 몫 |
+| R2SEC-02 / R2AND-05 | 고침. `Core.start()`에서 부팅 횟수·versionCode가 바뀌었으면 복원 전에 ngrok 끄고 flush. BootReceiver는 서버 시작만. 배너 플래그의 영속화는 나중(배너만 사라질 뿐 ngrok은 꺼진 상태라 안전) |
+| R2SEC-03 | 고침. 위험 조합이면 알림 제목 "비밀번호 없이 외부 공개 중", 잠금 화면 공개 버전에서 주소 제거. 한계: 잠금 화면 설정이 "모든 내용 표시"면 안드로이드가 전체 알림을 보여 줌 |
+| R2SEC-04 | 정보만 제공(spec 8절). 문구 변경은 UI |
+| R2SEC-05 | 고침. archives 최신 500개 + `truncated`(500개만 파싱), LFS 판정 상한(R2GIT-07) |
+| R2ARC-02 | 고침. `Settings.authLevel`, `withAuthLevel`, `becomesExposed`. UI가 자기 매핑을 지우고 이것을 쓰면 됨 |
+| R2ARC-03 | 고침. 웹 `lastActivityAt` = 앱 `RepoListItem.lastActivityAt`(성공 업데이트 기준) |
+| R2ARC-04 | 고침(spec): F-03 `effectiveAuthEnabled`, R2-02 `checksStalled`·`RepoOverview` 시그니처, R2-05 두 플래그, 3절 `/repos`의 `severity`·2차 필드 안내. 트리 순서는 코드와 spec 모두 "디렉터리 먼저"로 이미 같음 |
+| R2ARC-05 / R2AND-04 | 코어 쪽 고침. 워커가 저장 위치(이름, 폴더)를 IO에서 한 번 구해 출력 데이터(`K_SAVED_NAME`, `K_SAVED_FOLDER`)로 넘김. UI `savedText` 제거는 UI 몫 |
+| R2AND-01 | 고침. 진행/저장 알림 ID를 마스크로 분리(`progressId`, `savedId`) |
+| R2AND-13 (앞부분) | 고침. `repoItems`/`overview`가 한 번 계산한 결과를 `shareIn`으로 공유 |
+
+- UI 코드에 최소로 넣은 것: `ui/Format.kt`의 `REVIEW` 분기, `RepoDetailScreen`의 `lastArchivedAt` 한 줄.
+- JVM 테스트 전체 통과.
+
