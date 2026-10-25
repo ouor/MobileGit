@@ -135,7 +135,7 @@ function FileList({ repo, tree, refParam }: { repo: string; tree: Tree; refParam
           </li>
         )}
         {entries.map((e) => (
-          <EntryRow key={e.path} repo={repo} entry={e} refParam={refParam} lfs={e.lfs} />
+          <EntryRow key={e.path} repo={repo} entry={e} refParam={refParam}  />
         ))}
         {entries.length === 0 && <li className="px-4 py-6 text-center text-muted-foreground">빈 폴더예요</li>}
       </ul>
@@ -143,7 +143,7 @@ function FileList({ repo, tree, refParam }: { repo: string; tree: Tree; refParam
   )
 }
 
-function EntryRow({ repo, entry: e, refParam, lfs }: { repo: string; entry: TreeEntry; refParam: string | null; lfs: boolean }) {
+function EntryRow({ repo, entry: e, refParam }: { repo: string; entry: TreeEntry; refParam: string | null }) {
   const icon =
     e.type === "dir" ? (
       <FolderIcon className="size-4 shrink-0 fill-primary/20 text-primary" />
@@ -170,7 +170,7 @@ function EntryRow({ repo, entry: e, refParam, lfs }: { repo: string; entry: Tree
       >
         {icon}
         <span className="min-w-0 truncate hover:underline">{e.name}</span>
-        {lfs && (
+        {e.lfs && (
           <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" title="LFS 파일은 받지 않아요. 큰 파일을 가리키는 작은 표시 파일이에요">
             LFS 포인터
           </span>

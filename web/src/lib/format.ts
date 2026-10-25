@@ -13,8 +13,7 @@ export function ago(t: number, now = Date.now()) {
   if (d < 3600) return `${Math.floor(d / 60)}분 전`
   if (d < 86400) return `${Math.floor(d / 3600)}시간 전`
   if (d < 86400 * 7) return `${Math.floor(d / 86400)}일 전`
-  const x = new Date(t)
-  return `${x.getFullYear()}.${String(x.getMonth() + 1).padStart(2, "0")}.${String(x.getDate()).padStart(2, "0")}`
+  return ymd(new Date(t))
 }
 
 export const relativeTime = (ms: number | null | undefined, now = Date.now()) => (ms ? ago(ms, now) : "없음")

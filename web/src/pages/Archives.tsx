@@ -6,20 +6,12 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { CodeField, CopyButton, ErrorState, ListSkeleton, ToneBadge } from "@/components/common"
 import { archiveFetchCmd, RepoLayout } from "@/components/RepoLayout"
-import { apiUrl, repoApi, useApi, usePrefetch, type ArchiveEntry, type ArchiveKind, type RepoDetail } from "@/lib/api"
+import { apiUrl, repoApi, useApi, usePrefetch, type ArchiveEntry, type RepoDetail } from "@/lib/api"
+import { groupArchives, kindInfo, type ArchivesResponse } from "@/lib/archives"
 import { absoluteTime } from "@/lib/format"
 import { repoHref } from "@/lib/router"
 
 const archivesUrl = (repo: string) => apiUrl(repoApi(repo, "archives"))
-
-// Same words as the app's change kinds (A-15, R2-04).
-const kindStyle: Record<ArchiveKind | "UNKNOWN", { t: "warning" | "danger" | "neutral"; label: string; title: string }> = {
-  FORCED: { t: "warning", label: "히스토리 바뀜", title: "원본이 강제 push로 이 브랜치의 기록을 바꿨어요" },
-  DELETED: { t: "danger", label: "브랜치 삭제됨", title: "원본에서 이 브랜치가 지워졌어요" },
-  TAG_MOVED: { t: "warning", label: "태그 이동됨", title: "원본에서 이 태그가 다른 커밋으로 옮겨졌어요" },
-  TAG_DELETED: { t: "danger", label: "태그 삭제됨", title: "원본에서 이 태그가 지워졌어요" },
-  UNKNOWN: { t: "neutral", label: "강제 push 또는 삭제", title: "예전 버전에서 보존해 어떤 변화였는지 기록이 없어요" },
-}
 
 /** W-05 (R2-03 AC5): what the mirror kept when the original rewrote or deleted branches and tags. */
 export function Archives({ repo }: { repo: string }) {
@@ -33,14 +25,8 @@ export function Archives({ repo }: { repo: string }) {
 
 function ArchivesBody({ detail }: { detail: RepoDetail }) {
   const repo = detail.repo.name
-  const { data, error } = useApi<{ entries: ArchiveEntry[] }>(archivesUrl(repo))
-
-  // Entries come newest group first; keep that order.
-  const groups: { group: string; at: number; entries: ArchiveEntry[] }[] = []
-  for (const e of data?.entries ?? []) {
-    if (groups.at(-1)?.group !== e.group) groups.push({ group: e.group, at: e.at, entries: [] })
-    groups.at(-1)!.entries.push(e)
-  }
+  const { data, error } = useApi<ArchivesResponse>(archivesUrl(repo))
+  const groups = groupArchives(data?.entries ?? [])
 
   return (
     <div className="flex flex-col gap-4">
@@ -64,17 +50,19 @@ function ArchivesBody({ detail }: { detail: RepoDetail }) {
       ) : (
         <>
           {groups.map((g) => (
-            <section key={g.group} className="flex flex-col gap-2" aria-label={`${absoluteTime(g.at)}에 보존`}>
+            <section key={g.group} className="flex flex-col gap-2" aria-label={g.at ? `${absoluteTime(g.at)}에 보존` : g.group}>
               <h2 className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                 <ArchiveIcon className="size-4" />
                 <span>
-                  <time dateTime={new Date(g.at).toISOString()}>{absoluteTime(g.at)}</time> · {g.entries.length}개
+                  {/* at = 0: a group name that is not a time (hand-made refs/archive/foo), so show the name (R2WEB-04). */}
+                  {g.at ? <time dateTime={new Date(g.at).toISOString()}>{absoluteTime(g.at)}</time> : g.group} · {g.entries.length}개
                 </span>
               </h2>
               <GroupTable repo={repo} entries={g.entries} />
               <GroupList repo={repo} entries={g.entries} />
             </section>
           ))}
+          {data.truncated && <p className="text-sm text-muted-foreground">가장 최근 500개만 보여 줘요. 오래된 기록은 생략했어요.</p>}
           <Card size="sm">
             <CardHeader>
               <CardTitle className="font-semibold">PC로 받기</CardTitle>
@@ -90,8 +78,8 @@ function ArchivesBody({ detail }: { detail: RepoDetail }) {
   )
 }
 
-function KindBadge({ kind }: { kind: ArchiveKind | null }) {
-  const k = kindStyle[kind ?? "UNKNOWN"]
+function KindBadge({ kind }: { kind: string | null }) {
+  const k = kindInfo(kind)
   return (
     <ToneBadge t={k.t} title={k.title}>
       {k.label}
@@ -110,13 +98,14 @@ function RefName({ entry: e }: { entry: ArchiveEntry }) {
 }
 
 /** The preserved commit: short SHA (→ its commit log), first line, time. */
-function KeptCommit({ repo, entry: e }: { repo: string; entry: ArchiveEntry }) {
+function KeptCommit({ entry: e }: { entry: ArchiveEntry }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <div className="flex items-center gap-1">
-        <a href={repoHref.commits(repo, "", e.sha)} className={shaChip} title={`${e.sha} 기준 커밋 보기`}>
+        {/* Text, not a link: "커밋 로그" in the same row already goes there (R2WEB-09). */}
+        <code className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-sm" title={e.sha}>
           {e.shortSha}
-        </a>
+        </code>
         <CopyButton text={e.sha} label="보존된 커밋의 전체 SHA 복사" />
       </div>
       {e.summary && <span className="break-words">{e.summary}</span>}
@@ -160,10 +149,10 @@ function Links({ repo, entry: e }: { repo: string; entry: ArchiveEntry }) {
   )
 }
 
-/** md and up: a table, as PRD R2-03 AC5 asks. */
+/** lg and up: a table, as PRD R2-03 AC5 asks. Below 1024px the fixed columns would squeeze the commit column (R2WEB-01). */
 function GroupTable({ repo, entries }: { repo: string; entries: ArchiveEntry[] }) {
   return (
-    <div className="hidden overflow-hidden rounded-xl border bg-card md:block">
+    <div className="hidden overflow-hidden rounded-xl border bg-card lg:block">
       <Table className="table-fixed text-sm">
         <TableHeader>
           <TableRow>
@@ -184,7 +173,7 @@ function GroupTable({ repo, entries }: { repo: string; entries: ArchiveEntry[] }
                 <RefName entry={e} />
               </TableCell>
               <TableCell className="whitespace-normal">
-                <KeptCommit repo={repo} entry={e} />
+                <KeptCommit entry={e} />
               </TableCell>
               <TableCell>
                 <Current repo={repo} entry={e} />
@@ -203,14 +192,14 @@ function GroupTable({ repo, entries }: { repo: string; entries: ArchiveEntry[] }
 /** Narrow screens: the same fields stacked, so nothing scrolls sideways. */
 function GroupList({ repo, entries }: { repo: string; entries: ArchiveEntry[] }) {
   return (
-    <ul className="divide-y overflow-hidden rounded-xl border bg-card md:hidden">
+    <ul className="divide-y overflow-hidden rounded-xl border bg-card lg:hidden">
       {entries.map((e) => (
         <li key={e.archiveRef} className="flex flex-col gap-2 px-4 py-3">
           <div className="flex flex-wrap items-center gap-2">
             <RefName entry={e} />
             <KindBadge kind={e.kind} />
           </div>
-          <KeptCommit repo={repo} entry={e} />
+          <KeptCommit entry={e} />
           <Field label="지금 원본:">
             <Current repo={repo} entry={e} />
           </Field>

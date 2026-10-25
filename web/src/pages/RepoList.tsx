@@ -13,11 +13,13 @@ import {
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { CodeField, ErrorState, LfsBadge, ListSkeleton, IssueBadge, LocalIcon, MirrorIcon, Time } from "@/components/common"
 import { apiUrl, useApi, type Overview, type RepoSummary } from "@/lib/api"
-import { ago, formatBytes, shortUrl } from "@/lib/format"
+import { formatBytes, shortUrl } from "@/lib/format"
+import { summaryParts } from "@/lib/issue"
 import { repoHref } from "@/lib/router"
 
 type Filter = "all" | "mirror" | "local" | "problem"
@@ -30,7 +32,7 @@ const matches = (r: RepoSummary, f: Filter) =>
 /** W-01. Words and filters follow the app's main screen (design-system 8). */
 export function RepoList() {
   const { data: repos, error } = useApi<RepoSummary[]>(apiUrl("repos"))
-  const { data: overview } = useApi<Overview>(apiUrl("overview"))
+  const { data: overview, error: overviewError } = useApi<Overview>(apiUrl("overview"))
   const [q, setQ] = useState("")
   const [filter, setFilter] = useState<Filter>("all")
   const [sort, setSort] = useState<Sort>("recent")
@@ -60,8 +62,9 @@ export function RepoList() {
           <h1 className="text-xl font-semibold">레포</h1>
           {overview ? (
             <Summary o={overview} onProblems={() => setFilter("problem")} />
-          ) : (
-            <p className="text-sm text-muted-foreground">미러는 원본을 자동으로 따라가는 읽기 전용 레포, 로컬 레포는 PC에서 push한 레포예요</p>
+          ) : overviewError ? null : (
+            // One line high, so the list does not jump when the summary arrives (R2WEB-08).
+            <Skeleton className="mt-1 h-4 w-64" />
           )}
         </div>
         <PushGuide />
@@ -71,7 +74,7 @@ export function RepoList() {
         <Alert className="border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200">
           <HourglassIcon />
           <AlertTitle>백그라운드 확인이 멈춘 것 같아요</AlertTitle>
-          <AlertDescription className="text-current">백그라운드 확인이 멈췄어요. 폰의 배터리 최적화에서 mobilegit을 빼면 다시 확인해요.</AlertDescription>
+          <AlertDescription className="text-current">폰의 배터리 최적화에서 mobilegit을 빼면 다시 확인해요.</AlertDescription>
         </Alert>
       )}
 
@@ -147,34 +150,28 @@ export function RepoList() {
   )
 }
 
-/**
- * CR-11: the app's main summary, from the same numbers (GET /api/v1/overview), e.g.
- * "미러 12개 · 정상 10 · 오류 1 · 주의 1 · 마지막 확인 10분 전 · 로컬 3개". 오류/주의 open the "주의 필요" filter.
- */
+const partTone = { danger: "text-red-700 dark:text-red-400", warning: "text-amber-800 dark:text-amber-300", success: "text-emerald-700 dark:text-emerald-400" }
+
+/** CR-11: the app's main summary line (rules in lib/issue.ts summaryParts). 오류/주의 open the "주의 필요" filter. */
 function Summary({ o, onProblems }: { o: Overview; onProblems: () => void }) {
-  const parts: { text: string; tone?: string }[] = []
-  if (o.mirrors > 0) parts.push({ text: `미러 ${o.mirrors}개` })
-  if (o.mirrors > 0 && o.errors + o.warnings > 0) parts.push({ text: `정상 ${o.healthy}` })
-  if (o.errors > 0) parts.push({ text: `오류 ${o.errors}`, tone: "text-red-700 dark:text-red-400" })
-  if (o.warnings > 0) parts.push({ text: `주의 ${o.warnings}`, tone: "text-amber-800 dark:text-amber-300" })
-  if (o.mirrors > 0 && o.errors + o.warnings === 0) parts.push({ text: "모두 정상", tone: "text-emerald-700 dark:text-emerald-400" })
-  if (o.lastCheckAt) parts.push({ text: `마지막 확인 ${ago(o.lastCheckAt)}` })
-  if (o.locals > 0) parts.push({ text: `로컬 ${o.locals}개` })
+  const parts = summaryParts(o)
   return (
     <p className="text-sm text-muted-foreground">
-      {parts.map((p, i) => (
-        // Each part keeps its own " · " so a wrapped line never starts with the separator.
-        <span key={p.text} className="whitespace-nowrap">
-          {p.tone && p.text !== "모두 정상" ? (
-            <button type="button" onClick={onProblems} className={`tap font-semibold hover:underline ${p.tone}`}>
-              {p.text}
-            </button>
-          ) : (
-            <span className={p.tone ? `font-semibold ${p.tone}` : undefined}>{p.text}</span>
-          )}
-          {i < parts.length - 1 && " ·"}
-        </span>
-      )).flatMap((el, i) => (i ? [" ", el] : [el]))}
+      {parts
+        .map((p, i) => (
+          // Each part keeps its own " ·" so a wrapped line never starts with the separator.
+          <span key={p.text} className="whitespace-nowrap">
+            {p.filter ? (
+              <button type="button" onClick={onProblems} className={`tap font-semibold hover:underline ${partTone[p.tone!]}`}>
+                {p.text}
+              </button>
+            ) : (
+              <span className={p.tone ? `font-semibold ${partTone[p.tone]}` : undefined}>{p.text}</span>
+            )}
+            {i < parts.length - 1 && " ·"}
+          </span>
+        ))
+        .flatMap((el, i) => (i ? [" ", el] : [el]))}
     </p>
   )
 }

@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react"
-import { CloudOffIcon, MonitorIcon, MoonIcon, RotateCwIcon, SunIcon } from "lucide-react"
+import { Component, useEffect, useRef, useState, type ReactNode } from "react"
+import { AlertTriangleIcon, CloudOffIcon, MonitorIcon, MoonIcon, RotateCwIcon, SunIcon } from "lucide-react"
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ErrorState } from "@/components/common"
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { apiUrl, reloadAll, useApi, useStaleCount, type Info } from "@/lib/api"
 import { useRoute } from "@/lib/router"
 import { Commits } from "@/pages/Commits"
@@ -31,7 +32,10 @@ export default function App() {
         <AppHeader />
         <main ref={main} tabIndex={-1} className="mx-auto w-full max-w-6xl flex-1 px-4 py-5 outline-none sm:px-6 sm:py-6">
           <StaleBanner />
-          <Page segments={segments} query={query} />
+          {/* Keyed by page: moving to another page clears a render error. */}
+          <PageBoundary key={pathKey}>
+            <Page segments={segments} query={query} />
+          </PageBoundary>
         </main>
         <AppFooter />
       </div>
@@ -51,6 +55,37 @@ function Page({ segments, query }: { segments: string[]; query: URLSearchParams 
     if (view === "commits") return <Commits repo={repo} path={path} refParam={ref} page={Math.max(1, Number(query.get("page")) || 1)} />
   }
   return <ErrorState error={{ code: "NOT_FOUND", message: "주소가 올바른지 확인하세요." }} />
+}
+
+/** R2WEB-02: a render error shows a message with a reload button instead of a blank page. */
+class PageBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+  componentDidCatch(error: unknown) {
+    console.error(error)
+  }
+  render() {
+    if (!this.state.failed) return this.props.children
+    return (
+      <Empty className="border bg-card py-12">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <AlertTriangleIcon />
+          </EmptyMedia>
+          <EmptyTitle>화면을 그리지 못했어요</EmptyTitle>
+          <EmptyDescription>새로 고치면 대부분 해결돼요. 계속되면 앱을 최신 버전으로 업데이트하세요.</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button onClick={() => location.reload()}>
+            <RotateCwIcon />
+            새로 고침
+          </Button>
+        </EmptyContent>
+      </Empty>
+    )
+  }
 }
 
 /** WEB-03: a refresh failed but the older copy is still shown. */

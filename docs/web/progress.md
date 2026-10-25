@@ -294,7 +294,29 @@ README 링크 처리(`lib/readme.ts`): 상대 링크는 파일 보기로, `/x`�
 
 확인: 기기 d418f2d1에 installDebug(앱 데이터 유지, 레포 15개 그대로), Chromium 데스크톱 밝게·어둡게, 390 모바일(터치), 200% 확대, Firefox. 문제 상태·LFS·보존된 기록은 응답을 가로채 확인(실제 기기는 모두 정상). 콘솔 오류 0. 실제 `/api/v1/overview` 요약 "미러 12개 · 모두 정상 · 마지막 확인 N분 전 · 로컬 3개" 확인. `npm test` 11개, `./gradlew :app:assembleDebug test` 통과.
 
-## 14. 남은 문제
+## 14. 2차 코드 리뷰 반영
+
+근거: `docs/code-review/round2/04-web.md`(R2WEB-01~11), 코어 변경 `docs/core/spec.md` 8절 "2차 코드 리뷰 반영".
+
+| ID | 심각도 | 결과 | 내용 |
+|---|---|---|---|
+| R2WEB-01 | 중간 | 고침 | 보존된 기록 표는 `lg`(1024px)부터, 그 아래는 쌓은 목록. 800·1100px에서 확인 |
+| R2WEB-02 | 중간 | 고침 | 종류 대응을 `lib/archives.ts` `kindInfo`로 옮기고 모르는 값은 "강제 push 또는 삭제"(중립)로. 새 `REVIEW`는 "PR 브랜치 바뀜"(중립). `issueText`·배지 아이콘에도 모르는 badge 대비. 페이지마다 Error Boundary(“화면을 그리지 못했어요” + 새로 고침, 다른 페이지로 가면 풀림). 응답을 깨뜨려 확인 |
+| R2WEB-03 | 낮음 | 고침 | `DELAYED`의 since가 null이면 "확인 지연". 테스트 추가 |
+| R2WEB-04 | 낮음 | 고침 | 묶음 시각이 0이면 묶음 이름을 제목으로("foo · 1개") |
+| R2WEB-05 | 낮음 | 고침 | body `overflow-wrap: break-word`(최소 폭을 건드리지 않음) |
+| R2WEB-06 | 낮음 | 고침 | "보존된 기록 N개" 링크에 `mt-1`, 화살표는 `aria-hidden` |
+| R2WEB-07 | 낮음 | 고침 | 코드 칸에 `role="region"`과 이름("clone 주소" 등). 넘칠 때만 포커스 받기는 생략 |
+| R2WEB-08 | 낮음 | 고침 | 버튼 여부는 `filter` 플래그로, 요약을 기다리는 동안 한 줄 Skeleton, 멈춤 배너 본문은 "폰의 배터리 최적화에서 mobilegit을 빼면 다시 확인해요."만. 시각은 다시 불러올 때 갱신(다른 화면과 같음) |
+| R2WEB-09 | 낮음 | 고침 | 보존된 커밋 SHA는 링크가 아닌 글자(+복사). 같은 곳은 "커밋 로그"만 간다. 표·목록 이중 렌더는 리뷰 권장대로 유지 |
+| R2WEB-10 | 낮음 | 고침 | `groupArchives`, `kindInfo`(lib/archives.ts), `summaryParts`(lib/issue.ts)를 순수 함수로 빼고 테스트. issue 테스트에 since null 두 경우, 모르는 category·badge, 7일 넘은 날짜 추가. `npm test` 14개 |
+| R2WEB-11 | 낮음 | 고침 | `issueLabel`은 fallback으로 쓰고 export 해제, BreakableText의 `/*` 예외 되돌림, EntryRow `lfs` prop 삭제, `ago` 날짜는 `ymd` 재사용 |
+| 코어: archives `truncated` | - | 반영 | 참이면 "가장 최근 500개만 보여 줘요. 오래된 기록은 생략했어요."(앱 `archive_truncated`) |
+| 코어: `lastActivityAt` | - | 확인 | 앱 `RepoQuery.apply`와 같은 순서(주의 필요 먼저, 그다음 `lastActivityAt` 내림차순). 웹 코드 변경 없음 |
+
+확인: installDebug(데이터 유지), Chromium·Firefox 800/1100px에서 표·목록 전환, REVIEW·모르는 kind·시각 없는 묶음·truncated를 응답 가로채기로 확인, 가로 넘침 0, 콘솔 오류 0.
+
+## 15. 남은 문제
 
 | 항목 | 내용 |
 |---|---|

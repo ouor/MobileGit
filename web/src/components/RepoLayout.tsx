@@ -28,8 +28,9 @@ export function ClonePanel({ detail }: { detail: RepoDetail }) {
       )}
       {/* The fetch command lives on the 보존된 기록 page only (RV2 review: one place, not two). */}
       {detail.archivedRefCount > 0 && (
-        <a href={repoHref.archives(detail.repo.name)} className="tap self-start text-sm text-primary hover:underline">
-          보존된 기록 {detail.archivedRefCount}개 →
+        // mt-1: the link's tap area must not cover the copy button above it (R2WEB-06).
+        <a href={repoHref.archives(detail.repo.name)} className="tap mt-1 self-start text-sm text-primary hover:underline">
+          보존된 기록 {detail.archivedRefCount}개 <span aria-hidden>→</span>
         </a>
       )}
     </div>

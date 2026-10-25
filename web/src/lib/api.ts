@@ -127,7 +127,7 @@ export interface CommitPage {
 }
 
 /** How the original moved when the ref was preserved (R2-03). null: preserved before round 2, kind unknown. */
-export type ArchiveKind = "FORCED" | "DELETED" | "TAG_MOVED" | "TAG_DELETED"
+export type ArchiveKind = "FORCED" | "DELETED" | "TAG_MOVED" | "TAG_DELETED" | "REVIEW"
 
 export interface ArchiveEntry {
   at: number

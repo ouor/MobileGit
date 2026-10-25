@@ -82,7 +82,7 @@ export function IssueBadge({ repo }: { repo: RepoSummary }) {
   if (!issue) return null
   return (
     <ToneBadge t={issueTone(repo)} title={issueHint[issue.badge]}>
-      {issueIcon[issue.badge]}
+      {issueIcon[issue.badge] ?? <AlertTriangleIcon />}
       {issueText(issue)}
     </ToneBadge>
   )
@@ -164,7 +164,7 @@ export function CopyButton({ text, label, className }: { text: string; label: st
  * (round 1 review: people retype these addresses by hand). Each piece is nowrap; <wbr> marks the allowed breaks.
  */
 export function BreakableText({ text }: { text: string }) {
-  const parts = text.split(/(?<= )|(?<=\/)(?![/*])|(?<=:)(?![\d/])/) // keep "host:port", "://" and "/*" together
+  const parts = text.split(/(?<= )|(?<=\/)(?!\/)|(?<=:)(?![\d/])/) // keep "host:port" and "://" together
   return (
     <>
       {parts.map((p, i) => (
@@ -182,7 +182,8 @@ export function CodeField({ value, label }: { value: string; label: string }) {
   return (
     <div className="flex min-w-0 items-center gap-1 rounded-lg border bg-muted/50 pl-2.5">
       {/* RV2-08 / design-system 8.3: commands and addresses never wrap; they scroll sideways. */}
-      <code tabIndex={0} className="min-w-0 flex-1 overflow-x-auto py-2 font-mono text-sm leading-5 whitespace-pre select-all">
+      {/* Focusable so the keyboard can scroll it; a named region so screen readers don't meet a nameless stop (R2WEB-07). */}
+      <code tabIndex={0} role="region" aria-label={label.replace(/ 복사$/, "")} className="min-w-0 flex-1 overflow-x-auto py-2 font-mono text-sm leading-5 whitespace-pre select-all">
         {value}
       </code>
       <CopyButton text={value} label={label} />

@@ -140,9 +140,10 @@
     }
   body {
     @apply bg-background text-foreground;
-    /* RV2-07: Korean words never split mid-word; a long URL or path may still break anywhere rather than overflow. */
+    /* RV2-07: Korean words never split mid-word; a long URL or path may still break rather than overflow.
+       break-word, not anywhere: it leaves min-content widths alone, so table cells and flex items don't shrink to one letter (R2WEB-05). */
     word-break: keep-all;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
     }
   code, pre, kbd {
     word-break: normal;
