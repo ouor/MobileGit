@@ -14,8 +14,8 @@
 | W-E 오류·빈 레포 | 완료 |
 | 라이트/다크, 좁은 화면 | 완료 (시스템 따름 + 수동 전환) |
 | CSP | 위반 0건 (실기기 응답 헤더 그대로에서 Chromium 콘솔 확인) |
-| 실기기 | `d418f2d1`에 설치, `adb forward tcp:8080`으로 PC Chromium(Playwright)에서 데스크톱·다크·모바일 390px 확인 |
-| 코어 요청 | `docs/web/core-requests.md` WR-1 ~ WR-4 (모두 우회 중, 막힌 기능 없음) |
+| 실기기 | `d418f2d1`에 설치, `adb forward tcp:8080`으로 PC Chromium과 Firefox(Playwright)에서 데스크톱·다크·모바일 390px 확인 |
+| 코어 요청 | WR-1 ~ WR-4 코어 반영 완료(`b35e68f`) 후 웹 적용. WR-5(README 아닌 .md 렌더링) 요청 중 |
 | `./gradlew :app:assembleDebug`, `./gradlew test` | 통과 |
 
 ## 2. 기술 선택과 이유
@@ -26,7 +26,7 @@
 | Tailwind CSS v4 + shadcn/ui (radix-nova 프리셋) | 요청대로 버튼·카드·배지·입력·브레드크럼·탭·토글 그룹·팝오버·커맨드·툴팁·알림·스켈레톤·빈 상태를 shadcn 것으로 썼다. 직접 만든 것은 도메인 조합(레포 행, 파일 목록, 코드 보기)뿐 |
 | 색 | 앱 디자인 시스템(`docs/ui/design-system.md`)의 브랜드 파랑 `#3366FF`/`#7C9CFF`, 회색 바탕 위 흰 카드, 상태 톤(성공·경고·위험·정보·중립)을 그대로 옮겼다. 배지는 항상 아이콘 + 글자 |
 | 글꼴 | 시스템 글꼴(맑은 고딕, Apple SD 고딕 네오 등). 프리셋의 Geist 웹폰트는 뺐다 (APK 크기, 한글 미지원) |
-| 라우팅: 직접 만든 해시 라우터 60줄 (`lib/router.ts`) | 서버의 SPA 대체가 `.`이 있는 경로를 404로 보내서 history 라우팅을 못 쓴다(WR-1). wouter의 해시 훅은 쿼리를 해시 밖(`?x#/path`)에 두어 새 탭 링크가 깨지고 경로를 `decodeURI`로 한 번 더 풀어 `%2F` 처리가 애매해서 뺐다. 링크는 평범한 `<a href="#/...">`라 새 탭·뒤로 가기가 그대로 된다 |
+| 라우팅: 직접 만든 history 라우터 약 80줄 (`lib/router.ts`) | 코어가 `/r/...`를 항상 `index.html`로 답한다(WR-1). 링크는 평범한 `<a href="/r/...">`이고, 같은 탭 클릭만 문서 전체 클릭 리스너가 `pushState`로 바꾼다(다운로드, `/api/`, 새 탭·수정키 클릭은 브라우저에 맡김). 1차의 해시 주소(`/#/r/...`)는 시작할 때 새 주소로 `replaceState`한다. wouter는 경로를 `decodeURI`로 한 번 더 풀어 `%2F`가 든 파일 경로 처리가 애매해서 쓰지 않았다 |
 | 데이터: `fetch` + 작은 `useApi` 훅 | GET만 있는 읽기 전용이라 TanStack Query는 과하다. 탭이 살아 있는 동안 메모리 캐시 후 매번 재검증 |
 | 구문 강조: highlight.js (`lib/common`, 37개 언어) | 파일 보기에서만 동적 import(별도 청크 52KB gzip). 클래스 기반 출력이라 CSP 문제 없음. 256KB 넘는 파일은 강조하지 않는다. Shiki는 WASM·테마 JSON으로 수 MB, Prism은 줄 단위 처리가 비슷하지만 유지보수가 느려져 hljs를 골랐다 |
 | Markdown | 코어가 commonmark-java로 렌더링·정화한 HTML을 쓴다(spec 6.4). 웹에는 마크다운 라이브러리를 넣지 않았다. `@tailwindcss/typography`의 `prose`로 스타일만 입힌다 |
@@ -62,12 +62,12 @@ cd .. && ./gradlew :app:assembleDebug
 ```
 
 - Node 22 이상(개발: Node 26, npm 11). 결과물은 커밋한다. 웹 소스를 바꿨으면 `npm run build` 결과도 같이 커밋한다.
-- 개발 서버: `adb forward tcp:8080 tcp:8080` 후 `npm run dev`. `/api`를 `http://localhost:8080`(또는 `MOBILEGIT_URL`)로 프록시한다. 단 raw 응답은 WR-2 때문에 개발 프록시에서 502가 난다(이미지 미리보기만 영향, 폰 직접 접속은 정상).
+- 개발 서버: `adb forward tcp:8080 tcp:8080` 후 `npm run dev`. `/api`를 `http://localhost:8080`(또는 `MOBILEGIT_URL`)로 프록시한다 (WR-2 반영 후 raw도 정상). Vite 개발 서버의 SPA 대체는 `.`이 있는 경로를 파일로 보므로 `/r/x/blob/README.md`를 새로 고침하면 개발 서버에서만 404가 난다. 폰에서는 정상.
 - shadcn 컴포넌트 추가: `cd web && npx shadcn@latest add <이름>`. 주의: shadcn CLI 4.22가 `import { cn } from "cn"`으로 잘못 써 넣는 버그가 있었다. 추가 후 `from "@/lib/utils"`로 고치고, 같이 설치되는 `cn` npm 패키지는 지운다.
 
 ## 4. 화면별 구현
 
-주소 체계(해시): `#/` 목록, `#/r/<repo>` 홈, `#/r/<repo>/tree/<path>`, `#/r/<repo>/blob/<path>?L=<줄>`, `#/r/<repo>/commits/<path>?page=N`. 모든 화면에 `?ref=<브랜치|태그|SHA>`(기본 브랜치면 생략).
+주소 체계: `/` 목록, `/r/<repo>` 홈, `/r/<repo>/tree/<path>`, `/r/<repo>/blob/<path>?L=<줄>`, `/r/<repo>/commits/<path>?page=N`. 모든 화면에 `?ref=<브랜치|태그|SHA>`(기본 브랜치면 생략). ref를 쿼리로 둬서 `feature/x`처럼 `/`가 든 ref와 경로가 섞이지 않는다. 옛 해시 주소는 자동으로 넘겨준다.
 
 | 화면 | 요소 (PRD 7.2 대비) | 추가한 것 |
 |---|---|---|
@@ -79,7 +79,7 @@ cd .. && ./gradlew :app:assembleDebug
 | W-04 | 짧은 SHA, 메시지 첫 줄, 작성자, 시각, 50개씩 이전/다음, 경로별 이력 | 날짜별 묶음, 메시지 본문 펼치기, 전체 SHA 복사, "이 시점의 파일 보기"(ref=SHA로 트리) |
 | W-E | 없는 레포/경로/브랜치 → 이유 + "레포 처음으로"/"레포 목록으로", 빈 레포 → "아직 커밋이 없어요" + `git remote add`/`git push` 명령 | 401(새로 고침 안내), 429(5분 차단), 네트워크 오류 문구 |
 
-README 링크 처리(`lib/readme.ts`): 상대 링크는 파일 보기로, `/x`는 레포 루트 기준, 상대 이미지는 raw API로, `#앵커`는 해시 라우팅과 충돌하므로 링크를 뗀다. 외부 링크는 새 탭 + `noopener noreferrer`.
+README 링크 처리(`lib/readme.ts`): 상대 링크는 파일 보기로, `/x`는 레포 루트 기준, 상대 이미지는 raw API로, `#앵커`는 commonmark가 제목 id를 만들지 않아 갈 곳이 없으므로 링크를 뗀다. 외부 링크는 새 탭 + `noopener noreferrer`.
 
 ## 5. 참고한 오픈소스 (코드는 복사하지 않음)
 
@@ -112,16 +112,25 @@ README 링크 처리(`lib/readme.ts`): 상대 링크는 파일 보기로, `/x`�
 - **한눈에 보이는가**: 목록에서 종류·원본 상태·LFS·마지막 활동이 한 행에 보인다. 레포 홈 첫 화면(1280×900)에 Clone 주소, 브랜치 선택, 최신 커밋, 파일 목록, 원본 상태, 경고가 스크롤 없이 보이고 README는 바로 아래다. 코드/커밋 탭이 모든 레포 화면 상단에 있다.
 - **현대적이고 깔끔한가**: shadcn 기본 컴포넌트, 회색 바탕 + 흰 카드, 강조색은 Clone 버튼과 링크에만. 다크 모드에서 구문 강조 색도 바뀐다.
 
-## 7. 남은 문제
+## 7. 2차 반영 (코어 WR-1 ~ WR-4 이후)
+
+| 항목 | 결과 |
+|---|---|
+| history 라우팅 | `/r/<repo>/blob/<path>` 주소로 전환(`0ff4cab`). 옛 `/#/r/...` 링크는 새 주소로 바뀐다. 실기기에서 직접 주소 입력, 새로 고침, 뒤로 가기, 브레드크럼 이동, 새 탭 링크를 Chromium·Firefox 둘 다 확인 |
+| git 경로 충돌 | 코어 안내대로 `info/refs`로 끝나는 웹 주소를 피해야 하는지 확인했다. `/r/webdemo/blob/x/info/refs`도 `index.html`이 온다(웹 주소는 항상 `/r/<repo>/<view>/...`라 git의 `/<repo>/info/refs` 형태가 될 수 없음). 별도 처리는 넣지 않았다 |
+| 캐시·gzip (실기기 `curl -H "Accept-Encoding: gzip"`) | `/assets/index-*.js`: `Cache-Control: public, max-age=31536000, immutable` + `Content-Encoding: gzip`. `/r/...`(index.html): `no-cache`. `/api/v1/...` JSON: gzip. `/theme.js`(305B): 캐시 헤더·압축 없음(1KB 미만, 사양대로) |
+| raw | `Content-Length`만, chunked 없음. Vite 개발 프록시 502 해결 |
+| Firefox | Playwright Firefox 157로 15개 화면 × 3모드 스크린샷과 상호작용 시나리오 통과, 콘솔 오류·CSP 경고 0건. 클립보드 읽기 확인만 Chromium 전용(Firefox는 권한 API 차이로 생략) |
+| README가 아닌 `.md` 렌더링 | 코어 API가 디렉터리 README만 렌더링해 WR-5로 요청. 지금은 원문 + 구문 강조 |
+
+## 8. 남은 문제
 
 | 항목 | 내용 |
 |---|---|
-| 해시 주소 | WR-1이 반영되면 history 라우팅으로 바꿀 수 있다 (`lib/router.ts`만 수정) |
-| 개발 프록시에서 raw 502 | WR-2. 폰 직접 접속에는 영향 없음 |
-| 캐시·압축 | WR-3, WR-4. 지금은 매 방문마다 약 680KB를 받는다 (LAN에서는 체감 없음, 핫스팟 데이터에는 불리) |
-| 확인하지 못한 브라우저 | Chromium(Playwright)만 확인. Firefox·Safari 미확인 |
-| `.md` 파일 보기 | README가 아닌 Markdown 파일은 원문(강조 포함)으로 보인다. 렌더링 API가 디렉터리 README에만 있어서다. 필요하면 코어에 `/render?path=` 요청 |
+| `.md` 파일 미리보기 | WR-5 대기. 반영되면 파일 보기에 "미리보기/원문" 전환 추가 |
+| 확인하지 못한 브라우저 | Safari(WebKit) 미확인. Chromium·Firefox만 확인 |
 | 서브모듈 항목 | 트리에서 이름과 "서브모듈" 표시만, 원본 링크는 없음(트리 API가 URL을 주지 않음. 레포 홈 안내에 URL 목록은 있음) |
 | 아주 큰 텍스트 파일 | 1MB 근처(약 2만 줄)는 줄마다 행을 그려 첫 표시가 느릴 수 있다. 필요하면 가상 스크롤 |
-| 번들 | react-dom이 가장 크다. Preact 전환은 미검증이라 보류 |
+| 번들 | react-dom이 가장 크다. Preact 전환은 미검증이라 보류. gzip·캐시 반영으로 첫 방문 약 200KB, 이후 방문은 index.html과 API만 받는다 |
 | 인증 | 브라우저 기본 Basic 인증 창을 쓴다. 로그아웃 버튼은 없다(브라우저를 닫아야 함) |
+| 뒤로 가기 스크롤 | 비동기로 그려지는 화면이라 뒤로 가기 때 스크롤 위치 복원이 브라우저 기본 동작에 맡겨져 있어 맨 위로 갈 수 있다 |

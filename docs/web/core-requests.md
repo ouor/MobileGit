@@ -8,6 +8,7 @@
 | WR-2 | 중 | raw 응답에 `Content-Length`와 `Transfer-Encoding: chunked`가 함께 나감 (HTTP 위반) |
 | WR-3 | 낮음 | `/assets/*` 해시 파일에 장기 캐시 헤더 |
 | WR-4 | 낮음 | 정적 파일 gzip 전송 |
+| WR-5 | 중 | README가 아닌 Markdown 파일 렌더링 API |
 
 ## WR-1. `/r/...` 경로의 SPA 대체
 
@@ -35,3 +36,12 @@
 - **무엇**: 응답 압축이 없다. 웹 첫 로드 전송량은 약 680KB, gzip이면 약 200KB다.
 - **원하는 동작**: Ktor `Compression` 플러그인을 정적 파일과 `/api/v1/` JSON에만 적용 (git 경로와 raw는 제외). 또는 빌드 때 `.gz`를 함께 만들어 두고 `Accept-Encoding`을 보고 고르는 방식도 가능하다 (요청하면 웹 빌드에서 `.gz` 생성 추가).
 - **코어 처리 결과**: 완료(`b35e68f`). Ktor `Compression`(gzip, 1KB 이상)을 정적 파일과 `/api/v1/` JSON에 적용했다. git smart HTTP와 `raw`는 제외한다. 웹 빌드에서 `.gz`를 따로 만들 필요는 없다.
+
+## WR-5. 임의 Markdown 파일 렌더링
+
+- **무엇**: `readme?path=`는 디렉터리를 받아 그 안의 README만 렌더링한다. `docs/guide.md`처럼 README가 아닌 `.md` 파일은 렌더링할 방법이 없어 파일 보기에서 원문으로 보인다.
+- **왜**: 문서 폴더(`docs/*.md`, `CHANGELOG.md`, `CONTRIBUTING.md`)는 README 다음으로 자주 여는 파일이다. 정화를 서버 한 곳에서 한다는 결정(spec 6.4)을 지키려면 웹에 마크다운 라이브러리를 넣지 않고 같은 렌더러를 쓰는 편이 맞다.
+- **원하는 응답**: 둘 중 편한 쪽.
+  1. `GET /api/v1/repos/{name}/readme?ref=&path=<파일>`: path가 `.md`/`.markdown` 파일이면 그 파일을 `ReadmeDto`로 돌려준다 (디렉터리면 지금처럼).
+  2. 또는 `GET /api/v1/repos/{name}/render?ref=&path=<파일>` → `ReadmeDto`와 같은 형식 `{"ref","path","format":"markdown","raw","html"}`. Markdown이 아니면 400 `NOT_MARKDOWN`, 1MB 초과면 400 `TOO_LARGE`.
+- **웹 쪽 준비**: 반영되면 파일 보기에 "미리보기 / 원문" 전환을 넣는다 (`FileView.tsx`, README 카드와 같은 `rewriteReadme` 재사용). 그 전까지는 원문 + 구문 강조로 보인다.
