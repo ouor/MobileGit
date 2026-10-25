@@ -100,7 +100,6 @@
     <string name="probe_checking">원격에 접근할 수 있는지 확인 중…</string>
     <string name="probe_reachable">접근 가능</string>
     <string name="probe_refs_excluding_pull">브랜치·태그 %1$s개 받기 · PR 브랜치 %2$s개 제외</string>
-    <string name="count_items">%1$s개</string>
     <string name="default_branch_suffix">\u0020· 기본 브랜치 %1$s</string>
     <string name="probe_token_needed">토큰 필요</string>
     <string name="probe_token_needed_body">비공개 레포이거나 로그인이 필요해요. 원본 접속 토큰을 추가하세요.</string>
@@ -177,7 +176,6 @@
     <string name="main_low_storage_body">자동 업데이트와 새 미러 받기를 멈췄어요. push는 계속 받아요.</string>
     <string name="main_low_storage_action">저장 공간 보기</string>
     <string name="main_chip_password_off">비밀번호 꺼짐</string>
-    <string name="main_chip_delayed">확인 지연 %1$s개</string>
     <string name="main_repos">레포</string>
     <string name="main_sort_recent">최근 활동순</string>
     <string name="main_sort_name">이름순</string>
@@ -187,8 +185,6 @@
     <string name="main_filter_problem">주의 필요 %1$s</string>
     <string name="main_empty_title">아직 레포가 없어요</string>
     <string name="main_empty_body">GitHub 레포를 미러로 보관하거나, PC에 있는 프로젝트를 이 폰으로 push해 올릴 수 있어요.</string>
-    <string name="main_add_empty">빈 레포</string>
-    <string name="main_add_bulk">계정 단위 일괄 미러</string>
     <string name="main_address_placeholder">http://&lt;폰 주소&gt;:%1$s</string>
     <string name="main_no_match_title">조건에 맞는 레포가 없어요</string>
     <string name="main_no_match_body">검색어나 필터를 바꿔 보세요.</string>
@@ -196,11 +192,7 @@
     <string name="main_update_started">%1$s 업데이트를 시작했어요</string>
     <string name="main_add_mirror_sub">GitHub·GitLab 레포 주소를 붙여넣으면 원본을 자동으로 따라가는 읽기 전용 사본을 만들어요.</string>
     <string name="main_add_bulk_sub">계정이나 조직의 레포를 골라 한 번에 미러해요.</string>
-    <string name="main_add_empty_sub">이름만 정해 두고 나중에 PC에서 push해요.</string>
-    <string name="main_delayed_title">확인이 지연되고 있어요</string>
-    <string name="main_delayed_body">백그라운드 작업이 제한되어 확인이 지연되었습니다. 배터리 최적화에서 mobilegit을 예외로 두면 나아질 수 있어요.</string>
     <string name="main_battery_guide">배터리 안내</string>
-    <string name="main_view_repo">해당 레포 보기</string>
     <string name="main_tailscale_title">밖에서도 접속하려면</string>
     <string name="main_tailscale_body">Tailscale 앱을 설치하고 연결하면 모바일 데이터에서도 접속할 수 있습니다. mobilegit은 Tailscale IP를 감지해 주소로 보여 줄 뿐 Tailscale을 제어하지 않아요.\n\n</string>
     <string name="main_tailscale_vpn_note">안드로이드는 VPN을 하나만 쓸 수 있어서 다른 VPN과 동시에 쓸 수 없어요.</string>
@@ -364,7 +356,6 @@
     <string name="detail_submodules_title">서브모듈 %1$s개</string>
     <string name="detail_submodules_body">서브모듈은 함께 보존되지 않습니다. 필요하면 따로 미러로 추가하세요.</string>
     <string name="detail_archive_title">보존된 기록</string>
-    <string name="detail_archive_body">원본에서 강제 push나 삭제로 사라진 브랜치·태그를 refs/archive/에 보존했어요. 일반 clone에는 들어가지 않아요. 받으려면:</string>
     <string name="detail_archive_url_placeholder">&lt;clone 주소&gt;</string>
     <string name="detail_manage">관리</string>
     <string name="detail_export_sub">git bundle 또는 소스 zip으로 폰 밖에 보관</string>
@@ -415,7 +406,6 @@
     <string name="detail_event_time">%1$s · %2$s초</string>
     <string name="detail_collapse">접기</string>
     <string name="detail_expand">자세히</string>
-    <string name="detail_event_archived_as">\n\u0020\u0020보존: %1$s</string>
     <string name="export_bundle_body">모든 브랜치·태그와 보존 기록까지 담아요. PC에서 git clone %1$s.bundle 로 복원해요.</string>
     <string name="export_source_zip">소스 zip</string>
     <string name="export_source_zip_body">고른 브랜치의 최신 파일만, .git 없이 담아요.</string>
@@ -423,14 +413,10 @@
     <string name="export_share">공유하기</string>
     <string name="export_save_file">파일로 저장</string>
     <string name="export_restore_note">복원은 앱 안에서 하지 않아요. PC에서 git clone x.bundle 후 이 폰으로 push하면 레포가 다시 만들어져요. 토큰과 비밀번호는 담기지 않아요.</string>
-    <string name="fork_body">원본 추적이 중단되고 되돌릴 수 없습니다. push가 가능해집니다.</string>
     <string name="fork_running">분리 중…</string>
-    <string name="fork_confirm">분리</string>
     <string name="fork_copy">새 로컬 레포로 복제 (권장)</string>
-    <string name="fork_copy_sub">미러는 계속 원본을 따라가고, 복제본에 push해요.</string>
     <string name="fork_new_name">새 이름</string>
     <string name="fork_convert">이 미러를 로컬로 전환</string>
-    <string name="fork_convert_sub">미러가 사라지고 이 레포가 push 가능한 로컬 레포가 돼요. 이력은 유지돼요.</string>
     <string name="delete_body">레포 데이터와 이력을 모두 지우고 되돌릴 수 없어요. 진행 중인 clone은 끊겨요. 확인하려면 레포 이름을 입력하세요.</string>
     <string name="delete_running">삭제 중…</string>
     <string name="delete_done">%1$s을(를) 삭제했어요</string>
@@ -444,7 +430,6 @@
     <string name="settings_reset_password">비밀번호 재설정</string>
     <string name="settings_reset_password_sub">비밀번호는 보여 주지 않고 새로 정하기만 해요</string>
     <string name="settings_auth">비밀번호 요구</string>
-    <string name="settings_auth_forced_ngrok">외부 공개(ngrok) 중에는 인증이 강제돼요</string>
     <string name="settings_auth_off_sub">같은 네트워크의 누구나 읽고 push할 수 있어요</string>
     <string name="settings_auth_push_sub">같은 와이파이·Tailscale에서는 clone과 웹 화면이 비밀번호 없이 열려요. push와 ngrok, 폰 안(127.0.0.1)은 계속 비밀번호가 필요해요</string>
     <string name="settings_start_on_boot_sub">재부팅 전에 서버가 켜져 있었다면 다시 켜요</string>
@@ -458,7 +443,6 @@
     <string name="settings_sync">동기화</string>
     <string name="settings_check_interval">변경 확인 주기</string>
     <string name="settings_check_interval_sub">바뀐 게 있는지만 봐서 데이터가 적게 들어요. 눌러서 주기를 바꿔요</string>
-    <string name="settings_hours">%1$s시간</string>
     <string name="settings_auto_update">자동 업데이트</string>
     <string name="settings_auto_update_sub">변경이 있으면 이어서 받아요. 끄면 배지만 붙어요</string>
     <string name="settings_wifi_only">와이파이에서만 업데이트</string>
@@ -542,8 +526,6 @@
     <string name="main_server_switch">서버 켜기</string>
     <string name="main_plain_http">와이파이 주소는 암호화되지 않아요</string>
     <string name="main_plain_http_body">같은 와이파이의 다른 기기가 비밀번호를 엿볼 수 있어요. 카페 같은 공용 와이파이에서는 Tailscale을 쓰세요.</string>
-    <string name="main_push_title">PC 프로젝트 올리기</string>
-    <string name="main_push_sub">PC에서 push하면 이 폰에 새 레포가 생겨요. 명령을 복사해 쓰세요.</string>
     <string name="main_push_body">PC의 프로젝트 폴더에서 아래 두 줄을 실행하면 이 이름으로 레포가 만들어져요. 앱에서 따로 만들 필요는 없어요.</string>
     <string name="main_push_name">레포 이름</string>
     <string name="main_push_step">PC 터미널에서</string>
