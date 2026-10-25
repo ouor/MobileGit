@@ -303,3 +303,22 @@ JVM 테스트 78개 통과(신규 `StorageTest` 12개 포함). 실기기 `OnDevi
 - 결과 2 (`dumpsys deviceidle force-idle`로 깊은 Doze): 같음. 0.1초 안에 시작, 1.2초에 끝남.
 - 결론: **미뤄지지 않는다.** 서버가 켜져 있는 한 웹 등록의 첫 받기는 바로 시작된다. WM-05 AC3의 "앱을 열면 시작" 안내는 예외 경로(서버 없이 다른 경로로 등록된 경우, 제조사 정책 등)로만 남는다. 코어는 `waitingForForeground`를 레포 요약에 그대로 내준다.
 - 확인용으로 만든 레포 2개(`wm00-test`, `wm00-doze`)는 확인 뒤 지웠다. 레포 15개 그대로.
+
+### WM-01~03, WM-05 코어 (구현)
+- `GitServer`에 `MirrorController`와 `coordinator.running`을 주입했다. `POST /api/v1/mirrors/preview`, `POST /api/v1/mirrors`(spec 3.1절).
+- 거부 순서: ngrok 포트 → CSRF 3중 → push 수준 인증 → 본문 검사 → 앱과 같은 등록 흐름. 경로별 오류 코드는 spec 3.1절 표에 있다.
+- 토큰 규칙(D-14): 비밀번호 인증이면 저장된 토큰을 쓰고, 익명이면 쓰지 않는다. https만 받는다(D-16). 테스트용 `httpsOnly = false` 주입만 http를 허용한다.
+- 원본 확인: 20초, 동시 2개, 넘치면 503 `BUSY`.
+- 접속 기록: `MIRROR_ADD`와 `AccessLogEntry.code`.
+- 레포 요약: `syncing`, `waiting`. 생성 경로: `CreatedBy.WEB`.
+- 테스트 `WebMirrorTest`(6개):
+  - 앱 흐름 공유(미리보기, 등록, 첫 받기 예약, 중복)
+  - 거부 코드(HTTPS_ONLY, MULTIPLE_URLS, TOKEN_NOT_ACCEPTED, UNSUPPORTED_URL, BAD_REQUEST, INVALID_NAME, NAME_TAKEN, STORAGE_LOW, ORIGIN_NOT_FOUND)
+  - CSRF 5종(form, text/plain, 다른 Origin, Sec-Fetch-Site cross-site, 다른 Host)
+  - 인증 세 단계와 ngrok 포트 거부, 토큰 규칙(인증 → REACHABLE, 익명 → TOKEN_REQUIRED)
+  - 20초 제한과 BUSY(테스트에서는 1.5초)
+  - 다른 웹 쓰기 경로 없음
+- 미검증:
+  - 실제 https 원본이 http로 리디렉션하는 경우. JGit이 `Redirection blocked`로 막는다고 보고 그 문구를 `HTTPS_ONLY`로 바꾼다. 그 처리는 테스트하지 않았다. QA-W8에서 확인한다.
+  - 익명("끄기")으로 공개 레포를 등록한 뒤, 이후 업데이트는 앱 규칙대로 그 호스트의 토큰을 쓸 수 있다. 등록 시점에 토큰 없이 공개임을 확인하므로, 비공개 레포를 익명으로 끌어오는 일은 막힌다.
+

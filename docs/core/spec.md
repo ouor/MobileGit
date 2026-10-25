@@ -259,7 +259,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 | `StoreIssue` | - | 저장 파일 손상(7절) |
 | `BrowseException(status, code)` | 3절 | 웹 API |
 
-## 3. 웹 JSON API (읽기 전용)
+## 3. 웹 JSON API (읽기 전용, 미러 추가만 예외)
 
 - 기본 경로: `http://<주소>:<포트>/api/v1/`. 인증은 git과 같은 HTTP Basic이다(브라우저가 기본 프롬프트를 띄움).
 - 모든 응답은 `application/json; charset=utf-8`이다. 시각은 epoch ms이고 null 필드도 포함된다.
@@ -329,6 +329,50 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
   {"sha":"3f94903d…","shortSha":"3f94903","summary":"init","message":"init\n","authorName":"T","authorEmail":"t@e",
    "authoredAt":1792886900000,"committedAt":1792886900000,"parents":[]}]}
 ```
+
+### 3.1 웹에서 미러 추가 (F-26, PRD 15장)
+
+웹의 유일한 쓰기다(D-11). 등록은 앱과 같은 `MirrorController.preview`/`probe`/`add`를 거친다. 그래서 정규화, 중복 검사, 이름 규칙, 저장 공간 하한, 첫 받기, 보존 정책이 앱과 같다. 만든 레포의 `createdBy`는 `WEB`이다.
+
+| 메서드/경로 | 요청 본문 | 응답 |
+|---|---|---|
+| `POST /api/v1/mirrors/preview` | `{"url":"<붙여 넣은 문자열>"}` | 200 `WebMirrorPreviewDto` |
+| `POST /api/v1/mirrors` | `{"url":"…","name":"…"}` (`name`을 빼면 제안 이름) | 201 `RepoSummaryDto` (만든 레포) |
+
+- `WebMirrorPreviewDto`: `{"url","suggestedName","existingRepo","access","refCount","defaultBranch","pullRefCount","failure","includePullRefs"}`
+  - `url`: 정규화한 주소. `suggestedName`: 제안 이름.
+  - `existingRepo`: 이미 미러한 주소면 그 레포 이름이다. 이때는 원본에 묻지 않으므로 `access`가 null이다.
+  - `access`: `REACHABLE`(`refCount`, `defaultBranch`, `pullRefCount` 채움), `TOKEN_REQUIRED`, `ORIGIN_NOT_FOUND`, `FAILED`(`failure` = `ErrorCategory`).
+  - `includePullRefs`: 받는 범위 표시용. PR 브랜치 전역 기본값이다.
+- 판단 순서와 오류(`{"error":{"code","message","repo","category"}}`):
+
+| 순서 | 상황 | 상태 | `code` |
+|---|---|---|---|
+| 1 | ngrok 전용 포트로 들어옴(터널 상태와 무관, 인증보다 먼저) | 403 | `EXTERNAL_NOT_ALLOWED` |
+| 2 | CSRF: `Content-Type`이 `application/json`이 아님 / `Origin`이 있는데 `http://<Host>`와 다름 / `Sec-Fetch-Site`가 있는데 `same-origin`이 아님 / Host가 직접 주소가 아님(`NetClassifier.isDirectHost`: IP, `localhost`, 점 없는 이름, `.local`, `.ts.net`) | 403 | `CROSS_SITE` |
+| 3 | 인증: push와 같은 규칙. 읽기·쓰기와 push만이면 비밀번호 필요, 끄기면 익명 허용 | 401 / 429 | (본문 없음 / 기존) |
+| 4 | 본문이 JSON 객체가 아니거나 16KB 초과 | 400 | `BAD_REQUEST` |
+| 5 | 본문에 `token`, `credential`, `credentialId`, `password`, `authToken`, `accessToken` 키(대소문자 무시) | 400 | `TOKEN_NOT_ACCEPTED` |
+| 6 | `url`에 줄바꿈 | 400 | `MULTIPLE_URLS` |
+| 7 | 주소로 인식 못 함(`url` 없음 포함) | 400 | `UNSUPPORTED_URL` |
+| 8 | 정규화한 주소가 https가 아님, 또는 원본이 https → http로 리디렉션(JGit `Redirection blocked`) | 400 | `HTTPS_ONLY` |
+| 등록만 | 이미 미러됨 | 409 | `ALREADY_MIRRORED` (+ `repo`) |
+| 등록만 | 이름 규칙 위반 (`message`가 사유) | 400 | `INVALID_NAME` |
+| 등록만 | 같은 이름의 레포 있음 | 409 | `NAME_TAKEN` |
+| 등록만 | 남은 공간이 하한보다 적음 | 507 | `STORAGE_LOW` |
+| 둘 다 | 동시에 확인 2개가 진행 중 | 503 | `BUSY` |
+| 등록만 | 원본 확인 결과가 토큰 필요 / 원본 없음 / 실패 | 403 / 404 / 502 | `TOKEN_REQUIRED` / `ORIGIN_NOT_FOUND` / `PROBE_FAILED` (+ `category`) |
+
+- 등록도 레포를 만들기 전에 원본을 한 번 확인한다. 확인 결과는 미리보기의 `access`와 같은 규칙을 따른다.
+- 원본 확인은 20초 제한이다. 넘으면 `access: "FAILED"`, `failure: "TIMEOUT"`이다. 동시에 2개까지 확인한다. 응답이 끝나도 원격 호출이 실제로 끝날 때까지는 자리를 차지한다.
+- 저장된 토큰(D-14): 비밀번호로 인증된 요청이면 앱과 같은 규칙(`CredentialStore.forUrl`)으로 그 호스트의 토큰을 쓴다. 익명 요청("끄기")은 토큰 없이 확인한다. 그래서 비공개 레포는 `TOKEN_REQUIRED`가 된다. 토큰은 응답·로그에 나오지 않는다.
+- 다른 POST 경로는 없다(404/405). OPTIONS에도 CORS 허용 헤더를 주지 않는다. CSP는 그대로다.
+- 접속 기록: 등록은 `AccessAction.MIRROR_ADD`, 미리보기는 `WEB`이다. 거부되면 `AccessLogEntry.code`에 위 `code`가 남는다.
+- 첫 받기 상태(WM-05): `RepoSummaryDto`(목록, 상세, 등록 응답)에 두 필드가 있다.
+  - `syncing: boolean`: 받기가 진행 중이거나, 첫 받기가 대기열에 있고 곧 시작한다("받는 중"). 기다리는 중이거나 실패했으면 false다.
+  - `waiting: "FOREGROUND" | "STORAGE" | "WIFI" | "CHARGING" | null`: 받기가 기다리는 이유. `FOREGROUND`는 "폰에서 앱을 열면 시작"이다. WM-00 결과(progress 14절): 서버가 켜져 있으면 첫 받기는 바로 시작한다. 그래서 `FOREGROUND`는 예외 경로다.
+  - 실패는 기존 `issue`(WR-6)로 나온다.
+- 디버그 빌드 전용 확인 진입점(WM-00): `adb shell am broadcast -a com.ouor.mobilegit.DEBUG_ADD_MIRROR -n com.ouor.mobilegit/.app.DebugAddMirrorReceiver --es url <url> --es name <name>`. 지우기는 `--es delete <name>`.
 
 ## 4. 정적 웹 파일 위치
 
@@ -535,4 +579,5 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 ### UI 코드에 넣은 것 (빌드 유지용)
 - `ui/Format.kt`: 새 enum 값 때문에 `when`이 깨지지 않도록 `Badge.HISTORY_CHANGED`(경고 톤, History 아이콘, "히스토리 바뀜"), `AddressKind.USB_TETHER`·`AccessRoute.USB_TETHER`("USB 테더링") 분기와 `badgeOrder` 위치만 넣었다. 모양은 UI가 바꿔도 된다.
 - 문자열: `badge_history_changed`, `route_usb_tether`, `server_notif_ngrok_off_after_restart`, `change_review`, `server_notif_title_public_no_password`.
+- F-26: `ManageScreens`의 접속 기록 동작에 `AccessAction.MIRROR_ADD`("웹에서 미러 추가", 문자열 `log_action_mirror_add`) 분기. `CreatedBy.WEB`은 상세 화면의 `else`(미러)로 나온다. "웹에서 추가" 표시와 거부 코드 문구는 UI 몫(WM-06).
 - 2차 코드 리뷰: `RefChangeKind.REVIEW`의 `label`/`tone` 분기("PR 브랜치 변경", 중립 톤), `RepoDetailScreen`의 `historyChangedAt` → `lastArchivedAt` 한 곳.
