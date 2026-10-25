@@ -51,7 +51,18 @@ Go 테스트(`ngrok-mobile`, `go test`)는 실제 ngrok 서비스가 가짜 토�
 - 웹 API: 인증 없으면 401, 인증하면 `/api/v1/repos`와 `/readme` 정상.
 - (이전 설치에서) GitHub `octocat/Hello-World` 미러 추가(안드로이드 JGit HTTPS fetch), PC에서 clone, 미러로 push하면 읽기 전용 오류 문구가 표시됨.
 
-## 4. 남은 일 / 위험
+## 4. UI 요청 처리 (사이클 1 후속, `docs/ui/core-requests.md`)
+
+| 요청 | 커밋 | 결과 | 검증 |
+|---|---|---|---|
+| CR-1 포트 변경 반영 | `a52a702` | `ServerController.restart()`. 서비스가 포트 변경을 감지해 자동으로 다시 연다 | 실기기 instrumented `portChangeRebindsRunningServer` |
+| CR-2 PR ref 옵션 | `ca55156` | `Settings.mirrorPullRefs`(기본 false), `MirrorSource.includePullRefs`, `setIncludePullRefs`, `Reachable.pullRefCount` | JVM `pullRefsFollowSettingAndOverride` |
+| CR-3 이력 Flow | `ca55156` | `RepoStore.eventsFlow(name)`(최신이 처음). spec의 순서 설명 수정 | JVM `eventsFlowEmitsNewestFirst` |
+| CR-4 지금 확인 | `ca55156` | `MirrorController.checkNow(name)`, `checkAll()` | JVM `checkNowIsCheckOnly` |
+
+테스트: JVM 37개, 실기기 4개 모두 통과. Spoon-Knife 실제 미러에서 PR ref 제외 후 시간은 다시 재지 않았다.
+
+## 5. 남은 일 / 위험
 
 | 항목 | 메모 |
 |---|---|
@@ -61,6 +72,6 @@ Go 테스트(`ngrok-mobile`, `go test`)는 실제 ngrok 서비스가 가짜 토�
 | 30대 동시 clone, 1GB/2GB 레포, 8시간 배터리 | 부하·장시간 테스트 필요. 2GB는 보장하지 않음(spec 6절) |
 | 부팅 후 자동 시작, 주기 작업, SAF 내보내기 | 실기기 확인 필요 |
 | ngrok AAR 크기 | APK가 약 8.7MB(2 ABI) 늘어남. 필요하면 ABI split |
-| `refs/pull/*` 미러 | 저장 공간을 쓰지만 Gitea와 같은 동작. 설정으로 끌지는 UI 결정에 따름 |
+| PR ref 미러 | CR-2로 해결. 기본 꺼짐, 설정·레포별로 켬 |
 | 임시 화면 | 정식 Compose UI로 교체 대상 |
 | AAR 다시 빌드 | `ngrok-mobile/build.sh`. Go 1.26.10 이상, Android NDK 필요 |

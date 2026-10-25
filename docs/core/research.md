@@ -28,7 +28,7 @@
   2. 없는 객체만 내려받고 ref는 아직 쓰지 않음.
   3. 삭제되거나 fast-forward가 아닌 ref를 계산. 태그가 바뀌면 항상 재작성으로 봄.
   4. 아카이브 ref `refs/archive/<UTC yyyyMMdd'T'HHmmss'Z'>/<원래 ref에서 refs/ 뺀 이름>`과 미러 ref를 한 번의 원자적 `BatchRefUpdate`로 기록. 중간에 실패하면 아무것도 바뀌지 않음.
-- Gitea와 맞춘 점: `refs/pull/*`, `refs/merge-requests/*`도 미러함(PRD "그 밖의 refs"). 단 이 ref들은 원본에서 자주 재작성되므로 **아카이브하지 않음**. 저장 공간 비용이 있음(예: octocat/Hello-World는 refs/pull이 수천 개라 약 21MB).
+- PR/MR ref(`refs/pull/…`, `refs/merge-requests/…`): Gitea는 받지만 mobilegit은 **기본으로 받지 않음**(설정·레포별로 켤 수 있음, CR-2). 원본에서 자주 재작성되어 아카이브하지 않고, 인기 레포에서는 ref 수와 용량의 대부분을 차지함(octocat/Hello-World 약 21MB, Spoon-Knife ref 63,808개로 첫 받기 수 분). 그 밖의 ref(notes 등)는 PRD대로 받음.
 - 원본 HEAD 심볼릭 ref를 따라 기본 브랜치를 맞춤.
 
 ## 3. 알려진 이슈와 대응

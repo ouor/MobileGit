@@ -14,7 +14,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 | `core.server` | `ServerController` | 서버 켜기/끄기, `state: StateFlow<ServerState>` |
 | `core.network` | `NetworkMonitor` | `addresses: StateFlow<List<ServerAddress>>` (3초 폴링, ngrok 주소 포함) |
 | `core.settings` | `SettingsStore` | `state: StateFlow<Settings>`, setter들 |
-| `core.repos` | `RepoStore` | `repos: StateFlow<List<RepoMeta>>`, 이력 `events(name)` |
+| `core.repos` | `RepoStore` | `repos: StateFlow<List<RepoMeta>>`, 이력 `eventsFlow(name)` / `events(name)` |
 | `core.repoItems` | `Flow<List<RepoListItem>>` | 목록 화면용(배지 + 진행 상황, 1분마다 재계산) |
 | `core.mirrors` | `MirrorController` | 미러 추가·일괄·업데이트 |
 | `core.coordinator` | `SyncCoordinator` | `running: StateFlow<Map<String, RepoProgress>>` |
@@ -40,6 +40,8 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
   - `Failed(portInUse = true)`이면 포트 변경 화면으로 안내한다(AC4).
 - 프로세스가 강제 종료되면 START_STICKY로 재시작되고, 같은 부팅 안이면 `restoreIfEnabled()`가 서버를 복구한다(AC7).
 - 알림의 "서버 끄기" 버튼은 `ServerService.ACTION_STOP`이다.
+- 포트 변경(CR-1): 실행 중에 `settings.setPort(p)`를 부르면 서비스가 알아서 새 포트로 다시 연다. `state`는 `Stopping` → `Running(p)`로 바뀌고, 새 포트가 사용 중이면 `Failed(portInUse = true)`가 되며 서버는 꺼진다. 진행 중인 전송은 끄기와 같은 유예(최대 수 초)를 받는다. ngrok 터널도 다시 연결된다.
+  - 직접 호출: `suspend fun ServerController.restart(): ServerState`. 꺼져 있거나 이미 그 포트면 아무것도 하지 않고 현재 상태를 돌려준다.
 
 ### F-02 접속 주소 표시
 - `core.network.addresses: StateFlow<List<ServerAddress>>`. `ServerAddress(kind: AddressKind{WIFI,HOTSPOT,TAILSCALE,NGROK}, host, baseUrl)`.
@@ -84,9 +86,10 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 2. `mirrors.preview(input): AddPreview(input, normalized, suggestedName, existing, error)`.
    - 브라우저 주소(`/tree/..`, `/-/blob/..`, `.git` 생략)를 정규화한다.
    - 이미 미러 중이면 `existing`을 채운다(AC5).
-3. (선택) `mirrors.probe(url, credentialId?): ProbeResult`: `Reachable(refCount, defaultBranch) | AuthRequired | NotFound | Failed(category, detail)`.
+3. (선택) `mirrors.probe(url, credentialId?): ProbeResult`: `Reachable(refCount, defaultBranch, pullRefCount) | AuthRequired | NotFound | Failed(category, detail)`.
    - `AuthRequired`면 토큰 입력으로 안내한다.
-4. `mirrors.add(url, name, credentialId?): RepoMeta`.
+   - `pullRefCount`: `refCount` 중 PR/MR ref(`refs/pull/…`, `refs/merge-requests/…`) 수. PR ref를 받지 않는 설정이면 "PR ref N개 제외"로 보여 줄 수 있다.
+4. `mirrors.add(url, name, credentialId?, createdBy = MIRROR_ADD, includePullRefs: Boolean? = null): RepoMeta`.
    - 등록 즉시 첫 fetch를 WorkManager로 예약한다.
    - 예외는 `RepoException`이다: `INVALID_NAME`, `NAME_TAKEN`, `ALREADY_MIRRORED`, `STORAGE_LOW`.
 5. 여러 줄 입력은 `mirrors.addMany(text, credentialId?): BulkJob`으로 처리한다. 진행 상황은 `bulkJobs.jobs`에 나온다.
@@ -108,6 +111,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 
 ### F-09 수동 업데이트
 - `mirrors.updateNow(name)`: 레포 하나. `mirrors.updateAll()`: 모든 미러.
+- 확인만(CR-4): `mirrors.checkNow(name)`, `mirrors.checkAll()`. WorkManager로 바로 실행되며(모든 네트워크, 백오프 무시) 객체를 받지 않고 업데이트도 하지 않는다. 결과는 `MirrorSource.pendingChanges`/`lastCheckAt`과 `UPDATE_AVAILABLE` 배지로 나타난다. 미러가 아니면 `RepoException(NOT_A_MIRROR)`.
   - 조건(와이파이, 충전)을 무시한다. 저장 공간 하한은 MANUAL이면 무시하지 않고 실패 처리한다.
 - 진행 상황: `coordinator.running[name]`의 `RepoProgress(kind, trigger, progress: SyncProgress(task, done, total))`.
 - 결과는 이력(`repos.events(name)`)과 알림으로 전달된다.
@@ -118,6 +122,9 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
   - `autoUpdate`, `updateWifiOnly`, `updateChargingOnly`, `checkWifiOnly`.
   - `storageFloorBytes`: 기본 1GB.
 - 레포 제외: `mirrors.setAutoUpdateExcluded(name, true)`.
+- PR ref 미러(CR-2): 전역 `Settings.mirrorPullRefs`(기본 **false**), 레포별 `mirrors.setIncludePullRefs(name, Boolean?)`(null이면 전역을 따름, `MirrorSource.includePullRefs`). 다음 확인/업데이트부터 적용된다. 끄면 이미 받은 PR ref는 다음 업데이트에서 지워진다(아카이브하지 않음).
+  - 기본값이 꺼짐인 근거: F-11 아카이브 대상은 heads/tags이고 PR ref는 원래 보존하지 않는다. 인기 레포는 PR ref가 ref 수와 받을 양의 대부분을 차지한다(Spoon-Knife 63,808개, 첫 받기 수 분). PR 브랜치 내용은 원본 호스트의 기능이며 heads/tags만으로 clone·빌드가 된다. 그 밖의 ref(`refs/notes` 등)는 계속 받는다.
+  - 한계: ref 광고 목록(ls-remote) 자체는 전체를 받은 뒤 걸러낸다(63k ref면 수 MB). 객체는 받지 않는다.
 - 동작:
   - WorkManager `periodic-check`가 미러별 `CheckWorker`를 최대 주기 10% 지터로 실행한다.
   - 변경이 있고 자동 업데이트가 켜져 있으면 `SyncWorker`를 조건부로 예약한다.
@@ -126,14 +133,15 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 
 ### F-11 아카이브 보존
 - 원본에서 강제 push나 삭제로 사라지는 ref는 `refs/archive/<UTC 시각>/<heads|tags/...>`로 보존된다.
-  - 원자적으로 기록된다. `refs/pull/*`는 보존하지 않는다.
+  - 원자적으로 기록된다. PR ref(`refs/pull/…`)는 받더라도 보존하지 않는다.
 - 개수: `RepoMeta.archivedRefCount`. 이력: `SyncEvent.archivedRefCount`, `refChanges`.
 - 알림 `NoticeKind.ARCHIVED`.
 - 아카이브 ref는 clone 시 기본 refspec에 포함되지 않는다. `git fetch origin 'refs/archive/*:refs/archive/*'`로 받는다.
 - 웹 API는 `RepoDetailDto.archivedRefCount`.
 
 ### F-12 동기화 이력, 원본 상태, 실패 알림
-- `repos.events(name): List<SyncEvent>`: 최신이 마지막. 최대 200개.
+- `repos.eventsFlow(name): Flow<List<SyncEvent>>`(CR-3): **최신이 처음**. 구독 시 한 번, 그 레포에 이력이 추가되거나 레포가 삭제될 때마다 다시 보낸다. IO에서 읽는다. 최대 200개.
+- `repos.events(name)`: 같은 내용의 동기 버전(디스크 읽기, 메인 스레드 금지). 이전 문서의 "최신이 마지막"은 잘못이었다. 코드는 처음부터 최신이 앞이다.
   - 필드: `startedAt`, `durationMs`, `trigger`, `kind{CHECK,UPDATE}`, `result{NO_CHANGE,SUCCESS,FAILED,WAITING}`, `refChanges`, `newCommitCount`, `archivedRefCount`, `errorCategory`, `errorDetail`, `waitingReason`.
 - 원본 상태: `MirrorSource.originStatus{OK,GONE,AUTH_REQUIRED,UNKNOWN}`, `lastCheckAt`, `lastSuccessUpdateAt`, `consecutiveFailures`, `nextRetryAt`, `lastError`.
 - `ErrorCategory`: `NETWORK`, `AUTH_REQUIRED`, `ORIGIN_GONE`, `STORAGE_FULL`, `REMOTE_ERROR`, `TIMEOUT`.
