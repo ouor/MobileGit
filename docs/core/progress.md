@@ -62,7 +62,18 @@ Go 테스트(`ngrok-mobile`, `go test`)는 실제 ngrok 서비스가 가짜 토�
 
 테스트: JVM 37개, 실기기 4개 모두 통과. Spoon-Knife 실제 미러에서 PR ref 제외 후 시간은 다시 재지 않았다.
 
-## 5. 남은 일 / 위험
+## 5. 웹 요청 처리 (`docs/web/core-requests.md`)
+
+| 요청 | 결과 (커밋 `b35e68f`) |
+|---|---|
+| WR-2 raw의 Content-Length + chunked | 수정. 원인: 수동 `Content-Length` 헤더 + 스트리밍 응답. `respondOutputStream(contentLength = size)`로 바꿈. 모든 엔드포인트(API, raw, info/refs, 정적, SPA)를 소켓 수준에서 gzip 유무 각각 검사해 중복이 없음을 확인 |
+| WR-1 `/r/` SPA 대체 | `/r`, `/r/...`는 항상 index.html |
+| WR-3 해시 자산 캐시 | `assets/...`에 1년 immutable |
+| WR-4 gzip | Ktor Compression(ktor-server-compression 3.6.0). 정적·JSON만, git과 raw 제외 |
+
+테스트: JVM `webFramingSpaCacheAndGzip`, `compressionScope` 추가, 전체 39개 통과. 실기기에서 헤더를 직접 확인하지는 않았다(같은 Ktor CIO 엔진의 JVM 테스트로 확인).
+
+## 6. 남은 일 / 위험
 
 | 항목 | 메모 |
 |---|---|

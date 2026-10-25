@@ -263,7 +263,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 | `GET /api/v1/repos/{name}` | `RepoDetailDto` |
 | `GET /api/v1/repos/{name}/tree?ref=&path=` | `TreeDto` |
 | `GET /api/v1/repos/{name}/blob?ref=&path=` | `BlobDto` (텍스트는 1MB까지) |
-| `GET /api/v1/repos/{name}/raw?ref=&path=` | 파일 바이트(`application/octet-stream`, `Content-Disposition: attachment`) |
+| `GET /api/v1/repos/{name}/raw?ref=&path=` | 파일 바이트(`application/octet-stream`, `Content-Disposition: attachment`, 정확한 `Content-Length`, chunked 아님, 압축 안 함) |
 | `GET /api/v1/repos/{name}/readme?ref=&path=` | `ReadmeDto` (path는 디렉터리) |
 | `GET /api/v1/repos/{name}/commits?ref=&path=&page=1&perPage=50` | `CommitPageDto` |
 
@@ -303,11 +303,14 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 
 ## 4. 정적 웹 파일 위치
 
-- 웹 UI 빌드 결과물은 **`app/src/main/assets/web/`**에 둔다. `index.html`이 루트다. 지금은 `README.txt` 자리표시자만 있고, `index.html`이 없으면 안내 문구 페이지가 나온다.
+- 웹 UI 빌드 결과물은 **`app/src/main/assets/web/`**에 둔다. `index.html`이 루트다. `index.html`이 없으면 안내 문구 페이지가 나온다.
 - 경로 처리:
   - `/` 아래 경로 중 `/api/v1/`와 git 경로(`/<repo>/info/refs`, `git-upload-pack`, `git-receive-pack`)가 아니면 `assets/web/<path>`를 제공한다.
-  - 마지막 경로 조각에 `.`이 없으면 SPA 대체로 `index.html`을 돌려준다. 따라서 history 라우팅(`/r/<repo>/tree/...`)과 해시 라우팅 모두 가능하다.
-  - 단 `/<repo>.git/...`처럼 git 경로와 겹치는 URL은 피한다. 권장 접두사는 `/r/`.
+  - **`/r`과 `/r/...`는 항상 `index.html`**(WR-1). 파일을 찾지 않으므로 `/r/foo.js/blob/README.md`처럼 `.`이 있어도 된다. history 라우팅은 이 접두사 아래에 둔다.
+  - 그 밖의 경로는 파일이 있으면 그 파일, 없으면 마지막 조각에 `.`이 있을 때 404, 없을 때 `index.html`.
+  - git 경로는 먼저 매칭된다. `/r/<x>/info/refs`(GET)와 `/r/<x>/git-upload-pack`·`git-receive-pack`(POST)는 git 요청으로 처리되므로 웹 라우트에서 `info/refs`로 끝나는 주소는 쓰지 않는다.
+- 캐시(WR-3): `assets/...`(Vite 해시 파일)는 `Cache-Control: public, max-age=31536000, immutable`. `index.html`(SPA 대체 포함)은 `no-cache`. 그 밖의 루트 파일(`favicon.svg`, `theme.js` 등)은 캐시 헤더가 없다. 바뀔 수 있는 파일은 `assets/` 밖에 두거나 이름에 해시를 넣는다.
+- 압축(WR-4): `Accept-Encoding: gzip`이면 정적 파일과 `/api/v1/` JSON을 1KB 이상일 때 gzip으로 보낸다. git smart HTTP와 `raw`는 압축하지 않는다(정확한 바이트와 `Content-Length`).
 - 보안 헤더(변경 불가):
   - `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'`
   - **인라인 `<script>`, 인라인 `style=""`, `<style>` 태그, CDN 사용 불가.** 번들된 .js/.css 파일만 쓴다.
