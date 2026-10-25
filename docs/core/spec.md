@@ -49,7 +49,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
   - 직접 호출: `suspend fun ServerController.restart(): ServerState`. 꺼져 있거나 이미 그 포트면 아무것도 하지 않고 현재 상태를 돌려준다.
 
 ### F-02 접속 주소 표시
-- `core.network.addresses: StateFlow<List<ServerAddress>>`. `ServerAddress(kind: AddressKind{WIFI,HOTSPOT,TAILSCALE,NGROK}, host, baseUrl)`.
+- `core.network.addresses: StateFlow<List<ServerAddress>>`. `ServerAddress(kind: AddressKind{WIFI,HOTSPOT,USB_TETHER,TAILSCALE,NGROK}, host, baseUrl)`(USB_TETHER는 2차 R2-15).
   - Tailscale은 100.64.0.0/10 대역으로 판별한다.
   - 목록이 비면 "접속 가능한 네트워크 없음" 안내를 띄운다(AC3).
 - `ServerAddress.cloneUrl(repo)`는 `<baseUrl>/<repo>.git`을 돌려준다.
@@ -62,7 +62,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
   - `SettingsStore.generatePassword(16)`.
 - 규칙:
   - push는 항상 인증이 필요하다(인증을 끈 경우는 예외).
-  - 익명 읽기는 인증 켜짐 + 익명 허용 + ngrok 꺼짐일 때만 가능하다.
+  - 익명 읽기는 인증 켜짐 + 익명 허용("push만")일 때 가능하다. ngrok 경로도 같은 규칙이다(R2-06, 8절).
   - 같은 IP에서 1분에 10회 넘게 실패하면 5분 차단(HTTP 429)한다.
 - 비밀번호는 PBKDF2 해시로만 저장한다.
 
@@ -73,7 +73,8 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 - `core.tunnel.state: StateFlow<TunnelState>`: `Off | Connecting(attempt) | Connected(publicUrl) | Retrying(atMillis, reason) | TokenRejected(reason)`.
   - `TokenRejected`면 자동 재시도하지 않는다. "토큰 확인 필요"로 표시한다.
   - 그 밖의 실패는 2초부터 최대 5분까지 지수 백오프로 재시도한다.
-- ngrok이 켜져 있으면 인증이 강제되고 익명 읽기는 꺼진다.
+- 2차(R2-06): ngrok이 켜져도 인증을 강제하지 않는다. 사용자의 "비밀번호 요구" 설정을 ngrok 경로에도 그대로 적용한다. 위험 조합은 `Settings.exposedWithoutPassword`.
+- 재부팅·앱 업데이트 뒤에는 ngrok이 꺼진 채로 시작한다(R2-05 AC4, 8절).
 - 접속 기록의 경로는 `NGROK`으로 남는다. 별도 루프백 커넥터로 구분한다.
 - 공개 URL은 `addresses`에 `AddressKind.NGROK`로 추가된다.
 
@@ -145,7 +146,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 - 개수: `RepoMeta.archivedRefCount`. 이력: `SyncEvent.archivedRefCount`, `refChanges`.
 - 알림 `NoticeKind.ARCHIVED`.
 - 아카이브 ref는 clone 시 기본 refspec에 포함되지 않는다. `git fetch origin 'refs/archive/*:refs/archive/*'`로 받는다.
-- 웹 API는 `RepoDetailDto.archivedRefCount`.
+- 웹 API는 `RepoDetailDto.archivedRefCount`. 목록은 `GET /api/v1/repos/{name}/archives`(2차 R2-03, 8절).
 
 ### F-12 동기화 이력, 원본 상태, 실패 알림
 - `repos.eventsFlow(name): Flow<List<SyncEvent>>`(CR-3): **최신이 처음**. 구독 시 한 번, 그 레포에 이력이 추가되거나 레포가 삭제될 때마다 다시 보낸다. IO에서 읽는다. 최대 200개.
@@ -275,7 +276,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 | 503 | `BUSY`: tree/blob/readme/commits는 동시에 2개까지 처리하고 10초 안에 자리가 안 나면 이 응답(GIT-09). 잠시 뒤 다시 시도 |
 | 500 | `INTERNAL`. message는 `서버 오류가 발생했습니다 (오류 ID xxxxxxxx)`뿐이고 상세는 앱 로그에만(SEC-10) |
 
-- 익명 읽기(`anonymousRead`)는 설정값이다. 실제로는 사설망·링크로컬·ULA·Tailscale에서, Host가 IP·`localhost`·점 없는 이름·`.local`·`.ts.net`인 요청만 익명으로 통과한다. 루프백·ngrok·그 밖의 Host는 익명 설정이어도 401(SEC-03)
+- 익명 읽기(`anonymousRead`)는 설정값이다. 실제로는 사설망·링크로컬·ULA·Tailscale에서 Host가 IP·`localhost`·점 없는 이름·`.local`·`.ts.net`인 요청, 그리고 ngrok 경로(2차 R2-06)만 익명으로 통과한다. 루프백과 그 밖의 Host는 익명 설정이어도 401(SEC-03)
 - 쿼리: `ref`는 브랜치, 태그, 커밋 SHA. 생략하면 기본 브랜치. `path`는 `/`로 구분하며 `..`은 거부한다.
 
 | 메서드/경로 | 응답 |
@@ -287,6 +288,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 | `GET /api/v1/repos/{name}/blob?ref=&path=` | `BlobDto` (텍스트는 1MB까지) |
 | `GET /api/v1/repos/{name}/raw?ref=&path=[&download=1]` | 파일 바이트. 정확한 `Content-Length`, chunked 아님, 압축 안 함. 이미지(png, jpg/jpeg, gif, webp, avif, bmp, ico, svg)는 해당 `image/*` 타입 + `Content-Disposition: inline`이라 `<img src>`에 바로 쓸 수 있다(QA-14). 그 밖의 파일(HTML, 텍스트 포함)은 `application/octet-stream` + `attachment`. `download=1`이면 이미지도 attachment. 모든 raw 응답에 `X-Content-Type-Options: nosniff`와 `Content-Security-Policy: default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox`가 붙어, SVG를 직접 열어도 안의 스크립트가 실행되지 않는다. 다운로드 버튼은 `download=1`을 붙이거나 `<a download>`를 쓴다 |
 | `GET /api/v1/repos/{name}/readme?ref=&path=` | `ReadmeDto`. path가 디렉터리면 그 안의 README(없으면 404 `README_NOT_FOUND`). path가 `.md`/`.markdown` 파일이면 그 파일을 같은 렌더러로(WR-5). 그 밖의 파일(이진, LFS 포인터 포함)은 400 `NOT_MARKDOWN`, 1MB 초과는 400 `TOO_LARGE` |
+| `GET /api/v1/repos/{name}/archives` | `ArchivesDto` (R2-03, 8절). 동시 처리 제한(503 `BUSY`) 대상 |
 | `GET /api/v1/repos/{name}/commits?ref=&path=&page=1&perPage=50` | `CommitPageDto`. perPage는 1~100으로 맞춰짐. page는 1000까지(넘으면 400 `PAGE_TOO_DEEP`). 한 요청은 커밋을 20만 개까지만 훑는다. 그 안에서 페이지를 다 못 채우고 멈추면 `truncated: true`, `hasMore: false`(GIT-09, SEC-11) |
 
 응답 예시(실기기에서 받은 형태):
@@ -405,6 +407,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 - 포그라운드 서비스를 못 얻으면(백그라운드 시작 제한) 서버를 띄우지 않는다. 이전처럼 "앱을 열면 다시 시작" 알림(AND-01).
 - 루프백(127.0.0.1, adb forward)도 이제 인증이 필요하다. 익명 읽기 조건은 3절(SEC-03).
 - 전역 IPv6 주소로 들어온 요청은 403(SEC-04). 주소 목록에는 원래 나오지 않는다.
+- ngrok 경로는 2차부터 사용자의 비밀번호 요구 설정을 따른다(8절).
 - ngrok 경로: 인증 실패가 분당 30회를 넘으면 ngrok 경로 전체가 1분간 429. 이미 인증된 브라우저·git은 계속 된다(SEC-01).
 
 ### git
@@ -428,3 +431,69 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 - "파일로 저장"(SAF Uri)은 문서에 바로 쓴다. 실패하면 그 문서를 지운다. `K_OUT_FILE`은 null.
 - "공유"(Uri 없음)는 캐시 파일을 만들고 24시간 뒤 지운다. 남는 공간이 하한보다 작아지면 `저장 공간이 부족해 공유용 파일을 만들 수 없습니다…`로 실패한다(ARC-07).
 - 선택한 레포가 많아도 된다(목록은 파일로 넘김, AND-10).
+
+## 8. 2차 변경 (PRD v2 13장)
+
+진행 기록: `progress.md` 11절. 코드 커밋 `f2af10d`.
+
+### R2-01 목록의 주의 상태
+- `Badge.HISTORY_CHANGED`: 업데이트가 ref를 보존(F-11)하면 붙는다. 로컬로 분리된 레포에도 남는다. 저장 위치는 `RepoMeta.historyChangedAt: Long?`이라 앱을 다시 켜도 유지된다.
+- 지우기: 보존 기록 화면(A-15)을 열 때 `core.repos.markHistorySeen(name)`.
+- "주의 필요" = `Badges.problem` = `FAILED`, `ORIGIN_GONE`, `AUTH_REQUIRED`, `DELAYED`, `HISTORY_CHANGED`. 필터 값은 그대로 `RepoFilter.PROBLEM`이다(화면 이름만 "주의 필요"). `RepoListItem.needsAttention`.
+- 행 둘째 줄: `RepoListItem.issue: RepoIssue?`. null이면 지금처럼 "업데이트 N분 전". `RepoIssue(badge, since, category)`. 우선순위는 원본 없음 → 토큰 확인 필요 → 실패 → 지연 → 히스토리 바뀜.
+  - 실패류의 `since`는 `MirrorSource.failingSince`(이번 연속 실패의 시작, "3일째"). 2차 이전에 시작된 실패는 null이라 기간 없이 보여 준다.
+  - `DELAYED`의 `since`는 마지막 확인 시각("6시간 주기인데 2일째 확인 못 함"). `HISTORY_CHANGED`는 보존 시각.
+- 정렬 `RepoSort.RECENT`는 주의 필요 레포를 맨 위에 둔다.
+
+### R2-02 메인 요약
+- `core.overview: Flow<RepoOverview>`(1분마다 다시 계산). `RepoOverview(mirrors, healthy, attention, locals, lastCheckAt, checksStalled)`.
+  - `attention`: 주의 필요 레포 수(필터와 같음, 로컬 포함). `healthy`: 주의가 없는 미러 수.
+  - `lastCheckAt`: 모든 미러 중 원본에 마지막으로 성공적으로 닿은 시각(`MirrorSource.lastOkAt`). 미러가 없으면 null.
+  - `checksStalled`: 그 시각(없으면 가장 오래된 미러의 추가 시각)이 확인 주기의 3배보다 오래됐다 → "백그라운드 확인이 멈춘 것 같아요".
+- 새 필드 `MirrorSource.lastSuccessCheckAt`(확인·업데이트 성공 시각). `lastCheckAt`은 실패해도 움직인다.
+- "서버를 꺼도 …" 안내를 닫은 상태: `Settings.serverOffHintDismissed`. 닫기: `settings.update { it.copy(serverOffHintDismissed = true) }`.
+
+### R2-03 보존 기록
+- 앱: `core.ops.archives(name): List<ArchiveEntryDto>`(디스크 읽기, IO에서). 화면을 열면 `repos.markHistorySeen(name)`도 부른다.
+- 웹: `GET /api/v1/repos/{name}/archives` → `{"entries":[ArchiveEntryDto…]}`.
+- `ArchiveEntryDto(at, group, kind, ref, name, archiveRef, sha, shortSha, summary, committedAt, currentSha)`. 최신 묶음이 처음, 묶음 안은 ref 이름순.
+  - `group`: 한 번의 업데이트가 보존한 묶음 이름(`20261025T101010Z`, 같은 초면 `…Z-2`). `at`은 그 시각(epoch ms, 초 단위).
+  - `kind: RefChangeKind?`: `FORCED`(히스토리 바뀜), `DELETED`(브랜치 삭제됨), `TAG_MOVED`, `TAG_DELETED`. **null이면 "강제 push 또는 삭제"**(2차 이전 보존이고 이력에서도 사라진 경우).
+  - `ref`: 원래 ref 전체 이름. `name`: 짧은 이름(`main`, `v1`). `summary`/`committedAt`: 보존된 커밋의 첫 줄과 시각(태그는 커밋까지 따라감, 커밋이 아니면 null).
+  - `currentSha`: 지금 이 레포에서 그 ref의 값(마지막 업데이트 기준 원본 값). null = "원본에 없음".
+- 받는 명령은 그대로 `git fetch <URL> 'refs/archive/*:refs/archive/*'`.
+- AC6(이력 → A-15 묶음): `RefChange.archivedAs`가 `refs/archive/<group>/…`이므로 그 `group`으로 찾는다.
+- 종류 저장: 업데이트마다 `mobilegit/archives.json`에 보존 ref별 변경을 남긴다(이력 200개 한도와 무관). 2차 이전 보존은 남은 이력에서 찾는다.
+
+### R2-04 변화 종류
+- `RefChange.kind: RefChangeKind`(파생 속성이라 예전 이력에도 나옴): `FAST_FORWARD`(새 커밋), `FORCED`(히스토리 바뀜), `CREATED`(새 브랜치·태그), `DELETED`(브랜치 삭제됨), `TAG_MOVED`, `TAG_DELETED`.
+- PR ref(`refs/pull/…`)는 보존하지 않으므로 움직이면 항상 `FAST_FORWARD`로 나온다.
+- 실패 제목은 기존 `SyncEvent.errorCategory`.
+
+### R2-05 AC4 / D-8 재부팅·업데이트 뒤 ngrok
+- `BootReceiver`(부팅 완료, 앱 업데이트)는 ngrok이 켜져 있었으면 `ngrokEnabled = false`로 바꾸고 `core.server.ngrokOffAfterRestart`(`MutableStateFlow<Boolean>`)를 true로 둔다. 서버 알림에 "외부 공개는 꺼진 채로 다시 시작했어요"가 나온다. ngrok을 다시 켜거나 `core.server.ackNgrokOff()`를 부르면 사라진다. 프로세스가 끝나도 사라진다.
+- 같은 부팅 안의 프로세스 재시작(START_STICKY)은 ngrok을 그대로 둔다.
+- 부팅 후 서버 자동 시작은 새 설치 기본 켜짐(`startOnBoot = true`, CR-6). 기존 설치는 저장값을 유지한다.
+
+### R2-06 비밀번호 요구 + ngrok
+- 코어는 조합을 거부하지 않는다. ngrok 경로에도 "비밀번호 요구" 설정을 같은 규칙으로 적용한다.
+  - 읽기·쓰기(`authEnabled = true, anonymousReadOnLan = false`): 모든 요청에 비밀번호.
+  - push만(`authEnabled = true, anonymousReadOnLan = true`): ngrok 주소로 익명 clone 가능, 익명 push는 401.
+  - 끄기(`authEnabled = false`): ngrok으로도 모두 익명(push 포함).
+- `Settings.effectiveAuthEnabled`/`effectiveAnonymousRead`는 이제 저장값 그대로다(ngrok과 무관).
+- `Settings.exposedWithoutPassword`: ngrok 켜짐 + "push만" 또는 "끄기". 위험 배너·경고 표시용.
+- 접속 기록 경로는 지금처럼 `NGROK`. 실패 한도(IP별, ngrok 전체 분당 30회)는 그대로.
+- `/api/v1/info`의 `authRequired`, `anonymousRead`는 저장값이다.
+
+### R2-07 AC6
+- 할 일 없음. 접근 확인 결과 `ProbeResult.Reachable.pullRefCount`, `Settings.mirrorPullRefs`/`MirrorSource.includePullRefs`, 웹 API `RepoSummaryDto.hasLfs`가 이미 있다.
+
+### R2-15 테더링 주소
+- `AddressKind.USB_TETHER`(인터페이스 `rndis*`, `usb*`, `ncm*`). 와이파이 핫스팟과 블루투스 테더링(`bt-pan`)은 `HOTSPOT`.
+- 대표 주소 순서: 와이파이 → 핫스팟 → USB 테더링 → Tailscale → ngrok(enum 순서).
+- 접속 기록 `AccessRoute.USB_TETHER`.
+- 실기기에서 USB 테더링을 켜서 확인하지는 않았다(인터페이스 이름은 기기마다 다를 수 있음).
+
+### UI 코드에 넣은 것 (빌드 유지용)
+- `ui/Format.kt`: 새 enum 값 때문에 `when`이 깨지지 않도록 `Badge.HISTORY_CHANGED`(경고 톤, History 아이콘, "히스토리 바뀜"), `AddressKind.USB_TETHER`·`AccessRoute.USB_TETHER`("USB 테더링") 분기와 `badgeOrder` 위치만 넣었다. 모양은 UI가 바꿔도 된다.
+- 문자열: `badge_history_changed`, `route_usb_tether`, `server_notif_ngrok_off_after_restart`.

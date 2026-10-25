@@ -231,3 +231,23 @@ JVM 테스트 78개 통과(신규 `StorageTest` 12개 포함). 실기기 `OnDevi
 
 - SEC-01은 ngrok 문서로만 확인(유효 토큰 없음). SEC-04는 전역 IPv6가 있는 망(셀룰러 IPv6)에서 403 실측 필요.
 - GC를 실제 큰 레포에 돌린 시간·배터리, 첫 받기 `waitingForForeground` 재개는 JVM 테스트로만.
+
+## 11. 2차 코어 작업 (PRD v2 13장)
+
+코드 커밋 `f2af10d`. 명세는 spec.md 8절.
+
+| 항목 | 결과 | 검증 |
+|---|---|---|
+| R2-01 히스토리 바뀜 저장, 행 사유, 주의 필요 정렬 | `RepoMeta.historyChangedAt`, `Badge.HISTORY_CHANGED`, `markHistorySeen`, `RepoListItem.issue/needsAttention`, `MirrorSource.failingSince`, RECENT 정렬 | JVM `queryFiltersAndSorts`, `forcePushDeleteAndTagMoveArePreserved`(재시작 뒤 유지, 열면 지워짐) |
+| R2-02 요약 수치 | `core.overview`, `RepoQuery.overview`, `MirrorSource.lastSuccessCheckAt`, `Settings.serverOffHintDismissed` | JVM `queryFiltersAndSorts`(개수, 마지막 확인, 멈춤 판정) |
+| R2-03 보존 기록 목록·API·종류 | `RepoOps.archives`, `GET /api/v1/repos/{name}/archives`, `mobilegit/archives.json` | JVM 위 테스트(강제 push·삭제·태그 이동, 현재 값, 커밋 요약, 이력이 지워져도 종류 유지, 옛 데이터는 null), API 응답 |
+| R2-04 변화 종류 | `RefChange.kind`(파생, 예전 이력에도) | JVM 위 테스트 |
+| R2-05 AC4, D-8 | `BootReceiver`가 ngrok을 끄고 서버 알림에 한 번 표시. 부팅 자동 시작 기본 켜짐은 CR-6으로 완료 | 컴파일만. 실기기 재부팅·업데이트 브로드캐스트는 확인하지 않음(재부팅 필요) |
+| R2-06 인증 강제 제거 | `effectiveAuthEnabled/AnonymousRead`가 저장값 그대로, ngrok 경로도 익명 규칙 적용, `exposedWithoutPassword` | JVM `authRules`(ngrok 커넥터로 push만: 익명 clone 200·익명 push 401 / 읽기·쓰기: 401 / 끄기: push 200 / 루프백은 여전히 401 / 접속 기록 NGROK) |
+| R2-07 AC6 | 이미 있음(`pullRefCount`, `hasLfs`) | - |
+| R2-15 테더링 | `AddressKind.USB_TETHER`, `AccessRoute.USB_TETHER`, 블루투스는 핫스팟 | JVM `classifiesAddresses`. 실기기 USB 테더링은 확인하지 않음 |
+
+- 실기기(d418f2d1): 7절 절차로 백업한 뒤 `installDebug`(제거 없음). 레포 15개 유지, 서버 8080 수신, 크래시 없음. 이 폰의 레포에는 보존 ref가 없어 A-15 데이터는 JVM 테스트로만 확인했다.
+- UI 코드는 `ui/Format.kt`의 enum 분기 3개만 넣었다(새 enum 값으로 빌드가 깨지지 않게). spec 8절 끝에 적었다.
+- 14장 항목은 구현하지 않았다.
+- JVM 테스트 78개 통과.
