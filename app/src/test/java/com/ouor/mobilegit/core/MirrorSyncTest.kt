@@ -367,4 +367,19 @@ class MirrorSyncTest {
         ops.createEmpty("plain")
         assertEquals(RepoException.Code.NOT_A_MIRROR, runCatching { mirrors.checkNow("plain") }.exceptionOrNull().let { (it as RepoException).code })
     }
+
+    // QA-03: an already mirrored URL is a distinct error kind (UI offers "go to repo"); add() throws ALREADY_MIRRORED.
+    // QA-09: catalog descriptions are kept on bulk-added mirrors.
+    @Test fun alreadyMirroredKindAndCatalogDescription() {
+        assertNull(mirrors.preview(upUrl).errorKind)
+        assertEquals(AddPreviewError.UNSUPPORTED_URL, mirrors.preview("not a url").errorKind)
+        val job = mirrors.addFromCatalog(BulkSourceKind.GITHUB_USER, "octo", "127.0.0.1",
+            listOf(CatalogRepo("up", "octo/up", "  Upstream demo  ", upUrl, null, false, false, false)), null)
+        assertEquals(1, job.items.size)
+        assertEquals("Upstream demo", store.require("up").description)
+        val again = mirrors.preview(upUrl + "/")
+        assertEquals(AddPreviewError.ALREADY_MIRRORED, again.errorKind)
+        assertEquals("up", again.existing?.name)
+        assertEquals(RepoException.Code.ALREADY_MIRRORED, (runCatching { mirrors.add(upUrl, "up2") }.exceptionOrNull() as RepoException).code)
+    }
 }

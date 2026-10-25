@@ -245,7 +245,16 @@ data class AddPreview(
     val suggestedName: String?,
     val existing: RepoMeta?,
     val error: String?,
-)
+) {
+    /** QA-03: which error [error] is, so the UI can offer "기존 레포로 이동" for [AddPreviewError.ALREADY_MIRRORED]. */
+    val errorKind: AddPreviewError? get() = when {
+        normalized == null -> AddPreviewError.UNSUPPORTED_URL
+        existing != null -> AddPreviewError.ALREADY_MIRRORED
+        else -> null
+    }
+}
+
+enum class AddPreviewError { UNSUPPORTED_URL, ALREADY_MIRRORED }
 
 /** F-06 / F-15 registration flow (A-03). */
 class MirrorController(
@@ -276,11 +285,11 @@ class MirrorController(
     fun storageOk() = env.freeBytes() >= settings().storageFloorBytes
 
     /** Registers and starts the initial full fetch (AC4). Throws [RepoException] (INVALID_NAME, NAME_TAKEN, ALREADY_MIRRORED, STORAGE_LOW). */
-    fun add(url: String, name: String, credentialId: String? = null, createdBy: CreatedBy = CreatedBy.MIRROR_ADD, includePullRefs: Boolean? = null): RepoMeta {
+    fun add(url: String, name: String, credentialId: String? = null, createdBy: CreatedBy = CreatedBy.MIRROR_ADD, includePullRefs: Boolean? = null, description: String = ""): RepoMeta {
         val n = RemoteUrls.normalize(url) ?: throw RepoException(RepoException.Code.INVALID_NAME, "지원하지 않는 URL입니다")
         store.findMirrorByUrl(n.url)?.let { throw RepoException(RepoException.Code.ALREADY_MIRRORED, "이미 미러됨: ${it.name}") }
         if (!storageOk()) throw RepoException(RepoException.Code.STORAGE_LOW, "남은 공간이 부족합니다 (하한 ${settings().storageFloorBytes / (1 shl 20)}MB)")
-        val meta = store.create(name, RepoType.MIRROR, createdBy, mirror = MirrorSource(n.url, credentialId, includePullRefs = includePullRefs))
+        val meta = store.create(name, RepoType.MIRROR, createdBy, description = description.trim(), mirror = MirrorSource(n.url, credentialId, includePullRefs = includePullRefs))
         scheduler.enqueueUpdate(meta.name, if (createdBy == CreatedBy.BULK) SyncTrigger.BULK else SyncTrigger.INITIAL)
         return meta
     }
@@ -308,14 +317,16 @@ class MirrorController(
             reserved += name.lowercase()
             BulkItem(r.cloneUrl, name)
         }
-        return startJob(source, account, host, items, credentialId)
+        // QA-09: keep the host's description (W-01 description column)
+        return startJob(source, account, host, items, credentialId, items.zip(selected).associate { (i, r) -> i.repoName to r.description.orEmpty() })
     }
 
-    private fun startJob(source: BulkSourceKind, account: String, host: String, items: List<BulkItem>, credentialId: String?): BulkJob {
+    private fun startJob(source: BulkSourceKind, account: String, host: String, items: List<BulkItem>, credentialId: String?,
+                         descriptions: Map<String, String> = emptyMap()): BulkJob {
         val job = bulk.create(source, account, host, items)
         for (item in job.items.filter { it.status == BulkItemStatus.QUEUED }) {
             try {
-                add(item.remoteUrl, item.repoName, credentialId, CreatedBy.BULK)
+                add(item.remoteUrl, item.repoName, credentialId, CreatedBy.BULK, description = descriptions[item.repoName].orEmpty())
             } catch (e: RepoException) {
                 bulk.onRepoStatus(item.repoName, BulkItemStatus.FAILED, e.message, job.id)
             }
