@@ -87,6 +87,8 @@ class Core(private val context: Context) {
         freeBytes = { env.freeBytes() },
         appVersion = BuildConfig.VERSION_NAME,
         tunnelConnected = { tunnel.state.value is com.ouor.mobilegit.core.TunnelState.Connected },
+        mirrors = mirrors, // F-26: the web registers through the app's own flow
+        running = { coordinator.running.value },
     )
     val ops = RepoOps(repos, scheduler, { settings.current }, env, disconnect = gitServer::disconnectRepo)
     val server = ServerController(context) { this }

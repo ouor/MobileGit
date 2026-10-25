@@ -37,6 +37,13 @@ data class RepoSummaryDto(
     val includePullRefs: Boolean? = null,
     /** CR-11: `ERROR` (실패·원본 없음·토큰 확인 필요) or `WARNING` (지연·히스토리 바뀜); null with [issue]. */
     val severity: Severity? = null,
+    /**
+     * F-26 WM-01 AC5 / WM-05: a fetch is running, or the first fetch is queued and about to start ("받는 중").
+     * False while it waits ([waiting]) or after it failed ([issue]).
+     */
+    val syncing: Boolean = false,
+    /** WM-05 AC3/AC5: why a queued fetch waits: `FOREGROUND` (open the app on the phone), `STORAGE`, `WIFI`, `CHARGING`; else null. */
+    val waiting: String? = null,
 )
 
 @Serializable
@@ -100,10 +107,19 @@ object RepoBrowser {
     const val MAX_SCANNED_COMMITS = 200_000
 
     /** [checksStalled]: [RepoQuery.checksStalled] over all repos (CR-11: "지연" is then not a per-repo problem). */
-    fun summary(m: RepoMeta, s: Settings, now: Long, checksStalled: Boolean = false): RepoSummaryDto = summary(m).let { d ->
-        // the shared app rules; "updating" is not known here and is not an attention state
+    fun summary(m: RepoMeta, s: Settings, now: Long, checksStalled: Boolean = false, progress: RepoProgress? = null): RepoSummaryDto = summary(m).let { d ->
+        // the shared app rules; "updating" is not an attention state
         val item = RepoListItem(m, Badges.of(m, s, now, null, checksStalled), null)
-        d.copy(needsAttention = item.needsAttention, issue = item.issue, severity = item.severity, lastActivityAt = item.lastActivityAt, // R2ARC-03
+        val mir = m.mirror
+        val waiting = when {
+            mir == null || mir.initialFetchDone && mir.waitingReason == WaitingReason.NONE -> null
+            mir.waitingForForeground -> "FOREGROUND"
+            mir.waitingReason != WaitingReason.NONE -> mir.waitingReason.name
+            else -> null
+        }
+        val firstFetchQueued = mir != null && !mir.initialFetchDone && waiting == null && mir.lastError == null
+        d.copy(syncing = progress?.kind == SyncKind.UPDATE || firstFetchQueued, waiting = waiting,
+            needsAttention = item.needsAttention, issue = item.issue, severity = item.severity, lastActivityAt = item.lastActivityAt, // R2ARC-03
             includePullRefs = m.mirror?.let { it.includePullRefs ?: s.mirrorPullRefs })
     }
 
@@ -115,13 +131,13 @@ object RepoBrowser {
         hasLfs = m.hasLfs, sizeBytes = m.sizeBytes,
     )
 
-    fun detail(repo: Repository, m: RepoMeta, s: Settings, now: Long, checksStalled: Boolean = false): RepoDetailDto {
+    fun detail(repo: Repository, m: RepoMeta, s: Settings, now: Long, checksStalled: Boolean = false, progress: RepoProgress? = null): RepoDetailDto {
         val refs = repo.refDatabase.refs
         val head = repo.exactRef(Constants.HEAD)
         fun list(prefix: String) = refs.filter { it.name.startsWith(prefix) && it.objectId != null }
             .map { RefDto(it.name.removePrefix(prefix), it.objectId.name) }.sortedBy { it.name }
         return RepoDetailDto(
-            repo = summary(m, s, now, checksStalled), empty = head?.objectId == null && refs.none { it.name.startsWith(Constants.R_HEADS) },
+            repo = summary(m, s, now, checksStalled, progress), empty = head?.objectId == null && refs.none { it.name.startsWith(Constants.R_HEADS) },
             head = head?.target?.name?.removePrefix(Constants.R_HEADS),
             branches = list(Constants.R_HEADS), tags = list(Constants.R_TAGS),
             archivedRefCount = refs.count { it.name.startsWith(RepoStore.ARCHIVE_PREFIX) },

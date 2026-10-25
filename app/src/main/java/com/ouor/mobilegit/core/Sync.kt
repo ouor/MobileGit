@@ -400,8 +400,9 @@ class MirrorController(
     }
 
     /** AC3: reachability/auth check before registering. Blocking network call: run off the main thread. */
-    fun probe(url: String, credentialId: String? = null): ProbeResult {
-        return engine.probe(url, credentials.provider(credentials.forUrl(url, credentialId)))
+    /** [useStoredToken] false: probe without any saved token (F-26 D-14, anonymous web requests). */
+    fun probe(url: String, credentialId: String? = null, useStoredToken: Boolean = true): ProbeResult {
+        return engine.probe(url, if (useStoredToken) credentials.provider(credentials.forUrl(url, credentialId)) else null)
     }
 
     fun storageOk() = env.freeBytes() >= settings().storageFloorBytes

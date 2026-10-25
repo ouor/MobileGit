@@ -658,6 +658,7 @@
     <string name="main_push_size">레포 하나는 1GB까지 권장해요.</string>
     <string name="main_push_empty_instead">PC 없이 빈 레포로 먼저 만들기</string>
     <string name="change_fast_forward">새 커밋</string>
+    <string name="log_action_mirror_add">웹에서 미러 추가</string>
     <string name="change_review">PR 브랜치 바뀜</string>
     <string name="change_forced">히스토리 바뀜</string>
     <string name="change_created">새 브랜치·태그</string>

@@ -27,6 +27,7 @@ import io.ktor.server.routing.routing
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
@@ -63,7 +64,18 @@ sealed interface ServerStartResult {
     data class Failed(val message: String) : ServerStartResult
 }
 
-@Serializable data class ApiError(val code: String, val message: String)
+/** [repo]: the existing repo for `ALREADY_MIRRORED`; [category]: the failure class for `PROBE_FAILED` (F-26). */
+@Serializable data class ApiError(val code: String, val message: String, val repo: String? = null, val category: ErrorCategory? = null)
+
+/** F-26 WM-01 "확인" result. [access] is null when [existingRepo] is set (not probed). */
+@Serializable data class WebMirrorPreviewDto(
+    val url: String, val suggestedName: String?, val existingRepo: String?,
+    /** `REACHABLE`, `TOKEN_REQUIRED`, `ORIGIN_NOT_FOUND`, `FAILED` */
+    val access: String?, val refCount: Int? = null, val defaultBranch: String? = null, val pullRefCount: Int? = null,
+    val failure: ErrorCategory? = null,
+    /** what "받는 범위" says: PR refs follow the global default ([Settings.mirrorPullRefs]). */
+    val includePullRefs: Boolean,
+)
 @Serializable data class ApiErrorBody(val error: ApiError)
 @Serializable data class ServerInfoDto(val app: String, val version: String, val baseUrl: String, val authRequired: Boolean, val anonymousRead: Boolean)
 
@@ -89,12 +101,22 @@ class GitServer(
     private val queueWaitMillis: Long = 300_000,
     /** R2SEC-01: true only while the ngrok tunnel is connected; otherwise the ngrok port is just another loopback port. */
     private val tunnelConnected: () -> Boolean = { false },
+    /** F-26: registers mirrors for `POST /api/v1/mirrors` (the app's own controller); null = the routes answer 404. */
+    private val mirrors: MirrorController? = null,
+    /** F-26 WM-01 AC5: running fetches ([SyncCoordinator.running]), keyed by lower-case repo name. */
+    private val running: () -> Map<String, RepoProgress> = { emptyMap() },
+    private val webProbeTimeoutMillis: Long = 20_000,
+    /** D-16: web-added remotes must be https. false only in JVM tests (no TLS upstream there). */
+    private val httpsOnly: Boolean = true,
 ) {
     @Volatile private var server: EmbeddedServer<*, *>? = null
     @Volatile var ngrokPort: Int = -1; private set
     @Volatile var port: Int = -1; private set
     private val packSlots = Semaphore(maxConcurrentPacks)
     private val heavySlots = Semaphore(2)
+    /** F-26 WM-01 AC3: at most two web probes; a slot is held until the remote call really ends. */
+    private val probeSlots = java.util.concurrent.Semaphore(2)
+    private val probeScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
     private val activeByRepo = ConcurrentHashMap<String, MutableSet<Job>>()
 
     val isRunning get() = server != null
@@ -139,6 +161,8 @@ class GitServer(
             }
             routing {
             get("/api/v1/{apiPath...}") { api(call) }
+            post("/api/v1/mirrors/preview") { webMirror(call, register = false) }
+            post("/api/v1/mirrors") { webMirror(call, register = true) }
             get("/{repo}/info/refs") { infoRefs(call) }
             post("/{repo}/git-upload-pack") { uploadPack(call) }
             post("/{repo}/git-receive-pack") { receivePack(call) }
@@ -200,8 +224,8 @@ class GitServer(
             }
         }
 
-        fun log(repo: String?, action: AccessAction, status: Int) =
-            accessLog.add(AccessLogEntry(System.currentTimeMillis(), clientIp, route, repo, action, authResult, status))
+        fun log(repo: String?, action: AccessAction, status: Int, code: String? = null) =
+            accessLog.add(AccessLogEntry(System.currentTimeMillis(), clientIp, route, repo, action, authResult, status, code))
 
         fun baseUrl(): String {
             val proto = if (viaNgrok) "https" else (call.request.header("X-Forwarded-Proto") ?: "http")
@@ -471,7 +495,8 @@ class GitServer(
                 parts == listOf("repos") -> {
                     val all = store.repos.value; val s = settings(); val now = System.currentTimeMillis()
                     val stalled = RepoQuery.checksStalled(all, s, now)
-                    json(call, ListSerializer(RepoSummaryDto.serializer()), all.map { RepoBrowser.summary(it, s, now, stalled) })
+                    val run = running()
+                    json(call, ListSerializer(RepoSummaryDto.serializer()), all.map { RepoBrowser.summary(it, s, now, stalled, run[it.name.lowercase()]) })
                 }
                 // CR-11: the app's summary numbers, for the web header
                 parts == listOf("overview") -> json(call, RepoOverview.serializer(), settings().let { s ->
@@ -484,7 +509,7 @@ class GitServer(
                         store.open(meta.name).use { repo ->
                             when (parts.getOrNull(2)) {
                                 null -> json(call, RepoDetailDto.serializer(), RepoBrowser.detail(repo, meta, settings(), System.currentTimeMillis(),
-                                    RepoQuery.checksStalled(store.repos.value, settings(), System.currentTimeMillis())).copy(cloneUrl = "${ctx.baseUrl()}/${meta.name}.git"))
+                                    RepoQuery.checksStalled(store.repos.value, settings(), System.currentTimeMillis()), running()[meta.name.lowercase()]).copy(cloneUrl = "${ctx.baseUrl()}/${meta.name}.git"))
                                 "tree" -> json(call, TreeDto.serializer(), heavy { RepoBrowser.tree(repo, q["ref"], q["path"]) })
                                 "blob" -> json(call, BlobDto.serializer(), heavy { RepoBrowser.blob(repo, q["ref"], q["path"]) })
                                 "readme" -> {
@@ -527,6 +552,123 @@ class GitServer(
             status = 500; apiError(call, 500, "INTERNAL", "서버 오류가 발생했습니다 (오류 ID $id)")
         }
         ctx.log(repoParam, AccessAction.WEB, status)
+    }
+
+    // ---------------- F-26: add a mirror from the web (the only web write, D-11) ----------------
+
+    private class WebReject(val status: Int, val code: String, message: String, val repo: String? = null, val category: ErrorCategory? = null) : Exception(message)
+
+    /**
+     * `POST /api/v1/mirrors/preview` and `POST /api/v1/mirrors` (spec 3장 F-26). Order: ngrok port (WM-02 AC2, before
+     * auth so no password prompt) → CSRF (WM-03) → push-level auth (WM-02 AC1) → body checks → the app's
+     * [MirrorController] (WM-01 AC2).
+     */
+    private suspend fun webMirror(call: ApplicationCall, register: Boolean) {
+        val ctx = Ctx(call)
+        val action = if (register) AccessAction.MIRROR_ADD else AccessAction.WEB
+        val mc = mirrors
+        if (mc == null) { apiError(call, 404, "NOT_FOUND", "알 수 없는 API"); return }
+        suspend fun reject(r: WebReject) {
+            ctx.log(null, action, r.status, r.code)
+            json(call, ApiErrorBody.serializer(), ApiErrorBody(ApiError(r.code, r.message ?: "", r.repo, r.category)), HttpStatusCode.fromValue(r.status))
+        }
+        if (call.request.local.localPort == ngrokPort) // D-13: whatever the tunnel state, this port is the internet's
+            return reject(WebReject(403, "EXTERNAL_NOT_ALLOWED", "외부 공개(ngrok) 주소에서는 미러를 추가할 수 없습니다"))
+        crossSite(call)?.let { return reject(WebReject(403, "CROSS_SITE", it)) }
+        if (!ctx.authorize(true, null, action)) return // D-12: same rule as push; 401/429 are logged there
+        val authenticated = ctx.authResult == AuthResult.OK // D-14: only then may a saved token be used
+        try {
+            val body = readJsonBody(call)
+            if (body.keys.any { it.lowercase() in tokenKeys }) throw WebReject(400, "TOKEN_NOT_ACCEPTED", "웹에서는 토큰을 받지 않습니다. 토큰은 폰 앱에서 등록하세요")
+            val input = (body["url"] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content
+                ?: throw WebReject(400, "UNSUPPORTED_URL", "url이 필요합니다")
+            if (input.trim().contains('\n') || input.trim().contains('\r')) throw WebReject(400, "MULTIPLE_URLS", "주소는 한 번에 하나만 추가할 수 있습니다")
+            val p = mc.preview(input)
+            val n = p.normalized ?: throw WebReject(400, "UNSUPPORTED_URL", "지원하지 않는 주소입니다")
+            if (httpsOnly && !n.url.startsWith("https://")) throw WebReject(400, "HTTPS_ONLY", "https 주소만 추가할 수 있습니다") // D-16
+            if (!register) {
+                val preview = if (p.existing != null) WebMirrorPreviewDto(n.url, p.suggestedName, p.existing.name, null, includePullRefs = settings().mirrorPullRefs)
+                    else previewDto(n.url, p.suggestedName, webProbe(mc, n.url, authenticated))
+                json(call, WebMirrorPreviewDto.serializer(), preview)
+                ctx.log(null, action, 200)
+                return
+            }
+            p.existing?.let { throw WebReject(409, "ALREADY_MIRRORED", "이미 미러됨: ${it.name}", repo = it.name) }
+            val name = (body["name"] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content?.trim()
+                ?.takeIf { it.isNotEmpty() } ?: p.suggestedName ?: throw WebReject(400, "INVALID_NAME", "이름이 필요합니다")
+            RepoNames.validate(name)?.let { throw WebReject(400, "INVALID_NAME", it) }
+            if (store.exists(name)) throw WebReject(409, "NAME_TAKEN", "같은 이름의 레포가 있습니다")
+            if (!mc.storageOk()) throw WebReject(507, "STORAGE_LOW", "남은 공간이 최소 여유 공간보다 적습니다")
+            when (val r = webProbe(mc, n.url, authenticated)) {
+                is ProbeResult.Reachable -> Unit
+                ProbeResult.AuthRequired -> throw WebReject(403, "TOKEN_REQUIRED", "토큰이 필요한 레포입니다")
+                ProbeResult.NotFound -> throw WebReject(404, "ORIGIN_NOT_FOUND", "원본을 찾을 수 없습니다")
+                is ProbeResult.Failed -> throw WebReject(502, "PROBE_FAILED", "원본에 접근하지 못했습니다", category = r.category)
+            }
+            val meta = try { mc.add(n.url, name, createdBy = CreatedBy.WEB) } catch (e: RepoException) {
+                throw when (e.code) {
+                    RepoException.Code.ALREADY_MIRRORED -> WebReject(409, "ALREADY_MIRRORED", e.message ?: "", repo = store.findMirrorByUrl(n.url)?.name)
+                    RepoException.Code.NAME_TAKEN -> WebReject(409, "NAME_TAKEN", e.message ?: "")
+                    RepoException.Code.STORAGE_LOW -> WebReject(507, "STORAGE_LOW", e.message ?: "")
+                    else -> WebReject(400, "INVALID_NAME", e.message ?: "")
+                }
+            }
+            val s = settings(); val now = System.currentTimeMillis()
+            json(call, RepoSummaryDto.serializer(), RepoBrowser.summary(meta, s, now, RepoQuery.checksStalled(store.repos.value, s, now),
+                running()[meta.name.lowercase()]), HttpStatusCode.Created)
+            ctx.log(meta.name, action, 201)
+        } catch (r: WebReject) {
+            reject(r)
+        } catch (e: Exception) {
+            val id = java.util.UUID.randomUUID().toString().take(8)
+            System.err.println("mobilegit api error $id: ${Redact.text(e.toString())}")
+            reject(WebReject(500, "INTERNAL", "서버 오류가 발생했습니다 (오류 ID $id)"))
+        }
+    }
+
+    private val tokenKeys = setOf("token", "credential", "credentialid", "password", "authtoken", "accesstoken")
+
+    /**
+     * WM-03: a JSON body (cross-origin JSON needs a preflight we never allow), a same-origin Origin / Sec-Fetch-Site
+     * when the browser sends them, and a Host that names the phone directly (DNS rebinding). Null = passes.
+     */
+    private fun crossSite(call: ApplicationCall): String? {
+        val type = call.request.header(HttpHeaders.ContentType)?.substringBefore(';')?.trim()?.lowercase()
+        if (type != "application/json") return "본문은 application/json이어야 합니다"
+        val host = call.request.header(HttpHeaders.Host)
+        if (host == null || !NetClassifier.isDirectHost(host)) return "폰 주소로 직접 연 페이지에서만 추가할 수 있습니다"
+        call.request.header("Origin")?.let { if (!it.equals("http://$host", ignoreCase = true)) return "다른 출처에서 보낸 요청입니다" }
+        call.request.header("Sec-Fetch-Site")?.let { if (!it.equals("same-origin", ignoreCase = true)) return "다른 출처에서 보낸 요청입니다" }
+        return null
+    }
+
+    private suspend fun readJsonBody(call: ApplicationCall): kotlinx.serialization.json.JsonObject {
+        val text = withContext(Dispatchers.IO) {
+            runCatching { LimitedInput(call.receiveStream(), 16 * 1024).readAllBytes().toString(Charsets.UTF_8) }.getOrNull()
+        } ?: throw WebReject(400, "BAD_REQUEST", "요청 본문이 너무 큽니다")
+        return runCatching { CoreJson.parseToJsonElement(text) as kotlinx.serialization.json.JsonObject }.getOrNull()
+            ?: throw WebReject(400, "BAD_REQUEST", "JSON 객체가 필요합니다")
+    }
+
+    /** WM-01 AC3: 20 s, two at a time (else 503 BUSY). D-14: a saved token only for password-authenticated requests. */
+    private suspend fun webProbe(mc: MirrorController, url: String, useStoredToken: Boolean): ProbeResult {
+        if (!probeSlots.tryAcquire()) throw WebReject(503, "BUSY", "다른 확인이 진행 중입니다. 잠시 후 다시 시도해 주세요")
+        val job = probeScope.async { try { mc.probe(url, useStoredToken = useStoredToken) } finally { probeSlots.release() } }
+        val r = withTimeoutOrNull(webProbeTimeoutMillis) { job.await() } ?: return ProbeResult.Failed(ErrorCategory.TIMEOUT, "timeout")
+        // D-16: JGit refuses an https → http redirect ("Redirection blocked: redirect https://… -> http://…")
+        if (r is ProbeResult.Failed && Regex("""^.*redirection blocked: redirect \S+ -> http:""", RegexOption.IGNORE_CASE).containsMatchIn(r.detail))
+            throw WebReject(400, "HTTPS_ONLY", "https가 아닌 주소로 넘어가서 추가하지 않았습니다")
+        return r
+    }
+
+    private fun previewDto(url: String, name: String?, r: ProbeResult): WebMirrorPreviewDto {
+        val pr = settings().mirrorPullRefs
+        return when (r) {
+            is ProbeResult.Reachable -> WebMirrorPreviewDto(url, name, null, "REACHABLE", r.refCount, r.defaultBranch, r.pullRefCount, includePullRefs = pr)
+            ProbeResult.AuthRequired -> WebMirrorPreviewDto(url, name, null, "TOKEN_REQUIRED", includePullRefs = pr)
+            ProbeResult.NotFound -> WebMirrorPreviewDto(url, name, null, "ORIGIN_NOT_FOUND", includePullRefs = pr)
+            is ProbeResult.Failed -> WebMirrorPreviewDto(url, name, null, "FAILED", failure = r.category, includePullRefs = pr)
+        }
     }
 
     /** GIT-09: at most two history/tree walks at a time; others get 503 BUSY after 10 s instead of piling up. */

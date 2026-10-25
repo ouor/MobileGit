@@ -7,7 +7,9 @@ import kotlinx.serialization.json.JsonNames
 // PRD 6장 데이터 모델. 시각은 모두 epoch millis(UTC).
 
 @Serializable enum class RepoType { MIRROR, LOCAL }
-@Serializable enum class CreatedBy { APP_EMPTY, PUSH, MIRROR_ADD, BULK, FORK }
+@Serializable enum class CreatedBy { APP_EMPTY, PUSH, MIRROR_ADD, BULK, FORK,
+    /** F-26 WM-01 AC4: registered from the web UI. */
+    WEB }
 @Serializable enum class OriginStatus { OK, GONE, AUTH_REQUIRED, UNKNOWN }
 @Serializable enum class WaitingReason { NONE, WIFI, CHARGING, STORAGE }
 @Serializable enum class SyncTrigger { MANUAL, AUTO, BULK, INITIAL }
@@ -160,7 +162,9 @@ data class BulkJob(
 }
 
 @Serializable enum class AccessRoute { WIFI, HOTSPOT, USB_TETHER, TAILSCALE, NGROK, LOCALHOST, OTHER }
-@Serializable enum class AccessAction { READ, PUSH, WEB }
+@Serializable enum class AccessAction { READ, PUSH, WEB,
+    /** F-26 WM-02 AC6: "미러 추가" from the web ([AccessLogEntry.code] = rejection code). */
+    MIRROR_ADD }
 @Serializable enum class AuthResult { OK, FAILED, ANONYMOUS, BLOCKED }
 
 @Serializable
@@ -172,6 +176,8 @@ data class AccessLogEntry(
     val action: AccessAction,
     val authResult: AuthResult,
     val status: Int,
+    /** F-26: the API error code of a rejected request (`CROSS_SITE`, `HTTPS_ONLY`, …); null otherwise. */
+    val code: String? = null,
 )
 
 /**

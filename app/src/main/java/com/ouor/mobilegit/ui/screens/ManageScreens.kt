@@ -276,7 +276,7 @@ private fun AccessRow(e: com.ouor.mobilegit.core.AccessLogEntry) {
     Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(horizontal = Space.md, vertical = Space.sm + Space.xxs)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(when (e.action) { AccessAction.READ -> "clone·fetch"; AccessAction.PUSH -> "push"; AccessAction.WEB -> str(R.string.log_filter_web) } + (e.repoName?.let { " · ${it}" } ?: ""),
+                Text(when (e.action) { AccessAction.READ -> "clone·fetch"; AccessAction.PUSH -> "push"; AccessAction.WEB -> str(R.string.log_filter_web); AccessAction.MIRROR_ADD -> str(R.string.log_action_mirror_add) } + (e.repoName?.let { " · ${it}" } ?: ""),
                     style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 1)
                 Text("${ago(e.at)} ${time(e.at)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
