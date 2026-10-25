@@ -130,6 +130,7 @@ class Core(private val context: Context) {
             settings.state.map { it.checkIntervalHours to it.checkWifiOnly }.distinctUntilChanged().drop(1).collect { scheduler.schedulePeriodicCheck() }
         }
         scope.launch { settings.state.map { it.port }.distinctUntilChanged().drop(1).collect { server.onPortChanged() } }
+        server.turnNgrokOffAfterRebootOrUpdate(BuildConfig.VERSION_CODE)
         server.restoreIfEnabled()
     }
 }
@@ -172,11 +173,7 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         val core = MobileGitApp.core(context)
-        // R2-05 AC4 / D-8: never re-open the phone to the internet unattended after a reboot or an update
-        if (core.settings.current.ngrokEnabled) {
-            core.settings.update { it.copy(ngrokEnabled = false) }
-            core.server.markNgrokOffAfterRestart()
-        }
+        // R2-05 AC4 / D-8: ngrok was already switched off in Core.start() (R2SEC-02)
         if (core.settings.current.startOnBoot && core.settings.current.serverEnabled) core.server.start()
     }
 }

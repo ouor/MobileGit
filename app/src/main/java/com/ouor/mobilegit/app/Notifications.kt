@@ -80,8 +80,10 @@ class Notifier(private val context: Context, private val notifyOnSuccess: () -> 
         /** AND-18: event notifications use this tag so their hash IDs never replace [ID_SERVER] / [ID_SERVER_BLOCKED]. */
         const val TAG_EVENT = "event"
 
-        /** Foreground-progress IDs (WorkManager has no tag): bit 16 set, so never 1 or 2. */
-        fun progressId(seed: Int) = seed or 0x10000
+        /** Foreground-progress IDs (WorkManager has no tag): 0x10000..0x1FFFF, so never 1 or 2 (R2AND-01: masked, not OR-ed). */
+        fun progressId(seed: Int) = (seed and 0xFFFF) or 0x10000
+        /** R2AND-01: "saved" notifications, 0x20000..0x2FFFF; can never equal a [progressId] that WorkManager cancels. */
+        fun savedId(seed: Int) = (seed and 0xFFFF) or 0x20000
     }
 
     @Suppress("MissingPermission")

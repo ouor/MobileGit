@@ -255,7 +255,7 @@ class ExportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         }.getOrNull() ?: fallbackName
         val folder = folderOf(uri.authority, runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull())
         val body = if (folder != null) ctx.getString(R.string.notif_export_saved_in, folder, name) else ctx.getString(R.string.notif_export_saved, name)
-        val nid = id.hashCode() or 0x20000
+        val nid = Notifier.savedId(id.hashCode())
         androidx.core.app.NotificationManagerCompat.from(ctx).notify(nid, NotificationCompat.Builder(ctx, Notifier.CH_EXPORT)
             .setSmallIcon(R.drawable.ic_notification).setContentTitle(ctx.getString(R.string.notif_export_saved_title))
             .setContentText(body).setStyle(NotificationCompat.BigTextStyle().bigText(body))

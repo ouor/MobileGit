@@ -40,6 +40,9 @@ data class Settings(
     val serverOffHintDismissed: Boolean = false,
     /** R2GIT-04: when the periodic check job last ran ([RepoQuery.checksStalled]). */
     val lastPeriodicCheckAt: Long? = null,
+    /** R2SEC-02: boot count and app version of the last process start; a change means "rebooted or updated". */
+    val lastStartBootCount: Int? = null,
+    val lastStartVersionCode: Int? = null,
 ) {
     val hasNgrokToken get() = ngrokAuthtokenEnc != null
     /**

@@ -617,6 +617,7 @@
     <string name="server_notif_ngrok_token">외부 공개 실패: ngrok 토큰 확인 필요</string>
     <string name="server_notif_title">mobilegit 서버 실행 중</string>
     <string name="server_notif_title_public">mobilegit 서버 (외부 공개 중)</string>
+    <string name="server_notif_title_public_no_password">mobilegit 서버 (비밀번호 없이 외부 공개 중)</string>
     <string name="server_notif_stop">서버 끄기</string>
     <string name="server_notif_ngrok_off_after_restart">외부 공개는 꺼진 채로 다시 시작했어요</string>
     <string name="tunnel_token_unreadable">저장된 ngrok 토큰을 읽을 수 없어요. 설정 › 외부 공개에서 다시 입력해 주세요.</string>

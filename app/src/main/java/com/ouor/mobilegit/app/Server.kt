@@ -107,6 +107,21 @@ class ServerController(private val context: Context, private val core: () -> Cor
         context.startService(Intent(context, ServerService::class.java).setAction(ServerService.ACTION_STOP))
     }
 
+    /**
+     * R2-05 AC4 / D-8 / R2SEC-02: after a reboot or an app update, ngrok is switched off before anything can start
+     * the server. Decided from stored state (boot count, version code) on every process start, so it does not depend
+     * on whether [BootReceiver] or [restoreIfEnabled] runs first. Call before [restoreIfEnabled].
+     */
+    fun turnNgrokOffAfterRebootOrUpdate(versionCode: Int) {
+        val settings = core().settings
+        val s = settings.current
+        val boot = bootCount()
+        if (s.lastStartBootCount == boot && s.lastStartVersionCode == versionCode) return
+        settings.update { it.copy(lastStartBootCount = boot, lastStartVersionCode = versionCode, ngrokEnabled = false) }
+        settings.flush() // the process may be gone right after a boot broadcast
+        if (s.ngrokEnabled) markNgrokOffAfterRestart()
+    }
+
     /** F-01 AC7: after a process restart within the same boot, bring the server back. Reboots are [BootReceiver]'s job. */
     fun restoreIfEnabled() {
         val s = core().settings.current
@@ -278,7 +293,7 @@ class ServerService : Service() {
                 }
             }
             launch {
-                combine(c.network.addresses, c.tunnel.state, c.server.ngrokOffNotice) { a, t, off -> Triple(a, t, off) }.collect { (addrs, t, offAfterRestart) ->
+                combine(c.network.addresses, c.tunnel.state, c.server.ngrokOffNotice, c.settings.state.map { it.exposedWithoutPassword }.distinctUntilChanged(), ::NotificationInputs).collect { (addrs, t, offAfterRestart, noPassword) ->
                     val primary = addrs.firstOrNull()?.baseUrl ?: getString(R.string.server_notif_no_network)
                     val note = if (offAfterRestart && t == TunnelState.Off) getString(R.string.server_notif_ngrok_off_after_restart) else null
                     val ngrok = when (t) {
@@ -288,17 +303,29 @@ class ServerService : Service() {
                         is TunnelState.Retrying -> getString(R.string.server_notif_ngrok_retrying, t.reason)
                         is TunnelState.TokenRejected -> getString(R.string.server_notif_ngrok_token)
                     }
-                    getSystemService(android.app.NotificationManager::class.java).notify(Notifier.ID_SERVER, buildNotification(primary, ngrok, public = t is TunnelState.Connected))
+                    getSystemService(android.app.NotificationManager::class.java).notify(Notifier.ID_SERVER,
+                        buildNotification(primary, ngrok, public = t is TunnelState.Connected, noPassword = noPassword))
                 }
             }
         }
     }
 
-    /** CR-10: "외부 공개 중" only while the tunnel is connected (same rule as the app); other tunnel states are in the body. */
-    private fun buildNotification(text: String, ngrok: String?, public: Boolean = false): Notification {
+    private data class NotificationInputs(val addrs: List<com.ouor.mobilegit.core.ServerAddress>, val tunnel: TunnelState, val offAfterRestart: Boolean, val noPassword: Boolean)
+
+    /**
+     * CR-10: "외부 공개 중" only while the tunnel is connected (same rule as the app); other tunnel states are in the body.
+     * R2SEC-03: "비밀번호 없이" when [noPassword] (R2-06 combination), and a lock-screen version without the addresses.
+     */
+    private fun buildNotification(text: String, ngrok: String?, public: Boolean = false, noPassword: Boolean = false): Notification {
         val stop = PendingIntent.getService(this, 1, Intent(this, ServerService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
+        val title = getString(when {
+            public && noPassword -> R.string.server_notif_title_public_no_password
+            public -> R.string.server_notif_title_public
+            else -> R.string.server_notif_title
+        })
+        val locked = NotificationCompat.Builder(this, Notifier.CH_SERVER).setSmallIcon(R.drawable.ic_notification).setContentTitle(title).build()
         return NotificationCompat.Builder(this, Notifier.CH_SERVER).setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(getString(if (public) R.string.server_notif_title_public else R.string.server_notif_title))
+            .setContentTitle(title).setVisibility(NotificationCompat.VISIBILITY_PRIVATE).setPublicVersion(locked)
             .setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(listOfNotNull(text, ngrok).joinToString("\n")))
             .setOngoing(true).setOnlyAlertOnce(true)
             .setContentIntent(Notifier.openApp(this, null, "main", 0))
