@@ -171,6 +171,21 @@ class ExportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         const val K_KIND = "kind"; const val K_REPOS = "repos"; const val K_REPOS_FILE = "reposFile"; const val K_REF = "ref"; const val K_URI = "uri"
         const val K_OUT_FILE = "file"; const val K_ERROR = "error"
 
+        /**
+         * CR-9: folder name of a SAF document for the "saved" notification, when the provider's document id shows it:
+         * external storage (`primary:Documents/Backups/x.zip` → "Backups") and raw download paths
+         * (`raw:/storage/emulated/0/Download/x.zip` → "Download"). Other providers (Downloads `msf:123`, Drive) → null.
+         */
+        fun folderOf(authority: String?, docId: String?): String? {
+            val path = when {
+                docId == null -> return null
+                docId.startsWith("raw:") -> docId.removePrefix("raw:")
+                authority == "com.android.externalstorage.documents" -> docId.substringAfter(':', "")
+                else -> return null
+            }
+            return path.trimEnd('/').substringBeforeLast('/', "").substringAfterLast('/').ifEmpty { null }
+        }
+
         /** AND-12: shared export files are kept a day (the receiving app may read late), then removed. */
         fun sweepCache(context: Context, maxAgeMs: Long = 24 * 3_600_000L) {
             val now = System.currentTimeMillis()
@@ -213,6 +228,7 @@ class ExportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                     runCatching { DocumentsContract.deleteDocument(applicationContext.contentResolver, uri) }
                     throw e
                 }
+                notifySaved(uri, fileName)
                 Result.success(workDataOf(K_OUT_FILE to null))
             } else {
                 // Share: needs a local file. Refuse up front when it would push free space under the floor (ARC-07).
@@ -225,6 +241,23 @@ class ExportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         } catch (e: Exception) {
             Result.failure(Data.Builder().putString(K_ERROR, e.message ?: e.javaClass.simpleName).build())
         } finally { listFile?.delete() }
+    }
+
+    /** CR-9 / R2-10 AC2: when the app is not on screen, say where the file went (the UI shows a snackbar otherwise). */
+    @Suppress("MissingPermission")
+    private fun notifySaved(uri: Uri, fallbackName: String) {
+        val ctx = applicationContext
+        if (MobileGitApp.visibleActivities > 0 || !Notifier.canPost(ctx)) return
+        val name = runCatching {
+            ctx.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+        }.getOrNull() ?: fallbackName
+        val folder = folderOf(uri.authority, runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull())
+        val body = if (folder != null) ctx.getString(R.string.notif_export_saved_in, folder, name) else ctx.getString(R.string.notif_export_saved, name)
+        val nid = id.hashCode() or 0x20000
+        androidx.core.app.NotificationManagerCompat.from(ctx).notify(nid, NotificationCompat.Builder(ctx, Notifier.CH_EXPORT)
+            .setSmallIcon(R.drawable.ic_notification).setContentTitle(ctx.getString(R.string.notif_export_saved_title))
+            .setContentText(body).setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(Notifier.openApp(ctx, null, "main", nid)).setAutoCancel(true).build())
     }
 
     override suspend fun getForegroundInfo() = progressInfo(applicationContext, id.hashCode(), applicationContext.getString(R.string.notif_channel_export), "")

@@ -623,6 +623,9 @@
     <string name="work_fetching">%1$s 받는 중</string>
     <string name="work_update">업데이트</string>
     <string name="work_mirror_update">미러 업데이트</string>
+    <string name="notif_export_saved_title">내보내기 완료</string>
+    <string name="notif_export_saved_in">%1$s 폴더에 %2$s 파일로 저장했어요. 암호화되지 않은 파일이에요.</string>
+    <string name="notif_export_saved">%1$s 파일로 저장했어요. 암호화되지 않은 파일이에요.</string>
     <string name="work_export_no_space">저장 공간이 부족해 공유용 파일을 만들 수 없어요. 파일로 저장을 선택해 주세요.</string>
     <string name="fmt_days_running">%1$d일째</string>
     <string name="fmt_hours_running">%1$d시간째</string>

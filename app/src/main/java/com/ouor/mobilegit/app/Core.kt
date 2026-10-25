@@ -144,6 +144,7 @@ class MobileGitApp : Application() {
         // QA-02: a blocked background restart (e.g. after an app update) is retried as soon as the user opens the app.
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityStarted(activity: android.app.Activity) {
+                visibleActivities++
                 core.server.resumeIfBlocked()
                 // GIT-08: first fetches that could not start in the background run now, as foreground work
                 core.coordinator.resumeWaitingForForeground(core.scheduler)
@@ -151,13 +152,16 @@ class MobileGitApp : Application() {
             override fun onActivityCreated(activity: android.app.Activity, savedInstanceState: android.os.Bundle?) {}
             override fun onActivityResumed(activity: android.app.Activity) {}
             override fun onActivityPaused(activity: android.app.Activity) {}
-            override fun onActivityStopped(activity: android.app.Activity) {}
+            override fun onActivityStopped(activity: android.app.Activity) { visibleActivities-- }
             override fun onActivitySaveInstanceState(activity: android.app.Activity, outState: android.os.Bundle) {}
             override fun onActivityDestroyed(activity: android.app.Activity) {}
         })
     }
 
     companion object {
+        /** Started activities (main thread). 0 = the user is not looking at the app (CR-9: then notify). */
+        @Volatile var visibleActivities = 0
+
         fun core(context: Context): Core = (context.applicationContext as MobileGitApp).core
     }
 }

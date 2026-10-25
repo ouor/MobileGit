@@ -58,6 +58,17 @@ class UrlAndNameTest {
     }
 }
 
+class ExportLocationTest {
+    @Test fun folderOfSafDocuments() { // CR-9
+        val f = com.ouor.mobilegit.app.ExportWorker.Companion::folderOf
+        assertEquals("Backups", f("com.android.externalstorage.documents", "primary:Documents/Backups/x.zip"))
+        assertEquals("Download", f("com.android.providers.downloads.documents", "raw:/storage/emulated/0/Download/x.zip"))
+        assertNull(f("com.android.externalstorage.documents", "primary:x.zip")) // storage root: name only
+        assertNull(f("com.android.providers.downloads.documents", "msf:123"))
+        assertNull(f("com.google.android.apps.docs.storage", "acc=1;doc=abc"))
+    }
+}
+
 class NetTest {
     @Test fun classifiesAddresses() {
         val ifaces = listOf(NetIface("rndis0", "192.168.42.129"), NetIface("wlan0", "192.168.0.12"), NetIface("swlan0", "10.42.17.1"), NetIface("tun0", "100.101.2.3"),
