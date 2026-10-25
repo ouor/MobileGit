@@ -20,13 +20,17 @@
 | 14-server-card-qr.png | 펼친 서버 카드의 주소 옆 QR 버튼 (접힌 줄에는 없음) | R2-13 AC1 |
 | 15-new-local-guide-lfs.png | 새 로컬 레포 안내: 핫스팟·USB 테더링 줄, LFS 접힘 영역, 1GB 권장 | R2-11, R2-07 AC2 |
 | 16-fork-sheet.png | 분리 시트의 남는 것 / 바뀌는 것, 아래 안내 | R2-14 |
-| 17-export-done-notification.png | 백그라운드에서 끝난 내보내기 알림 "qa 폴더에 … 파일로 저장했어요. 암호화되지 않은 파일이에요." | R2-10 AC2, CR-9 |
-| 18-r206-no-password-ngrok-dialog.png | 비밀번호 끄기 상태에서 ngrok 켜기 경고 (취소 / 비밀번호 요구 켜고 공개 / 그래도 진행) | R2-06 AC1 |
-| 19-r206-settings-warning.png | 위험 조합 저장 뒤 설정의 "비밀번호 없이 공개 중"과 그 아래의 틀린 push만 설명 | R2-06 AC3, QA2-02 |
-| 20-r206-main-banner.png | 위험 조합에서 터널 실패인데 제목이 "비밀번호 없이 공개 중"인 배너 | QA2-03 |
-| 21-ngrok-off-after-update.png | 앱 업데이트 뒤 "외부 공개는 꺼진 채로 다시 시작했어요" (앱 안 배너) | R2-05 AC4, QA2-04 |
+| 17-export-done-notification.png | 백그라운드에서 끝난 내보내기 알림 "내보내기 완료 · qa 폴더에 …" (알림 부분만 잘라 냄) | R2-10 AC2, CR-9 |
+| 18-r206-no-password-ngrok-dialog.png | push만 상태에서 ngrok 켜기 경고 (취소 / 비밀번호 요구를 "읽기·쓰기"로 바꾸고 공개 / 그래도 진행), 재검증 빌드 | R2-06 AC1, QA2-02 |
+| 19-r206-settings-push-only-copy.png | 고친 push만 설명 "clone과 웹 화면은 비밀번호 없이 열려요 (ngrok 포함)…" | QA2-02 재검증 |
+| 20-r206-main-banner.png | 위험 조합 + 가짜 토큰: 제목 "외부 공개 실패 (ngrok)", 본문 "연결되면 비밀번호 없이 공개돼요." | QA2-03 재검증 |
+| 21-ngrok-off-after-restart-notification.png | 강제 종료 뒤 다시 실행: 서버 알림 펼친 본문의 "외부 공개는 꺼진 채로 다시 시작했어요" | R2-05 AC4, QA2-04 재검증 |
+| 21b-ngrok-off-after-restart-banner.png | 같은 상황의 앱 안 배너 | R2-05 AC4 |
 | 22-settings-sync-interval.png | 설정 요약 줄을 눌러 연 변경 확인 주기 대화상자 | R2-08 AC1 |
 | 23-storage-recalc.png | 저장 공간 "레포 용량은 방금 기준이에요"와 용량 다시 계산 | R2-17 AC2 |
-| 24-bulk-select-all-chip-clipped.png | 일괄 미러: 전체 선택은 한 줄이지만 "보관된 레포 숨기기" 칩이 잘림 | R2-17 AC1, QA2-05 |
-
-17번은 상태 표시줄 위 빠른 설정에 와이파이 이름이 보인다.
+| 24-bulk-chips-wrapped.png | 일괄 미러: 칩 줄과 "N개 중 M개 표시 · 전체 선택" 줄이 나뉨 | R2-17 AC1, QA2-05 재검증 |
+| 25-r206-reverse-order-dialog.png | ngrok 켜진 상태에서 push만으로 바꿀 때의 경고 (취소 / 외부 공개 끄고 바꾸기 / 그래도 진행) | R2-06 AC2 |
+| 26-qa201-dropped-connection-network-error.png | 끊긴 연결 → "업데이트 실패 · 네트워크 오류" | QA2-01 재검증 |
+| 27-qa201-real-404-origin-gone.png | 진짜 404 → "원본 없음" | QA2-01 재검증 |
+| 28-qa201-gone-then-network-error.png | 원본 없음 상태에서 네트워크 오류 → "업데이트 실패 · 네트워크 오류" | QA2-01 재검증 |
+| 29-qa206-settings-public-while-failed.png | 설정: 제목은 "ngrok · 실패"인데 아래에 "비밀번호 없이 공개 중" | QA2-06 |
