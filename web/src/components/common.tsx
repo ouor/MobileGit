@@ -6,6 +6,8 @@ import {
   CopyIcon,
   ArrowLeftRightIcon,
   FolderIcon,
+  HistoryIcon,
+  HourglassIcon,
   KeyRoundIcon,
   PackageIcon,
   RotateCwIcon,
@@ -17,7 +19,8 @@ import { Button } from "@/components/ui/button"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { reloadAll, type ApiError, type OriginStatus, type RepoSummary } from "@/lib/api"
+import { reloadAll, type ApiError, type RepoIssue, type RepoSummary } from "@/lib/api"
+import { issueText, issueTone } from "@/lib/issue"
 import { absoluteTime, relativeTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -58,19 +61,28 @@ export function RepoTypeBadge({ repo }: { repo: RepoSummary }) {
   )
 }
 
-// Only problems get a badge (design-system principle 7): "OK" and "not checked yet" draw nothing.
-const originProblem: Partial<Record<OriginStatus, { t: keyof typeof tone; label: string; icon: ReactNode; title: string }>> = {
-  GONE: { t: "danger", label: "원본 없음", icon: <CloudOffIcon />, title: "원본이 삭제되었거나 비공개로 바뀌었어요. 이 미러가 남은 사본일 수 있어요" },
-  AUTH_REQUIRED: { t: "warning", label: "인증 필요", icon: <KeyRoundIcon />, title: "원본에 접근하려면 앱에서 원본 접속 토큰을 등록해야 해요" },
+// Only repos that need attention get a badge (design-system principle 7), with the app's row wording (R2-01, WR-6).
+const issueIcon: Record<RepoIssue["badge"], ReactNode> = {
+  ORIGIN_GONE: <CloudOffIcon />,
+  AUTH_REQUIRED: <KeyRoundIcon />,
+  FAILED: <AlertTriangleIcon />,
+  DELAYED: <HourglassIcon />,
+  HISTORY_CHANGED: <HistoryIcon />,
+}
+const issueHint: Record<RepoIssue["badge"], string> = {
+  ORIGIN_GONE: "원본이 삭제되었거나 비공개로 바뀌었어요. 이 미러가 남은 사본일 수 있어요",
+  AUTH_REQUIRED: "원본에 접근하려면 앱에서 원본 접속 토큰을 확인해야 해요",
+  FAILED: "마지막 업데이트가 실패했어요. 앱의 동기화 이력에서 자세히 볼 수 있어요",
+  DELAYED: "확인 주기보다 오래 원본을 확인하지 못했어요. 폰의 배터리 최적화 설정을 확인하세요",
+  HISTORY_CHANGED: "원본이 강제 push하거나 브랜치·태그를 지워 사라지기 전 상태를 보존했어요",
 }
 
-export function OriginBadge({ status }: { status: OriginStatus | null }) {
-  const o = status && originProblem[status]
-  if (!o) return null
+export function IssueBadge({ issue }: { issue: RepoIssue | null }) {
+  if (!issue) return null
   return (
-    <ToneBadge t={o.t} title={o.title}>
-      {o.icon}
-      {o.label}
+    <ToneBadge t={issueTone(issue)} title={issueHint[issue.badge]}>
+      {issueIcon[issue.badge]}
+      {issueText(issue)}
     </ToneBadge>
   )
 }

@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
-import { BreakableText, CodeField, ErrorState, ListSkeleton, OriginBadge, Time } from "@/components/common"
+import { BreakableText, CodeField, ErrorState, ListSkeleton, Time } from "@/components/common"
 import { PathBar } from "@/components/PathBar"
 import { ClonePanel, cloneUrlFor, RepoLayout } from "@/components/RepoLayout"
 import { apiUrl, repoApi, useApi, usePrefetch, type Readme, type RepoDetail, type Tree, type TreeEntry } from "@/lib/api"
@@ -265,7 +265,6 @@ function AboutCard({ detail }: { detail: RepoDetail }) {
     ["종류", r.type === "MIRROR" ? "미러 (읽기 전용)" : "로컬 레포"],
   ]
   if (r.type === "MIRROR") {
-    if (r.originStatus === "GONE" || r.originStatus === "AUTH_REQUIRED") rows.push(["원본 상태", <OriginBadge key="o" status={r.originStatus} />])
     rows.push(["마지막 업데이트", <Time key="u" ms={r.lastUpdateAt} />])
   } else {
     rows.push(["마지막 push", <Time key="p" ms={r.lastPushAt} />])
@@ -275,7 +274,8 @@ function AboutCard({ detail }: { detail: RepoDetail }) {
   rows.push([
     "받는 범위",
     <span key="s" className="flex flex-col">
-      <span>{r.type === "MIRROR" ? "모든 브랜치·태그" : "push된 브랜치·태그"}</span>
+      <span>{r.type === "LOCAL" ? "push된 브랜치·태그" : "모든 브랜치·태그"}</span>
+      {r.includePullRefs !== null && <span className="text-muted-foreground">{r.includePullRefs ? "PR 브랜치 포함" : "PR 브랜치 제외"}</span>}
       <span className="text-muted-foreground">LFS 파일 저장 안 함</span>
     </span>,
   ])
@@ -306,7 +306,7 @@ function AboutCard({ detail }: { detail: RepoDetail }) {
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
           {rows.map(([k, v]) => (
             <div key={k} className="contents">
-              <dt className="text-muted-foreground">{k}</dt>
+              <dt className="whitespace-nowrap text-muted-foreground">{k}</dt>
               <dd className="justify-self-end text-right">{v}</dd>
             </div>
           ))}

@@ -3,7 +3,7 @@ import { ArchiveIcon, CodeIcon, DownloadIcon, ExternalLinkIcon, GitCommitHorizon
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
 import { Skeleton } from "@/components/ui/skeleton"
-import { CodeField, ErrorState, LfsBadge, LocalIcon, MirrorIcon, OriginBadge, RepoTypeBadge, Time } from "@/components/common"
+import { CodeField, ErrorState, LfsBadge, LocalIcon, MirrorIcon, IssueBadge, RepoTypeBadge, Time } from "@/components/common"
 import { apiUrl, repoApi, useApi, type RepoDetail } from "@/lib/api"
 import { shortUrl } from "@/lib/format"
 import { repoHref, useRoute } from "@/lib/router"
@@ -77,7 +77,7 @@ export function RepoLayout({
                 </a>
               </h1>
               <RepoTypeBadge repo={r} />
-              <OriginBadge status={r.originStatus} />
+              <IssueBadge issue={r.issue} />
               {r.hasLfs && <LfsBadge />}
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">

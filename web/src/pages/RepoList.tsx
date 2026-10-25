@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group"
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { CodeField, ErrorState, LfsBadge, ListSkeleton, LocalIcon, MirrorIcon, OriginBadge, Time } from "@/components/common"
+import { CodeField, ErrorState, LfsBadge, ListSkeleton, IssueBadge, LocalIcon, MirrorIcon, Time } from "@/components/common"
 import { apiUrl, useApi, type RepoSummary } from "@/lib/api"
 import { formatBytes, shortUrl } from "@/lib/format"
 import { repoHref } from "@/lib/router"
@@ -23,9 +23,8 @@ type Filter = "all" | "mirror" | "local" | "problem"
 type Sort = "recent" | "name"
 const sortLabel: Record<Sort, string> = { recent: "최근 활동순", name: "이름순" }
 
-const hasProblem = (r: RepoSummary) => r.originStatus === "GONE" || r.originStatus === "AUTH_REQUIRED"
 const matches = (r: RepoSummary, f: Filter) =>
-  f === "all" || (f === "mirror" ? r.type === "MIRROR" : f === "local" ? r.type === "LOCAL" : hasProblem(r))
+  f === "all" || (f === "mirror" ? r.type === "MIRROR" : f === "local" ? r.type === "LOCAL" : r.needsAttention)
 
 /** W-01. Words and filters follow the app's main screen (design-system 8). */
 export function RepoList() {
@@ -39,7 +38,12 @@ export function RepoList() {
     return (repos ?? [])
       .filter((r) => !needle || r.name.toLowerCase().includes(needle) || r.description.toLowerCase().includes(needle))
       .filter((r) => matches(r, filter))
-      .sort((a, b) => (sort === "name" ? a.name.localeCompare(b.name) : (b.lastActivityAt ?? 0) - (a.lastActivityAt ?? 0)))
+      // "최근 활동순" puts repos that need attention first, like the app (R2-01 AC5).
+      .sort((a, b) =>
+        sort === "name"
+          ? a.name.localeCompare(b.name)
+          : Number(b.needsAttention) - Number(a.needsAttention) || (b.lastActivityAt ?? 0) - (a.lastActivityAt ?? 0),
+      )
   }, [repos, q, filter, sort])
 
   if (error) return <ErrorState error={error} />
@@ -149,7 +153,7 @@ function RepoRow({ repo: r }: { repo: RepoSummary }) {
           <a href={repoHref.tree(r.name)} className="font-semibold break-all text-foreground after:absolute after:inset-0 hover:underline">
             {r.name}
           </a>
-          {mirror && <OriginBadge status={r.originStatus} />}
+          <IssueBadge issue={r.issue} />
           {r.hasLfs && <LfsBadge />}
         </div>
         {r.description && <p className="line-clamp-2 text-sm">{r.description}</p>}

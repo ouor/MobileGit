@@ -23,6 +23,17 @@ export interface RepoSummary {
   originStatus: OriginStatus | null
   hasLfs: boolean
   sizeBytes: number
+  /** Same as the app's "주의 필요" (WR-6). */
+  needsAttention: boolean
+  issue: RepoIssue | null
+  /** Whether the mirror fetches PR branches; null for local repos. */
+  includePullRefs: boolean | null
+}
+
+export interface RepoIssue {
+  badge: "ORIGIN_GONE" | "AUTH_REQUIRED" | "FAILED" | "DELAYED" | "HISTORY_CHANGED"
+  since: number | null
+  category: string | null
 }
 
 export interface Ref {
