@@ -71,7 +71,9 @@ Go 테스트(`ngrok-mobile`, `go test`)는 실제 ngrok 서비스가 가짜 토�
 | WR-3 해시 자산 캐시 | `assets/...`에 1년 immutable |
 | WR-4 gzip | Ktor Compression(ktor-server-compression 3.6.0). 정적·JSON만, git과 raw 제외 |
 
-테스트: JVM `webFramingSpaCacheAndGzip`, `compressionScope` 추가, 전체 39개 통과. 실기기에서 헤더를 직접 확인하지는 않았다(같은 Ktor CIO 엔진의 JVM 테스트로 확인).
+| WR-5 임의 Markdown 렌더링 | `24bc04c`. 기존 `readme?path=`가 `.md` 파일 경로도 받음(새 엔드포인트 없음). `NOT_MARKDOWN`, `TOO_LARGE` |
+
+테스트: JVM `webFramingSpaCacheAndGzip`, `compressionScope`, `readmeRendersAnyMarkdownFile` 추가, 전체 40개 통과. 실기기에서 헤더를 직접 확인하지는 않았다(같은 Ktor CIO 엔진의 JVM 테스트로 확인).
 
 ## 6. 남은 일 / 위험
 

@@ -45,3 +45,4 @@
   1. `GET /api/v1/repos/{name}/readme?ref=&path=<파일>`: path가 `.md`/`.markdown` 파일이면 그 파일을 `ReadmeDto`로 돌려준다 (디렉터리면 지금처럼).
   2. 또는 `GET /api/v1/repos/{name}/render?ref=&path=<파일>` → `ReadmeDto`와 같은 형식 `{"ref","path","format":"markdown","raw","html"}`. Markdown이 아니면 400 `NOT_MARKDOWN`, 1MB 초과면 400 `TOO_LARGE`.
 - **웹 쪽 준비**: 반영되면 파일 보기에 "미리보기 / 원문" 전환을 넣는다 (`FileView.tsx`, README 카드와 같은 `rewriteReadme` 재사용). 그 전까지는 원문 + 구문 강조로 보인다.
+- **코어 처리 결과**: 완료(`24bc04c`). 방식 1을 택했다(README 경로와 일관). `GET /api/v1/repos/{name}/readme?ref=&path=<파일>`: `.md`/`.markdown` 파일이면 README와 같은 렌더러(원시 HTML 이스케이프, 위험 URL 제거)로 `ReadmeDto {ref, path, format:"markdown", raw, html}`를 돌려준다. 디렉터리면 지금과 같다. 그 밖의 파일(이진, LFS 포인터 포함)은 400 `NOT_MARKDOWN`, 1MB 초과는 400 `TOO_LARGE`, 없는 파일은 404 `PATH_NOT_FOUND`. 상대 이미지와 링크는 README처럼 원문 그대로라 `rewriteReadme`에 응답 `path`를 넘기면 된다.

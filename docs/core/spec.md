@@ -249,7 +249,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 | 상태 | 코드 |
 |---|---|
 | 404 | `REPO_NOT_FOUND`, `REF_NOT_FOUND`, `EMPTY_REPO`, `PATH_NOT_FOUND`, `README_NOT_FOUND`, `NOT_FOUND` |
-| 400 | `BAD_PATH`, `NOT_A_DIRECTORY`, `NOT_A_FILE` |
+| 400 | `BAD_PATH`, `NOT_A_DIRECTORY`, `NOT_A_FILE`, `NOT_MARKDOWN`, `TOO_LARGE` |
 | 401 | 인증 필요(본문 없음, `WWW-Authenticate`) |
 | 429 | 인증 실패 과다 |
 | 500 | `INTERNAL` |
@@ -264,7 +264,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 | `GET /api/v1/repos/{name}/tree?ref=&path=` | `TreeDto` |
 | `GET /api/v1/repos/{name}/blob?ref=&path=` | `BlobDto` (텍스트는 1MB까지) |
 | `GET /api/v1/repos/{name}/raw?ref=&path=` | 파일 바이트(`application/octet-stream`, `Content-Disposition: attachment`, 정확한 `Content-Length`, chunked 아님, 압축 안 함) |
-| `GET /api/v1/repos/{name}/readme?ref=&path=` | `ReadmeDto` (path는 디렉터리) |
+| `GET /api/v1/repos/{name}/readme?ref=&path=` | `ReadmeDto`. path가 디렉터리면 그 안의 README(없으면 404 `README_NOT_FOUND`). path가 `.md`/`.markdown` 파일이면 그 파일을 같은 렌더러로(WR-5). 그 밖의 파일(이진, LFS 포인터 포함)은 400 `NOT_MARKDOWN`, 1MB 초과는 400 `TOO_LARGE` |
 | `GET /api/v1/repos/{name}/commits?ref=&path=&page=1&perPage=50` | `CommitPageDto` |
 
 응답 예시(실기기에서 받은 형태):
@@ -292,7 +292,8 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 
 // GET /api/v1/repos/pc-verify/readme
 {"ref":"main","path":"README.md","format":"markdown","raw":"hello\n","html":"<p>hello</p>\n"}
-// format: "markdown" | "text". html은 서버에서 정화되어 있어 innerHTML로 넣어도 된다
+// GET /api/v1/repos/demo/readme?path=docs/guide.md → {"ref":"main","path":"docs/guide.md","format":"markdown","raw":"…","html":"…"}
+// format: "markdown" | "text". 상대 경로 링크와 이미지(src/href)는 원문 그대로 두므로 웹이 응답의 path 기준으로 바꾼다(README와 같음). html은 서버에서 정화되어 있어 innerHTML로 넣어도 된다
 // (원시 HTML은 이스케이프, javascript: 링크는 제거).
 
 // GET /api/v1/repos/demo/commits?page=1&perPage=2
