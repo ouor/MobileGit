@@ -236,7 +236,7 @@ function ContentAlerts({ detail }: { detail: RepoDetail }) {
         <Alert>
           <AlertTriangleIcon />
           <AlertTitle>LFS 파일은 저장되지 않아요</AlertTitle>
-          <AlertDescription>이 레포는 Git LFS를 써요. LFS 파일은 포인터만 남아 있어요.</AlertDescription>
+          <AlertDescription>이 레포는 Git LFS를 써요. LFS 파일은 저장하지 않고 포인터 파일만 보존해요.</AlertDescription>
         </Alert>
       )}
       {detail.submoduleUrls.length > 0 && (
@@ -271,15 +271,25 @@ function AboutCard({ detail }: { detail: RepoDetail }) {
     rows.push(["마지막 push", <Time key="p" ms={r.lastPushAt} />])
   }
   rows.push(["기본 브랜치", detail.head ?? "-"])
+  // R2-07: say plainly what is kept; LFS files never are.
+  rows.push([
+    "받는 범위",
+    <span key="s" className="flex flex-col">
+      <span>{r.type === "MIRROR" ? "모든 브랜치·태그" : "push된 브랜치·태그"}</span>
+      <span className="text-muted-foreground">LFS 파일 저장 안 함</span>
+    </span>,
+  ])
+  if (r.hasLfs) rows.push(["LFS", <span key="l" className="text-amber-800 dark:text-amber-300">LFS 파일 없음(포인터만)</span>])
   rows.push(["브랜치 · 태그", `${detail.branches.length} · ${detail.tags.length}`])
   if (r.sizeBytes > 0) rows.push(["용량", formatBytes(r.sizeBytes)])
-  if (r.type === "MIRROR")
+  const showArchives = r.type === "MIRROR" || detail.archivedRefCount > 0
+  if (showArchives)
     rows.push([
       "보존된 기록",
-      <span key="a" className="inline-flex items-center gap-1" title="원본에서 강제 push나 삭제로 사라진 브랜치·태그를 보존해요 (refs/archive/)">
+      <a key="a" href={repoHref.archives(r.name)} className="inline-flex items-center gap-1 text-primary hover:underline">
         <ArchiveIcon className="size-3.5" />
-        {detail.archivedRefCount}개
-      </span>,
+        {detail.archivedRefCount}개 보기
+      </a>,
     ])
   return (
     <Card size="sm">
@@ -301,6 +311,13 @@ function AboutCard({ detail }: { detail: RepoDetail }) {
             </div>
           ))}
         </dl>
+        {showArchives && (
+          <p className="text-xs text-muted-foreground">
+            {detail.archivedRefCount > 0
+              ? "원본이 강제 push하거나 지운 브랜치·태그의 사라지기 전 상태예요."
+              : "원본이 강제 push하거나 브랜치·태그를 지우면 사라지기 전 상태를 여기에 남겨요."}
+          </p>
+        )}
       </CardContent>
     </Card>
   )

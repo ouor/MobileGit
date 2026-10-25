@@ -77,9 +77,9 @@ export function OriginBadge({ status }: { status: OriginStatus | null }) {
 
 export function LfsBadge() {
   return (
-    <ToneBadge t="neutral" title="이 레포는 Git LFS를 쓰지만 LFS 파일은 저장되지 않아요">
+    <ToneBadge t="neutral" title="이 레포는 Git LFS를 쓰지만 LFS 파일은 저장하지 않고 포인터 파일만 보존해요">
       <PackageIcon />
-      LFS 누락
+      LFS 파일 없음
     </ToneBadge>
   )
 }
@@ -149,7 +149,7 @@ export function CopyButton({ text, label, className }: { text: string; label: st
  * (round 1 review: people retype these addresses by hand). Each piece is nowrap; <wbr> marks the allowed breaks.
  */
 export function BreakableText({ text }: { text: string }) {
-  const parts = text.split(/(?<= )|(?<=\/)(?!\/)|(?<=:)(?![\d/])/) // keep "host:port" and "://" together
+  const parts = text.split(/(?<= )|(?<=\/)(?![/*])|(?<=:)(?![\d/])/) // keep "host:port", "://" and "/*" together
   return (
     <>
       {parts.map((p, i) => (

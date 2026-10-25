@@ -78,8 +78,8 @@ export function RepoList() {
             <ToggleGroupItem value="all">전체 {repos?.length ?? ""}</ToggleGroupItem>
             <ToggleGroupItem value="mirror">미러 {repos ? count("mirror") : ""}</ToggleGroupItem>
             <ToggleGroupItem value="local">로컬 {repos ? count("local") : ""}</ToggleGroupItem>
-            {/* Shown only when there is something wrong (design-system principle 7). */}
-            {(problems > 0 || filter === "problem") && <ToggleGroupItem value="problem">문제 있음 {problems}</ToggleGroupItem>}
+            {/* Shown only when there is something wrong (design-system principle 7); same name as the app (R2-01 AC4). */}
+            {(problems > 0 || filter === "problem") && <ToggleGroupItem value="problem">주의 필요 {problems}</ToggleGroupItem>}
           </ToggleGroup>
           {/* Non-modal: modal menus inject a <style> tag that the CSP blocks. */}
           <DropdownMenu modal={false}>

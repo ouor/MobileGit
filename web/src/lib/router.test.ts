@@ -13,5 +13,6 @@ test("repo routes", () => {
   assert.equal(repoHref.tree("x", "docs", "v1"), "/r/x/tree/docs?ref=v1")
   assert.equal(repoHref.blob("x", "a.md", null, 3, "source"), "/r/x/blob/a.md?L=3&view=source")
   assert.equal(repoHref.commits("x", "", null, 1), "/r/x/commits")
+  assert.equal(repoHref.archives("my repo"), "/r/my%20repo/archives")
   assert.equal(repoHref.commits("x", "src", "dev", 2), "/r/x/commits/src?ref=dev&page=2")
 })

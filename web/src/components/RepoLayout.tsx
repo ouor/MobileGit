@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { CodeIcon, DownloadIcon, ExternalLinkIcon, GitCommitHorizontalIcon, GitForkIcon } from "lucide-react"
+import { ArchiveIcon, CodeIcon, DownloadIcon, ExternalLinkIcon, GitCommitHorizontalIcon, GitForkIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -12,7 +12,8 @@ import { cn } from "@/lib/utils"
 /** Clone URL relative to the host the browser used (PRD W-02), so Wi-Fi, Tailscale and ngrok all work. */
 export const cloneUrlFor = (repo: string) => `${location.origin}/${repo}.git`
 
-export const archiveFetchCmd = "git fetch origin 'refs/archive/*:refs/archive/*'"
+/** Same command as the app's A-15 "PC로 받기"; works from any clone, whatever its remotes are called. */
+export const archiveFetchCmd = (repo: string) => `git fetch ${cloneUrlFor(repo)} 'refs/archive/*:refs/archive/*'`
 
 export function ClonePanel({ detail }: { detail: RepoDetail }) {
   const url = cloneUrlFor(detail.repo.name)
@@ -28,9 +29,12 @@ export function ClonePanel({ detail }: { detail: RepoDetail }) {
       {detail.archivedRefCount > 0 && (
         <div className="flex flex-col gap-1.5">
           <p className="text-xs text-muted-foreground">
-            원본에서 강제 push나 삭제로 사라진 브랜치·태그 {detail.archivedRefCount}개를 보존했어요. 일반 clone에는 들어가지 않으니 clone한 뒤 아래 명령으로 받으세요.
+            원본에서 강제 push나 삭제로 사라진 브랜치·태그 {detail.archivedRefCount}개를 보존했어요. 일반 clone에는 들어가지 않으니 clone한 뒤 아래 명령으로 받으세요.{" "}
+            <a href={repoHref.archives(detail.repo.name)} className="text-primary hover:underline">
+              보존된 기록 보기
+            </a>
           </p>
-          <CodeField value={archiveFetchCmd} label="보존된 기록 받기 명령 복사" />
+          <CodeField value={archiveFetchCmd(detail.repo.name)} label="보존된 기록 받기 명령 복사" />
         </div>
       )}
     </div>
@@ -48,7 +52,7 @@ export function RepoLayout({
   children,
 }: {
   repo: string
-  tab: "code" | "commits"
+  tab: "code" | "commits" | "archives"
   /** The repo home shows the clone card in its sidebar on wide screens, so the header button would repeat it. */
   cloneInSidebar?: boolean
   children: (detail: RepoDetail) => ReactNode
@@ -121,6 +125,14 @@ export function RepoLayout({
               <GitCommitHorizontalIcon />
               커밋
             </TabLink>
+            {/* Mirrors always have the tab (R2-03 AC1); a local repo only when it kept records from its mirror days. */}
+            {(r.type === "MIRROR" || detail.archivedRefCount > 0) && (
+              <TabLink href={repoHref.archives(repo)} active={tab === "archives"}>
+                <ArchiveIcon />
+                보존된 기록
+                {detail.archivedRefCount > 0 && <span className="rounded-full bg-muted px-1.5 text-xs tabular-nums">{detail.archivedRefCount}</span>}
+              </TabLink>
+            )}
           </nav>
         )}
       </header>

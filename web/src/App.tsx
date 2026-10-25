@@ -7,6 +7,7 @@ import { ErrorState } from "@/components/common"
 import { apiUrl, reloadAll, useApi, useStaleCount, type Info } from "@/lib/api"
 import { useRoute } from "@/lib/router"
 import { Commits } from "@/pages/Commits"
+import { Archives } from "@/pages/Archives"
 import { FileView } from "@/pages/FileView"
 import { RepoList } from "@/pages/RepoList"
 import { RepoTree } from "@/pages/RepoTree"
@@ -20,7 +21,7 @@ export default function App() {
   useEffect(() => {
     const [, repo, view, ...rest] = JSON.parse(pathKey) as string[]
     const path = rest.join("/")
-    document.title = repo ? `${path ? `${path} · ` : ""}${view === "commits" ? "커밋 · " : ""}${repo} · mobilegit` : "mobilegit"
+    document.title = repo ? `${path ? `${path} · ` : ""}${{ commits: "커밋 · ", archives: "보존 기록 · " }[view as string] ?? ""}${repo} · mobilegit` : "mobilegit"
     if (first.current) first.current = false
     else main.current?.focus({ preventScroll: true })
   }, [pathKey])
@@ -46,6 +47,7 @@ function Page({ segments, query }: { segments: string[]; query: URLSearchParams 
   if (r === "r" && repo) {
     if (!view || view === "tree") return <RepoTree repo={repo} path={path} refParam={ref} />
     if (view === "blob" && path) return <FileView repo={repo} path={path} refParam={ref} line={Number(query.get("L")) || null} source={query.get("view") === "source"} />
+    if (view === "archives" && !path) return <Archives repo={repo} />
     if (view === "commits") return <Commits repo={repo} path={path} refParam={ref} page={Math.max(1, Number(query.get("page")) || 1)} />
   }
   return <ErrorState error={{ code: "NOT_FOUND", message: "주소가 올바른지 확인하세요." }} />

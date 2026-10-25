@@ -99,6 +99,24 @@ export interface CommitPage {
   commits: Commit[]
 }
 
+/** How the original moved when the ref was preserved (R2-03). null: preserved before round 2, kind unknown. */
+export type ArchiveKind = "FORCED" | "DELETED" | "TAG_MOVED" | "TAG_DELETED"
+
+export interface ArchiveEntry {
+  at: number
+  group: string
+  kind: ArchiveKind | null
+  ref: string
+  name: string
+  archiveRef: string
+  sha: string
+  shortSha: string
+  summary: string | null
+  committedAt: number | null
+  /** The ref in the repo now (last update's view of the original); null = gone from the original. */
+  currentSha: string | null
+}
+
 export class ApiError extends Error {
   status: number
   code: string

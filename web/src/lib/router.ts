@@ -80,6 +80,7 @@ export const repoHref = {
   tree: (repo: string, path = "", ref?: string | null) => href(["r", repo, path ? "tree" : null, path], { ref }),
   blob: (repo: string, path: string, ref?: string | null, line?: number, view?: "source") =>
     href(["r", repo, "blob", path], { ref, L: line, view }),
+  archives: (repo: string) => href(["r", repo, "archives"]), // the app's "웹에서 보기" opens this exact path (R2-03 AC3)
   commits: (repo: string, path = "", ref?: string | null, page?: number) =>
     href(["r", repo, "commits", path], { ref, page: page && page > 1 ? page : undefined }),
 }

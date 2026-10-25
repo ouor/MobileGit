@@ -9,6 +9,7 @@
 | WR-3 | 낮음 | `/assets/*` 해시 파일에 장기 캐시 헤더 |
 | WR-4 | 낮음 | 정적 파일 gzip 전송 |
 | WR-5 | 중 | README가 아닌 Markdown 파일 렌더링 API |
+| WR-6 | 중 | 웹 API 레포 정보에 주의 상태(`needsAttention`, `issue`)와 PR 브랜치 포함 여부 |
 
 ## WR-1. `/r/...` 경로의 SPA 대체
 
@@ -55,3 +56,12 @@
 - tree/blob/readme/commits가 동시에 몰리면 503 `BUSY`. 잠시 뒤 다시 시도하는 안내를 보여 주면 된다.
 - 500 `INTERNAL`의 message는 "서버 오류가 발생했습니다 (오류 ID xxxxxxxx)"로 고정.
 - 루프백(127.0.0.1)과 사설망이 아닌 경로는 익명 읽기 설정이어도 401. `/api/v1/info`의 `anonymousRead`는 설정값이라, 401이 오면 그대로 브라우저 인증 프롬프트를 따르면 된다.
+
+## WR-6. 웹 API 레포 정보에 주의 상태와 PR 브랜치 포함 여부 (2차, R2-01·R2-07)
+
+- **무엇**: `RepoSummaryDto`에 두 가지를 더해 주세요(필드 추가만이라 웹 1차 화면은 그대로 동작).
+  1. `needsAttention: Boolean`과 `issue: {badge, since}?`. 앱 목록과 같은 값(`RepoListItem.needsAttention`/`issue`, spec 8절 R2-01)이면 됩니다. badge는 `FAILED`·`ORIGIN_GONE`·`AUTH_REQUIRED`·`DELAYED`·`HISTORY_CHANGED`.
+  2. 미러의 `includePullRefs: Boolean?`(로컬은 null).
+- **왜**: 웹 목록의 "주의 필요" 필터는 지금 `originStatus`(원본 없음, 인증 필요)만 보고 셉니다. 업데이트 실패, 지연, 히스토리 바뀜이 빠져 앱과 개수가 다릅니다. 같은 이름의 필터가 앱과 웹에서 다른 수를 보이면 사용자가 헷갈립니다. 정보 패널의 "받는 범위"도 앱은 "PR 브랜치 포함/제외"까지 보여 주는데 웹은 그 값을 모릅니다.
+- **지금 웹**: 필터 이름만 "주의 필요"로 맞추고 원본 상태 두 가지로만 셉니다. 받는 범위는 "모든 브랜치·태그 · LFS 파일 저장 안 함"으로, PR 브랜치는 언급하지 않습니다.
+- **반영되면**: 목록 행의 배지·둘째 줄 사유, 필터 개수를 앱과 같게, 받는 범위에 PR 브랜치 포함 여부를 붙입니다.
