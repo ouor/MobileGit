@@ -294,7 +294,7 @@ private fun OriginCard(item: RepoListItem, nav: Nav) {
                 ?: LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = Space.xs))
         }
         Spacer(Modifier.height(Space.md))
-        PrimaryButton(if (item.progress != null) str(R.string.detail_054) else str(R.string.common_021), enabled = item.progress == null) {
+        PrimaryButton(if (item.progress?.kind == SyncKind.CHECK) str(R.string.detail_052) else if (item.progress != null) str(R.string.detail_054) else str(R.string.common_021), enabled = item.progress == null) {
             core.mirrors.updateNow(m.name); snack(str(R.string.detail_055))
         }
         TextButton(onClick = { runCatching { core.mirrors.checkNow(m.name) }.onSuccess { snack(str(R.string.main_006)) } },
