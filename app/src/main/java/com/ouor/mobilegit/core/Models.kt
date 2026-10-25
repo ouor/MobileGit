@@ -129,6 +129,24 @@ data class AccessLogEntry(
     val status: Int,
 )
 
+/**
+ * CR-7: one ref updated by an accepted push to a local repo. [oldSha] null = created, [newSha] null = deleted.
+ * [ref] is the full name (refs/heads/main, refs/tags/v1).
+ */
+@Serializable
+data class PushEvent(
+    val at: Long,
+    val ref: String,
+    val oldSha: String?,
+    val newSha: String?,
+    val route: AccessRoute,
+    val clientIp: String,
+    val forced: Boolean = false,
+) {
+    /** Branch name for refs/heads/..., else null. */
+    val branch: String? get() = ref.takeIf { it.startsWith("refs/heads/") }?.removePrefix("refs/heads/")
+}
+
 /** F-02 주소 종류. 우선순위는 enum 순서 (와이파이 → 핫스팟 → Tailscale → ngrok). */
 enum class AddressKind { WIFI, HOTSPOT, TAILSCALE, NGROK }
 

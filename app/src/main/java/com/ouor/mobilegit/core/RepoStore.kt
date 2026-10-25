@@ -45,6 +45,7 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
     private fun key(name: String) = name.lowercase()
     private fun metaFile(dir: File) = File(dir, "mobilegit/meta.json")
     private fun eventsFile(dir: File) = File(dir, "mobilegit/events.json")
+    private fun pushesFile(dir: File) = File(dir, "mobilegit/pushes.json")
 
     private fun load() {
         reposDir.listFiles { f -> f.isDirectory && f.name.endsWith(".git") }?.forEach { dir ->
@@ -127,6 +128,7 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
         synchronized(this) { metas.remove(key(name)); publish() }
         File(reposDir, meta.name + ".git").deleteRecursively()
         bumpEvents(name)
+        bumpEvents("push:$name")
     }
 
     /** Registers a repo directory that was produced elsewhere (fork copy). */
@@ -150,6 +152,23 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
         .map { if (exists(name)) events(name) else emptyList() }.flowOn(Dispatchers.IO)
 
     private fun bumpEvents(name: String) = eventsVersion.update { it + (key(name) to (it[key(name)] ?: 0L) + 1) }
+
+    // ---- CR-7 received pushes (newest first, MAX_PUSH_EVENTS per repo) ----
+    private val pushesSer = ListSerializer(PushEvent.serializer())
+
+    fun pushEvents(name: String): List<PushEvent> = JsonFile.read(pushesFile(dir(name)), pushesSer) ?: emptyList()
+
+    /** CR-7: one entry per updated ref of each accepted push, newest first; re-emits after every push or delete. Reads on IO. */
+    fun pushEventsFlow(name: String): Flow<List<PushEvent>> = eventsVersion.map { it["push:" + key(name)] ?: 0L }.distinctUntilChanged()
+        .map { if (exists(name)) pushEvents(name) else emptyList() }.flowOn(Dispatchers.IO)
+
+    fun appendPushEvents(name: String, events: List<PushEvent>) {
+        if (events.isEmpty()) return
+        synchronized(this) {
+            JsonFile.write(pushesFile(dir(name)), pushesSer, (events + pushEvents(name)).take(MAX_PUSH_EVENTS))
+        }
+        bumpEvents("push:$name")
+    }
 
     fun appendEvent(name: String, event: SyncEvent) {
         synchronized(this) {
@@ -200,6 +219,7 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
 
     companion object {
         const val MAX_EVENTS = 200
+        const val MAX_PUSH_EVENTS = 200
         const val ARCHIVE_PREFIX = "refs/archive/"
     }
 }

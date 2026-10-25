@@ -39,6 +39,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription
 import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository
 import org.eclipse.jgit.lib.Constants
+import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.lib.Repository
 import org.eclipse.jgit.storage.pack.PackConfig
 import org.eclipse.jgit.transport.PacketLineOut
@@ -365,13 +366,23 @@ class GitServer(
                     store.withRepoLock(name) {
                         if (!store.exists(name)) { store.create(name, RepoType.LOCAL, CreatedBy.PUSH); created = true }
                         val canonical = store.require(name).name
+                        val pushed = mutableListOf<PushEvent>()
                         store.open(canonical).use { repo ->
                             val rp = ReceivePack(repo)
                             rp.setBiDirectionalPipe(false)
                             rp.isAtomic = true
                             // F-17 AC3 / NFR-저장 공간: refuse packs that do not fit (keeps a 32 MB margin).
                             rp.setMaxPackSizeLimit((freeBytes() - 32L * 1024 * 1024).coerceAtLeast(1))
-                            rp.postReceiveHook = PostReceiveHook { r, cmds -> if (created) chooseHead(r.repository, cmds) }
+                            rp.postReceiveHook = PostReceiveHook { r, cmds ->
+                                if (created) chooseHead(r.repository, cmds)
+                                // CR-7: JGit passes only the commands that were applied (Result.OK)
+                                val now = System.currentTimeMillis()
+                                pushed += cmds.map { c ->
+                                    PushEvent(now, c.refName, c.oldId.takeUnless { it == ObjectId.zeroId() }?.name,
+                                        c.newId.takeUnless { it == ObjectId.zeroId() }?.name, ctx.route, ctx.clientIp,
+                                        forced = c.type == ReceiveCommand.Type.UPDATE_NONFASTFORWARD)
+                                }
+                            }
                             val input = body(call, call.receiveStream())
                             call.respondOutputStream(ContentType.parse("application/x-git-receive-pack-result")) {
                                 try { rp.receive(input, this, null) } catch (e: Exception) { status = 500 }
@@ -381,6 +392,7 @@ class GitServer(
                             store.deleteData(canonical); created = false; status = if (status == 200) 400 else status
                         } else {
                             store.update(canonical) { it.copy(lastPushAt = System.currentTimeMillis(), lastPushIp = ctx.clientIp) }
+                            runCatching { store.appendPushEvents(canonical, pushed) }
                             runCatching { store.refreshDerived(canonical) }
                         }
                     }

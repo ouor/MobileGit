@@ -1,5 +1,6 @@
 package com.ouor.mobilegit.core
 
+import kotlinx.coroutines.flow.first
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -327,6 +328,39 @@ class GitServerTest {
         val forced = raw("media/logo.svg", "&download=1")
         assertEquals("application/octet-stream", forced["content-type"])
         assertTrue(forced["content-disposition"]!!.startsWith("attachment"))
+    }
+
+    // CR-7: accepted pushes are recorded per ref, newest first, with force/delete and route; capped per repo.
+    @Test fun pushEventsAreRecorded() {
+        assumeTrue(GitCli.available)
+        val work = Commits.initWork()
+        val c1 = Commits.commit(work, "a.txt", "1")
+        val dir = work.repository.workTree
+        GitCli.ok(dir, "push", url("demo.git"), "main", "main:refs/heads/dev")
+        val c2 = Commits.commit(work, "a.txt", "2")
+        GitCli.ok(dir, "push", url("demo.git"), "main")
+        GitCli.ok(dir, "push", "--force", url("demo.git"), "$c1:refs/heads/main", ":refs/heads/dev")
+        val deadline = System.currentTimeMillis() + 5_000 // written right after the response
+        while (store.pushEvents("demo").size < 5 && System.currentTimeMillis() < deadline) Thread.sleep(50)
+        val ev = kotlinx.coroutines.runBlocking { store.pushEventsFlow("demo").first() }
+        assertEquals(5, ev.size)
+        val (forced, deleted) = ev.take(2).partition { it.ref == "refs/heads/main" }.let { it.first.single() to it.second.single() }
+        assertTrue(forced.forced); assertEquals(c2, forced.oldSha); assertEquals(c1, forced.newSha); assertEquals("main", forced.branch)
+        assertEquals("refs/heads/dev", deleted.ref); assertNull(deleted.newSha)
+        assertEquals(c2, ev[2].newSha); assertFalse(ev[2].forced)
+        assertTrue(ev.drop(3).all { it.oldSha == null && it.newSha == c1 })
+        assertEquals(AccessRoute.LOCALHOST, ev.first().route)
+
+        store.appendPushEvents("demo", List(250) { PushEvent(it.toLong(), "refs/heads/x", null, c1, AccessRoute.WIFI, "1.2.3.4") })
+        assertEquals(RepoStore.MAX_PUSH_EVENTS, store.pushEvents("demo").size)
+    }
+
+    // CR-6: new installs boot the server automatically; a saved value is kept as is.
+    @Test fun startOnBootDefault() {
+        assertTrue(Settings().startOnBoot)
+        assertTrue(CoreJson.decodeFromString(Settings.serializer(), "{}").startOnBoot)
+        val f = File(tempDir(), "s.json").apply { writeText("""{"startOnBoot":false,"port":8080}""") }
+        assertFalse(SettingsStore(f, FakeCipher).current.startOnBoot)
     }
 
     @Test fun compressionScope() {
