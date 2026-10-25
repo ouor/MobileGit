@@ -51,7 +51,8 @@ data class CommitDto(
     val authorName: String, val authorEmail: String, val authoredAt: Long, val committedAt: Long, val parents: List<String>,
 )
 
-@Serializable data class TreeEntryDto(val name: String, val path: String, val type: String, val size: Long? = null, val mode: String)
+/** [lfs]: the file is a Git LFS pointer (WR-7; same test as [BlobDto.lfs], only files up to [RepoBrowser.LFS_POINTER_MAX_BYTES] are read). */
+@Serializable data class TreeEntryDto(val name: String, val path: String, val type: String, val size: Long? = null, val mode: String, val lfs: Boolean = false)
 @Serializable data class TreeDto(val ref: String, val commit: CommitDto, val path: String, val entries: List<TreeEntryDto>)
 @Serializable data class LfsPointerDto(val oid: String, val size: Long)
 
@@ -84,6 +85,8 @@ class BrowseException(val status: Int, val code: String, message: String) : Exce
 object RepoBrowser {
     const val MAX_TEXT_BYTES = 1_000_000L
     const val MAX_COMMIT_PAGE = 1_000
+    /** WR-7: pointer files are ~130 bytes; larger blobs are never opened while listing a tree. */
+    const val LFS_POINTER_MAX_BYTES = 200L
     const val MAX_SCANNED_COMMITS = 200_000
 
     /** [checksStalled]: [RepoQuery.checksStalled] over all repos (CR-11: "지연" is then not a per-repo problem). */
@@ -163,7 +166,9 @@ object RepoBrowser {
                     else -> "file"
                 }
                 val size = if (type == "file" || type == "symlink") runCatching { reader.getObjectSize(it.getObjectId(0), Constants.OBJ_BLOB) }.getOrNull() else null
-                entries += TreeEntryDto(it.nameString, if (p.isEmpty()) it.nameString else "$p/${it.nameString}", type, size, mode.toString())
+                val lfs = type == "file" && size != null && size <= LFS_POINTER_MAX_BYTES &&
+                    runCatching { parseLfsPointer(reader.open(it.getObjectId(0), Constants.OBJ_BLOB).bytes) != null }.getOrDefault(false)
+                entries += TreeEntryDto(it.nameString, if (p.isEmpty()) it.nameString else "$p/${it.nameString}", type, size, mode.toString(), lfs)
             }
         }
         entries.sortWith(compareBy({ it.type != "dir" }, { it.name.lowercase() }))

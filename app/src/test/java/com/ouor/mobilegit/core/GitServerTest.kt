@@ -156,6 +156,9 @@ class GitServerTest {
         val (c1, list) = get("/api/v1/repos"); assertEquals(200, c1); assertTrue(list.contains("\"name\":\"demo\""))
         val (_, detail) = get("/api/v1/repos/demo"); assertTrue(detail, detail.contains("\"cloneUrl\":\"http://127.0.0.1:$port/demo.git\""))
         val (_, tree) = get("/api/v1/repos/demo/tree"); assertTrue(tree.indexOf("\"src\"") < tree.indexOf("\"README.md\""))
+        // WR-7: the pointer is flagged; a small ordinary file is not
+        val entries = CoreJson.decodeFromString(TreeDto.serializer(), tree).entries.associateBy { it.name }
+        assertTrue(entries["big.lfs"]!!.lfs); assertFalse(entries["bin.dat"]!!.lfs); assertFalse(entries["src"]!!.lfs)
         val (_, sub) = get("/api/v1/repos/demo/tree?path=src"); assertTrue(sub.contains("src/main.kt"))
         val (_, blob) = get("/api/v1/repos/demo/blob?path=src/main.kt"); assertTrue(blob.contains("fun main()"))
         val (_, bin) = get("/api/v1/repos/demo/blob?path=bin.dat"); assertTrue(bin, bin.contains("\"binary\":true"))
