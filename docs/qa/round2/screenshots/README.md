@@ -36,3 +36,8 @@
 | 29-qa206-settings-ngrok-pending.png | 위험 조합 + 터널 실패: 설정 ngrok 영역 "ngrok · 실패" 아래 "연결되면 비밀번호 없이 공개돼요." | QA2-06 재검증 |
 | 29b-qa206-settings-auth-pending.png | 같은 상태의 비밀번호 요구 아래 "연결되면 비밀번호 없이 공개돼요." | QA2-06 재검증 |
 | 30-cr10-server-notification-ngrok-failed.png | 터널 실패 때 서버 알림: 제목 "mobilegit 서버 실행 중", 둘째 줄 "ngrok: 토큰 확인 필요" | CR-10 |
+| fb-01-access-log-same-ms.png | 접속 기록: 같은 초에 몰린 웹 요청 구간(같은 밀리초 key 포함)을 지나는 중 | v0.2.0 피드백 1 |
+| fb-02-access-log-end.png | 접속 기록 2000건 맨 끝(가장 오래된 14:49:54)까지 스크롤, 크래시 없음 | v0.2.0 피드백 1 |
+| fb-03-auth-push-only-radio.png | 비밀번호 요구가 라디오 목록, "push할 때만" 선택 상태에서 잘리지 않음 | v0.2.0 피드백 2 |
+| fb-04-settings-manage-cred-row.png | 설정 → 관리 행 제목 "원본 접속 토큰" | v0.2.0 피드백 3 |
+| fb-05-add-mirror-cred-picker.png | 미러 추가의 토큰 선택 상자는 "원본 접속 토큰 (비공개 레포만)" 그대로 | v0.2.0 피드백 3 |
