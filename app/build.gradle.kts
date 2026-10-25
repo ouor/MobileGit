@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.kotlin.compose)
 }
 
 android {
@@ -32,7 +33,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
         isCoreLibraryDesugaringEnabled = true
     }
-    buildFeatures { buildConfig = true }
+    buildFeatures { buildConfig = true; compose = true }
     packaging {
         resources {
             excludes += listOf(
@@ -62,6 +63,16 @@ dependencies {
     implementation(libs.work.runtime.ktx)
     implementation(libs.zxing.core)
     implementation(libs.slf4j.nop)
+    // UI (docs/ui/design-system.md): Compose + Material 3 + Navigation
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.icons.extended)
+    implementation(libs.compose.ui.tooling.preview)
+    debugImplementation(libs.compose.ui.tooling)
+    implementation(libs.activity.compose)
+    implementation(libs.navigation.compose)
+    implementation(libs.lifecycle.runtime.compose)
     // F-04: ngrok-go v2 (MIT) bound with gomobile; rebuild with ngrok-mobile/build.sh (arm64 + x86_64, 16KB pages).
     implementation(files("libs/ngrokmobile.aar"))
     coreLibraryDesugaring(libs.desugar.jdk.libs)

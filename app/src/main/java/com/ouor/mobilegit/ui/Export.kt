@@ -1,0 +1,90 @@
+package com.ouor.mobilegit.ui
+
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.FileProvider
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import com.ouor.mobilegit.app.ExportKind
+import com.ouor.mobilegit.app.ExportWorker
+import com.ouor.mobilegit.app.MobileGitApp
+import com.ouor.mobilegit.core.Exporter
+import com.ouor.mobilegit.ui.components.LocalSnack
+import java.io.File
+import java.util.UUID
+
+/**
+ * F-19 export flow shared by A-07, A-09 and A-14: pick a SAF location (AC4) or share, run [ExportWorker] in the
+ * background (AC5) and report the result. Observe [running] / [progress] for inline progress UI.
+ */
+class ExportRunner internal constructor() {
+    internal var pending: Triple<ExportKind, List<String>, Boolean>? = null
+    internal var launch: (String) -> Unit = {}
+    internal var enqueue: (ExportKind, List<String>, Uri?) -> Unit = { _, _, _ -> }
+    var workId by mutableStateOf<UUID?>(null); internal set
+    var progress by mutableStateOf<Pair<Int, Int>?>(null); internal set
+    val running get() = workId != null
+
+    /** [toFile] = choose a location with the system picker; otherwise the result is shared via the share sheet. */
+    fun start(kind: ExportKind, repos: List<String>, toFile: Boolean) {
+        if (running) return
+        if (toFile) {
+            pending = Triple(kind, repos, true)
+            val ext = when (kind) { ExportKind.BUNDLE -> "bundle"; ExportKind.SOURCE_ZIP -> "zip"; ExportKind.FULL_BACKUP -> "backup" }
+            launch(Exporter.suggestedFileName(repos.firstOrNull() ?: "", ext, System.currentTimeMillis()))
+        } else enqueue(kind, repos, null)
+    }
+}
+
+@Composable
+fun rememberExportRunner(): ExportRunner {
+    val ctx = LocalContext.current
+    val snack = LocalSnack.current
+    val runner = remember { ExportRunner() }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        val p = runner.pending; runner.pending = null
+        if (uri != null && p != null) runner.enqueue(p.first, p.second, uri)
+    }
+    runner.launch = { picker.launch(it) }
+    runner.enqueue = { kind, repos, uri ->
+        runner.progress = null
+        runner.workId = MobileGitApp.core(ctx).scheduler.enqueueExport(kind, repos, null, uri)
+        snack("내보내기를 시작했어요. 알림에서 진행 상황을 볼 수 있어요")
+    }
+    val id = runner.workId
+    LaunchedEffect(id) {
+        if (id == null) return@LaunchedEffect
+        WorkManager.getInstance(ctx).getWorkInfoByIdFlow(id).collect { info ->
+            if (info == null) return@collect
+            val d = info.progress.getInt("done", -1); val t = info.progress.getInt("total", -1)
+            if (t > 0) runner.progress = d to t
+            when (info.state) {
+                WorkInfo.State.SUCCEEDED -> {
+                    runner.workId = null
+                    val file = info.outputData.getString(ExportWorker.K_OUT_FILE)
+                    if (file != null) share(ctx, File(file)) else snack("내보내기를 저장했어요")
+                }
+                WorkInfo.State.FAILED -> { runner.workId = null; snack("내보내기 실패: ${info.outputData.getString(ExportWorker.K_ERROR) ?: "알 수 없는 오류"}") }
+                WorkInfo.State.CANCELLED -> { runner.workId = null; snack("내보내기를 취소했어요") }
+                else -> Unit
+            }
+        }
+    }
+    return runner
+}
+
+private fun share(ctx: Context, file: File) {
+    val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.files", file)
+    val send = Intent(Intent.ACTION_SEND).setType("application/octet-stream").putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    ctx.startActivity(Intent.createChooser(send, file.name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+}
