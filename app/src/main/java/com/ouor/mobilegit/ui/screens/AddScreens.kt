@@ -139,6 +139,9 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
     var name by rememberSaveable { mutableStateOf("") }
     var nameEdited by rememberSaveable { mutableStateOf(false) }
     var credId by rememberSaveable { mutableStateOf<String?>(null) }
+    val settings by core.settings.state.collectAsStateWithLifecycle()
+    var includePull by rememberSaveable { mutableStateOf<Boolean?>(null) } // null = 전역 설정 따름 (CR-2)
+    val pullOn = includePull ?: settings.mirrorPullRefs
     var preview by remember { mutableStateOf<AddPreview?>(null) }
     var probe by remember { mutableStateOf<ProbeResult?>(null) }
     var probing by remember { mutableStateOf(false) }
@@ -184,7 +187,7 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
                         val job = withContext(Dispatchers.IO) { core.mirrors.addMany(text, credId) }
                         nav.replace(Routes.bulkProgress(job.id))
                     } else {
-                        val meta = withContext(Dispatchers.IO) { core.mirrors.add(url!!, name.trim(), credId) }
+                        val meta = withContext(Dispatchers.IO) { core.mirrors.add(url!!, name.trim(), credId, includePullRefs = includePull) }
                         nav.replace(Routes.repo(meta.name))
                     }
                 } catch (e: Exception) { error = e.message ?: e.toString() } finally { busy = false }
@@ -229,7 +232,11 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done))
                             CredentialPicker(creds.filter { it.host == host }, credId, { credId = it }, host) { nav.go(Routes.credentials(host)) }
                         }
-                        ProbeView(probing, probe) { nav.go(Routes.credentials(host)) }
+                        ProbeView(probing, probe, pullOn) { nav.go(Routes.credentials(host)) }
+                        if ((probe as? ProbeResult.Reachable)?.pullRefCount?.let { it > 0 } == true || includePull != null) com.ouor.mobilegit.ui.components.RowGroup {
+                            com.ouor.mobilegit.ui.components.SwitchRow("PR ref도 받기", pullOn, { v -> includePull = if (v == settings.mirrorPullRefs) null else v },
+                                subtitle = "refs/pull/* 등 리뷰용 ref. 보존 대상이 아니고 시간·용량을 많이 써요")
+                        }
                     }
                 }
             }
@@ -239,14 +246,15 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
 }
 
 @Composable
-private fun ProbeView(probing: Boolean, probe: ProbeResult?, onAddToken: () -> Unit) {
+private fun ProbeView(probing: Boolean, probe: ProbeResult?, includePull: Boolean, onAddToken: () -> Unit) {
     when {
         probing || probe == null -> Row(verticalAlignment = Alignment.CenterVertically) {
             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(Space.sm))
             Text("원격에 접근할 수 있는지 확인 중…", style = MaterialTheme.typography.bodyMedium)
         }
         probe is ProbeResult.Reachable -> Banner(Tone.Success, Icons.Outlined.CheckCircle, "접근 가능",
-            "ref ${probe.refCount}개" + (probe.defaultBranch?.let { " · 기본 브랜치 $it" } ?: ""))
+            (if (!includePull && probe.pullRefCount > 0) "ref ${probe.refCount - probe.pullRefCount}개 받기 · PR ref ${probe.pullRefCount}개 제외" else "ref ${probe.refCount}개") +
+                (probe.defaultBranch?.let { " · 기본 브랜치 $it" } ?: ""))
         probe is ProbeResult.AuthRequired -> Banner(Tone.Warning, Icons.Outlined.Key, "토큰 필요", "비공개 레포이거나 인증이 필요해요. 원격 자격 증명을 추가하세요.",
             actionLabel = "토큰 추가", onAction = onAddToken)
         probe is ProbeResult.NotFound -> Banner(Tone.Danger, Icons.Outlined.CloudOff, "원본을 찾을 수 없어요", "주소를 확인하세요. 비공개 레포라면 토큰을 추가하면 보일 수 있어요.",

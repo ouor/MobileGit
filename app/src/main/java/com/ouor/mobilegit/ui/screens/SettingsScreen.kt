@@ -128,6 +128,9 @@ fun SettingsScreen(nav: Nav) {
                 SwitchRow("충전 중에만 업데이트", s.updateChargingOnly, { v -> core.settings.update { it.copy(updateChargingOnly = v) } }, enabled = s.autoUpdate)
                 Divider()
                 SwitchRow("확인도 와이파이에서만", s.checkWifiOnly, { v -> core.settings.update { it.copy(checkWifiOnly = v) } }, subtitle = "모바일 데이터에서는 확인도 미뤄요")
+                Divider()
+                SwitchRow("PR ref도 미러", s.mirrorPullRefs, { v -> if (v) core.settings.update { it.copy(mirrorPullRefs = true) } else dialog = "pullOff" },
+                    subtitle = "refs/pull/*, refs/merge-requests/*. 끄면 받는 시간과 용량이 크게 줄어요. 레포마다 따로 정할 수 있어요")
             }
 
             SectionHeader("알림")
@@ -164,8 +167,9 @@ fun SettingsScreen(nav: Nav) {
     }
 
     when (dialog) {
-        "port" -> InputDialog("포트", "${s.port}", "1024~65535", KeyboardType.Number, note = if (running) "서버를 껐다 켜야 새 포트가 적용돼요" else null, onDismiss = { dialog = null }) {
-            core.settings.setPort(it.trim().toIntOrNull() ?: 0); snack("포트를 바꿨어요")
+        "port" -> InputDialog("포트", "${s.port}", "1024~65535", KeyboardType.Number, note = if (running) "저장하면 서버가 새 포트로 다시 시작해요" else null, onDismiss = { dialog = null }) {
+            val p = it.trim().toIntOrNull() ?: 0
+            if (p != s.port) { core.settings.setPort(p); snack(if (running) "포트를 바꿨어요. 서버를 다시 시작해요" else "포트를 바꿨어요") }
         }
         "user" -> InputDialog("사용자 이름", s.username, "git", onDismiss = { dialog = null }) { core.settings.setUsername(it); snack("사용자 이름을 바꿨어요") }
         "password" -> PasswordDialog(onDismiss = { dialog = null })
@@ -179,11 +183,16 @@ fun SettingsScreen(nav: Nav) {
         "ngrokWarn" -> ConfirmDialog(
             "외부 접속을 켤까요?", "인터넷의 누구나 이 주소에 접근을 시도할 수 있습니다. 인증이 강제로 켜집니다. 모바일 데이터 사용량이 늘 수 있습니다.", "확인하고 켜기",
             onConfirm = { core.settings.update { it.copy(ngrokEnabled = true, ngrokWarningAccepted = true) }; dialog = null }, onDismiss = { dialog = null })
+        "pullOff" -> ConfirmDialog("PR ref 미러를 끌까요?", PULL_OFF_WARNING, "끄기", destructive = true,
+            onConfirm = { core.settings.update { it.copy(mirrorPullRefs = false) }; dialog = null }, onDismiss = { dialog = null })
         "licenses" -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text("오픈소스 라이선스") }, text = {
             Text(LICENSES, style = MaterialTheme.typography.bodySmall)
         }, confirmButton = { TextButton(onClick = { dialog = null }) { Text("닫기") } })
     }
 }
+
+/** CR-2: turning PR refs off deletes already-fetched ones on the next update, without archiving. */
+const val PULL_OFF_WARNING = "이미 받은 PR ref는 다음 업데이트 때 보존 없이 삭제돼요. 브랜치와 태그, 보존된 기록은 그대로예요."
 
 private const val LICENSES = """AndroidX, Jetpack Compose, Material 3, Navigation, WorkManager: Apache-2.0
 Kotlin, kotlinx.coroutines, kotlinx.serialization: Apache-2.0

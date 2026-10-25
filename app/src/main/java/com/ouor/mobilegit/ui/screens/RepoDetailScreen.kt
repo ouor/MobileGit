@@ -48,6 +48,9 @@ import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -139,7 +142,7 @@ fun RepoDetailScreen(name: String, nav: Nav) {
             item == null -> Box(Modifier.padding(padding)) { EmptyState(Icons.Outlined.Search, "레포를 찾을 수 없어요", "삭제되었거나 이름이 바뀌었을 수 있어요.") }
             else -> {
                 val meta = item.meta
-                val events by produceState(emptyList<SyncEvent>(), meta) { value = withContext(Dispatchers.IO) { core.repos.events(meta.name) }.sortedByDescending { it.startedAt } }
+                val events by remember(meta.name) { core.repos.eventsFlow(meta.name) }.collectAsStateWithLifecycle(emptyList())
                 val showHistory = meta.mirror != null || events.isNotEmpty()
                 LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(start = Space.screen, end = Space.screen, bottom = Space.xxl),
                     verticalArrangement = Arrangement.spacedBy(Space.md)) {
@@ -292,17 +295,48 @@ private fun OriginCard(item: RepoListItem, nav: Nav) {
         PrimaryButton(if (item.progress != null) "업데이트 중…" else "지금 업데이트", enabled = item.progress == null) {
             core.mirrors.updateNow(m.name); snack("업데이트를 시작했어요")
         }
+        TextButton(onClick = { runCatching { core.mirrors.checkNow(m.name) }.onSuccess { snack("변경 확인을 시작했어요. 받지는 않아요") } },
+            enabled = item.progress == null, modifier = Modifier.fillMaxWidth()) { Text("변경 확인만 하기") }
         Text("읽기 전용 미러라 push는 거부돼요. 수정하려면 로컬 레포로 분리하세요.", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
     }
     RowGroup {
         SwitchRow("자동 업데이트에서 제외", mir.autoUpdateExcluded, { v -> scope.launch(Dispatchers.IO) { core.mirrors.setAutoUpdateExcluded(m.name, v) } },
             subtitle = "제외해도 변경 확인은 계속해요")
+        PullRefsRow(m.name, mir.includePullRefs)
         Box(Modifier.padding(horizontal = Space.lg, vertical = Space.sm)) {
             CredentialPicker(creds.filter { it.host == host }, mir.credentialId, { id -> scope.launch(Dispatchers.IO) { core.mirrors.setCredential(m.name, id) } }, host) {
                 nav.go(Routes.credentials(host))
             }
         }
+    }
+}
+
+/** CR-2: per-repo PR ref mirroring (null = 전역 설정). Turning it off warns that fetched PR refs are deleted without archive. */
+@Composable
+private fun PullRefsRow(name: String, current: Boolean?) {
+    val core = core()
+    val scope = rememberCoroutineScope()
+    val global by core.settings.state.collectAsStateWithLifecycle()
+    var ask by remember { mutableStateOf<List<Boolean?>?>(null) } // wraps the pending choice (which may itself be null)
+    val effective = current ?: global.mirrorPullRefs
+    fun set(v: Boolean?) = scope.launch(Dispatchers.IO) { core.mirrors.setIncludePullRefs(name, v) }
+    Column(Modifier.padding(horizontal = Space.lg, vertical = Space.md)) {
+        Text("PR ref 미러", style = MaterialTheme.typography.bodyLarge)
+        Text("refs/pull/* 등 리뷰용 ref. 지금: ${if (effective) "받음" else "받지 않음"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(Space.sm))
+        val opts = listOf(null to "설정 따름", true to "받기", false to "받지 않기")
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            opts.forEachIndexed { i, (v, label) ->
+                SegmentedButton(current == v, {
+                    if (effective && !(v ?: global.mirrorPullRefs)) ask = listOf(v) else set(v)
+                }, SegmentedButtonDefaults.itemShape(i, opts.size)) { Text(label, maxLines = 1) }
+            }
+        }
+    }
+    ask?.let { pending ->
+        ConfirmDialog("PR ref를 받지 않을까요?", PULL_OFF_WARNING, "받지 않기", destructive = true,
+            onConfirm = { set(pending[0]); ask = null }, onDismiss = { ask = null })
     }
 }
 
@@ -377,15 +411,25 @@ private fun EventRow(e: SyncEvent) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ExportSheet(m: RepoMeta, export: ExportRunner, onDismiss: () -> Unit) {
+    val core = core()
     var kind by remember { mutableStateOf(ExportKind.BUNDLE) }
+    var branch by remember { mutableStateOf(m.defaultBranch) }
+    var open by remember { mutableStateOf(false) }
+    val branches by produceState(emptyList<String>(), m.name) { value = withContext(Dispatchers.IO) { runCatching { core.ops.branches(m.name) }.getOrDefault(emptyList()) } }
+    val ref = branch.takeIf { kind == ExportKind.SOURCE_ZIP }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainer) {
         Column(Modifier.padding(horizontal = Space.screen).padding(bottom = Space.xl).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
             Text("내보내기", style = MaterialTheme.typography.titleLarge)
             Choice(kind == ExportKind.BUNDLE, "git bundle", "모든 브랜치·태그와 보존 ref까지 담아요. PC에서 git clone ${m.name}.bundle 로 복원해요.") { kind = ExportKind.BUNDLE }
-            Choice(kind == ExportKind.SOURCE_ZIP, "소스 zip", "기본 브랜치(${m.defaultBranch ?: "HEAD"})의 최신 파일만, .git 없이 담아요.") { kind = ExportKind.SOURCE_ZIP }
+            Choice(kind == ExportKind.SOURCE_ZIP, "소스 zip", "고른 브랜치의 최신 파일만, .git 없이 담아요.") { kind = ExportKind.SOURCE_ZIP }
+            if (kind == ExportKind.SOURCE_ZIP && branches.isNotEmpty()) ExposedDropdownMenuBox(open, { open = it }) {
+                OutlinedTextField(branch ?: "HEAD", {}, readOnly = true, label = { Text("브랜치") }, shape = MaterialTheme.shapes.medium,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(open) }, modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable))
+                ExposedDropdownMenu(open, { open = false }) { branches.forEach { b -> DropdownMenuItem(text = { Text(b) }, onClick = { branch = b; open = false }) } }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(Space.sm), modifier = Modifier.padding(top = Space.sm)) {
-                com.ouor.mobilegit.ui.components.SecondaryButton("공유하기", Modifier.weight(1f)) { export.start(kind, listOf(m.name), toFile = false); onDismiss() }
-                androidx.compose.material3.Button(onClick = { export.start(kind, listOf(m.name), toFile = true); onDismiss() }, Modifier.weight(1f).height(44.dp), shape = MaterialTheme.shapes.small) { Text("파일로 저장") }
+                com.ouor.mobilegit.ui.components.SecondaryButton("공유하기", Modifier.weight(1f)) { export.start(kind, listOf(m.name), toFile = false, ref = ref); onDismiss() }
+                androidx.compose.material3.Button(onClick = { export.start(kind, listOf(m.name), toFile = true, ref = ref); onDismiss() }, Modifier.weight(1f).height(44.dp), shape = MaterialTheme.shapes.small) { Text("파일로 저장") }
             }
             Text("복원은 앱 안에서 하지 않아요. PC에서 git clone x.bundle 후 이 폰으로 push하면 레포가 다시 만들어져요. 자격 증명과 비밀번호는 담기지 않아요.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

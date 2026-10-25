@@ -28,21 +28,21 @@ import java.util.UUID
  * background (AC5) and report the result. Observe [running] / [progress] for inline progress UI.
  */
 class ExportRunner internal constructor() {
-    internal var pending: Triple<ExportKind, List<String>, Boolean>? = null
+    internal var pending: Triple<ExportKind, List<String>, String?>? = null
     internal var launch: (String) -> Unit = {}
-    internal var enqueue: (ExportKind, List<String>, Uri?) -> Unit = { _, _, _ -> }
+    internal var enqueue: (ExportKind, List<String>, String?, Uri?) -> Unit = { _, _, _, _ -> }
     var workId by mutableStateOf<UUID?>(null); internal set
     var progress by mutableStateOf<Pair<Int, Int>?>(null); internal set
     val running get() = workId != null
 
-    /** [toFile] = choose a location with the system picker; otherwise the result is shared via the share sheet. */
-    fun start(kind: ExportKind, repos: List<String>, toFile: Boolean) {
+    /** [toFile] = choose a location with the system picker; otherwise the result is shared via the share sheet. [ref]: SOURCE_ZIP branch (null = HEAD). */
+    fun start(kind: ExportKind, repos: List<String>, toFile: Boolean, ref: String? = null) {
         if (running) return
         if (toFile) {
-            pending = Triple(kind, repos, true)
+            pending = Triple(kind, repos, ref)
             val ext = when (kind) { ExportKind.BUNDLE -> "bundle"; ExportKind.SOURCE_ZIP -> "zip"; ExportKind.FULL_BACKUP -> "backup" }
             launch(Exporter.suggestedFileName(repos.firstOrNull() ?: "", ext, System.currentTimeMillis()))
-        } else enqueue(kind, repos, null)
+        } else enqueue(kind, repos, ref, null)
     }
 }
 
@@ -53,12 +53,12 @@ fun rememberExportRunner(): ExportRunner {
     val runner = remember { ExportRunner() }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         val p = runner.pending; runner.pending = null
-        if (uri != null && p != null) runner.enqueue(p.first, p.second, uri)
+        if (uri != null && p != null) runner.enqueue(p.first, p.second, p.third, uri)
     }
     runner.launch = { picker.launch(it) }
-    runner.enqueue = { kind, repos, uri ->
+    runner.enqueue = { kind, repos, ref, uri ->
         runner.progress = null
-        runner.workId = MobileGitApp.core(ctx).scheduler.enqueueExport(kind, repos, null, uri)
+        runner.workId = MobileGitApp.core(ctx).scheduler.enqueueExport(kind, repos, ref, uri)
         snack("내보내기를 시작했어요. 알림에서 진행 상황을 볼 수 있어요")
     }
     val id = runner.workId

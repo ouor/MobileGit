@@ -147,6 +147,7 @@ fun MainScreen(nav: Nav) {
                     IconButton(onClick = { nav.go(Routes.SETTINGS) }) { Icon(Icons.Outlined.Settings, "설정") }
                     OverflowMenu {
                         item("모든 미러 업데이트") { core.mirrors.updateAll(); snack("모든 미러 업데이트를 시작했어요") }
+                        item("모든 미러 변경 확인") { core.mirrors.checkAll(); snack("변경 확인을 시작했어요. 받지는 않아요") }
                         item("저장 공간") { nav.go(Routes.STORAGE) }
                         item("전체 백업") { nav.go(Routes.BACKUP) }
                         item("접속 기록") { nav.go(Routes.ACCESS_LOG) }
