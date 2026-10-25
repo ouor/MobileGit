@@ -470,4 +470,23 @@ class MirrorSyncTest {
         val stamps = myRefs().keys.filter { it.startsWith("refs/archive/") }.map { it.split('/')[2] }.toSet()
         assertEquals(2, stamps.size)
     }
+
+    @Test fun gcRepacksAndKeepsArchivesAndUnreachableObjects() {
+        addAndFetch()
+        val feat0 = myRefs()["refs/heads/feat"]
+        work.checkout().setName("feat").call()
+        repeat(3) { Commits.commit(work, "f$it.txt", "$it"); pushUpstream("up", "+refs/heads/feat:refs/heads/feat"); runBlocking { coordinator.update("up", SyncTrigger.MANUAL) } }
+        work.reset().setMode(org.eclipse.jgit.api.ResetCommand.ResetType.HARD).setRef(feat0).call()
+        pushUpstream("up", "+refs/heads/feat:refs/heads/feat")
+        runBlocking { coordinator.update("up", SyncTrigger.MANUAL) }
+        val loose = store.open("up").use { r -> r.newObjectInserter().use { it.insert(Constants.OBJ_BLOB, "dangling".toByteArray()).also { _ -> it.flush() } } }
+        val before = myRefs()
+        assertTrue(before.keys.any { it.startsWith("refs/archive/") })
+        assertTrue(runBlocking { ops.gcIfNeeded("up", force = true) })
+        assertEquals(before, myRefs())
+        // one new pack with a bitmap; old packs are kept for an hour for readers that still have them open (JGit default)
+        assertTrue(File(store.dir("up"), "objects/pack").list()!!.any { it.endsWith(".bitmap") })
+        store.open("up").use { r -> assertTrue(r.objectDatabase.has(loose)) } // never pruned (archive app)
+        assertFalse(runBlocking { ops.gcIfNeeded("up") }) // nothing to do now
+    }
 }

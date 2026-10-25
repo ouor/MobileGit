@@ -119,6 +119,7 @@ class Core(private val context: Context) {
     fun start() {
         scope.launch(Dispatchers.IO) { ExportWorker.sweepCache(context) } // AND-12
         scheduler.schedulePeriodicCheck()
+        scheduler.scheduleMaintenance()
         scope.launch {
             settings.state.map { it.checkIntervalHours to it.checkWifiOnly }.distinctUntilChanged().drop(1).collect { scheduler.schedulePeriodicCheck() }
         }

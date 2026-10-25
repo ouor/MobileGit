@@ -62,6 +62,13 @@ class WorkScheduler(private val context: Context, private val settings: () -> Se
         wm.enqueueUniquePeriodicWork("periodic-check", ExistingPeriodicWorkPolicy.UPDATE, req)
     }
 
+    /** GIT-03: daily repack of repos that need it, only while charging and idle. */
+    fun scheduleMaintenance() {
+        val req = PeriodicWorkRequestBuilder<MaintenanceWorker>(1, TimeUnit.DAYS)
+            .setConstraints(Constraints.Builder().setRequiresCharging(true).setRequiresDeviceIdle(true).build()).build()
+        wm.enqueueUniquePeriodicWork("maintenance", ExistingPeriodicWorkPolicy.KEEP, req)
+    }
+
     fun enqueueCheck(name: String, maxJitterMs: Long) {
         val req = OneTimeWorkRequestBuilder<CheckWorker>().setInputData(workDataOf(SyncWorker.K_NAME to name))
             .setInitialDelay(if (maxJitterMs > 0) Random.nextLong(maxJitterMs) else 0, TimeUnit.MILLISECONDS)
@@ -139,6 +146,17 @@ class PeriodicCheckWorker(context: Context, params: WorkerParameters) : Coroutin
         val core = MobileGitApp.core(applicationContext)
         val jitter = core.settings.current.checkIntervalMillis / 10
         core.repos.repos.value.filter { it.mirror != null }.forEach { core.scheduler.enqueueCheck(it.name, jitter) }
+        return Result.success()
+    }
+}
+
+class MaintenanceWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val core = MobileGitApp.core(applicationContext)
+        for (m in core.repos.repos.value) {
+            if (isStopped) break
+            runCatching { core.ops.gcIfNeeded(m.name) }
+        }
         return Result.success()
     }
 }

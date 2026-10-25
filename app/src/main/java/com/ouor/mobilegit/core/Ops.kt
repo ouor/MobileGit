@@ -89,7 +89,38 @@ class RepoOps(
         }
     }
 
+    /**
+     * GIT-03: repack + pack refs + bitmaps when a repo has accumulated packs or loose objects, under the repo lock
+     * (no push/fetch can run meanwhile). Archive-safe: unreachable *loose* objects are never pruned
+     * (expire = epoch), and every archived ref keeps its history reachable. Returns false when nothing was needed.
+     * Very large repos are skipped: JGit's PackWriter keeps per-object state for the whole repo in the heap.
+     */
+    suspend fun gcIfNeeded(name: String, force: Boolean = false): Boolean = withContext(Dispatchers.IO) {
+        store.withRepoLock(name) {
+            if (!store.exists(name)) return@withRepoLock false
+            store.sweepLocks(name)
+            store.open(name).use { repo ->
+                val gc = org.eclipse.jgit.internal.storage.file.GC(repo as org.eclipse.jgit.internal.storage.file.FileRepository)
+                val st = gc.statistics
+                val needed = st.numberOfPackFiles > GC_MAX_PACKS || st.numberOfLooseObjects > GC_MAX_LOOSE || st.numberOfLooseRefs > GC_MAX_LOOSE_REFS
+                if (!force && !needed || st.numberOfPackedObjects + st.numberOfLooseObjects > GC_MAX_OBJECTS) return@withRepoLock false
+                gc.setExpire(java.time.Instant.EPOCH)
+                gc.setPackConfig(PackConfig(repo).apply { threads = 1 })
+                gc.gc().get()
+            }
+            runCatching { store.refreshDerived(name) }
+            true
+        }
+    }
+
     fun branches(name: String): List<String> = store.open(name).use { r -> r.refDatabase.getRefsByPrefix(Constants.R_HEADS).map { it.name.removePrefix(Constants.R_HEADS) } }
+
+    companion object {
+        const val GC_MAX_PACKS = 20
+        const val GC_MAX_LOOSE = 2_000
+        const val GC_MAX_LOOSE_REFS = 500
+        const val GC_MAX_OBJECTS = 2_000_000L
+    }
 }
 
 @Serializable data class ManifestRepo(
