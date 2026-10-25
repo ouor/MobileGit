@@ -31,6 +31,8 @@ data class Settings(
     val onboardingCompleted: Boolean = false,
     /** First-run password, kept (encrypted) only until onboarding completes (F-03 AC3). */
     val initialPasswordEnc: String? = null,
+    /** Boot count when the server was last switched on; distinguishes process restarts from reboots (F-01 AC7 vs F-22 AC2). */
+    val serverBootCount: Int? = null,
 ) {
     val hasNgrokToken get() = ngrokAuthtokenEnc != null
     /** F-03 AC7: while ngrok is on, "auth off" and "anonymous LAN read" are ignored. */

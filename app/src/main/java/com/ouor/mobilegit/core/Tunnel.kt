@@ -30,7 +30,7 @@ interface TunnelSession {
     fun close()
 }
 
-/** Android: ngrok-java (official ngrok Agent SDK). Tests: a fake. */
+/** Android: ngrok-go via gomobile ([com.ouor.mobilegit.app.NgrokBackend]). Tests: a fake. */
 fun interface TunnelBackend {
     /** Opens a tunnel forwarding to 127.0.0.1:[localPort]. Throws [TunnelAuthException] for a bad token. */
     fun connect(authtoken: String, localPort: Int): TunnelSession

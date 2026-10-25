@@ -212,7 +212,8 @@ class SyncCoordinator(
         }
         val category = if (status == OriginStatus.GONE) ErrorCategory.ORIGIN_GONE else f.category
         val n = mir.consecutiveFailures + 1
-        val backoff = minOf(24 * 3_600_000L, 3_600_000L shl minOf(n - 1, 5))
+        // NFR: exponential, max 24 h; also capped at 2x the check interval so the "지연" badge stays meaningful.
+        val backoff = minOf(24 * 3_600_000L, 2 * settings().checkIntervalMillis, 3_600_000L shl minOf(n - 1, 5))
         val ev = SyncEvent(started, clock.now() - started, trigger, kind, SyncResult.FAILED, errorCategory = category,
             errorDetail = Redact.text(f.detail, credentials.secrets()))
         store.appendEvent(meta.name, ev)

@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">mobilegit</string>
+    <string name="share_add_mirror">mobilegit에 미러 추가</string>
 </resources>

@@ -1,0 +1,209 @@
+package com.ouor.mobilegit.core
+
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.cio.CIO
+import io.ktor.server.engine.embeddedServer
+import io.ktor.server.request.header
+import io.ktor.server.request.uri
+import io.ktor.server.response.header
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.get
+import io.ktor.server.routing.routing
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicInteger
+
+class UrlAndNameTest {
+    @Test fun normalizesHostUrls() {
+        fun n(s: String) = RemoteUrls.normalize(s)?.url
+        assertEquals("https://github.com/a/b.git", n("https://github.com/a/b"))
+        assertEquals("https://github.com/a/b.git", n("github.com/a/b/tree/main/src"))
+        assertEquals("https://github.com/a/b.git", n("https://github.com/a/b.git"))
+        assertEquals("https://gitlab.com/grp/sub/proj.git", n("https://gitlab.com/grp/sub/proj/-/tree/main"))
+        assertEquals("https://gitlab.example.com:8443/grp/proj.git", n("https://gitlab.example.com:8443/grp/proj/-/blob/main/x"))
+        assertEquals("https://bitbucket.org/team/repo.git", n("https://bitbucket.org/team/repo/src/master/"))
+        assertEquals("https://codeberg.org/u/r.git", n("https://codeberg.org/u/r/src/branch/main"))
+        assertNull(n("ftp://x/y")); assertNull(n("https://github.com/onlyowner")); assertNull(n(""))
+    }
+
+    @Test fun namesFollowRule() {
+        assertTrue(RepoNames.isValid("foo.bar_baz-1"))
+        assertFalse(RepoNames.isValid("-x")); assertFalse(RepoNames.isValid("a/b")); assertFalse(RepoNames.isValid("x.git"))
+        assertFalse(RepoNames.isValid("a".repeat(101))); assertFalse(RepoNames.isValid(".."))
+        val r = RemoteUrls.normalize("https://github.com/own/repo")!!
+        assertEquals("repo", RepoNames.suggest(r) { false })
+        assertEquals("own-repo", RepoNames.suggest(r) { it == "repo" })
+        assertEquals("own-repo-2", RepoNames.suggest(r) { it == "repo" || it == "own-repo" })
+    }
+
+    @Test fun extractsSharedUrls() {
+        assertEquals(listOf("https://github.com/a/b"), RemoteUrls.extractCandidates("Check this out: https://github.com/a/b."))
+    }
+
+    @Test fun redactsSecrets() {
+        assertEquals("https://host/x Authorization: Basic *** tok=***", Redact.text("https://u:p@host/x Authorization: Basic abc123 tok=sekrit", listOf("sekrit")))
+    }
+}
+
+class NetTest {
+    @Test fun classifiesAddresses() {
+        val ifaces = listOf(NetIface("wlan0", "192.168.0.12"), NetIface("swlan0", "10.42.17.1"), NetIface("tun0", "100.101.2.3"),
+            NetIface("rmnet_data0", "10.200.1.1"), NetIface("lo", "127.0.0.1"))
+        val a = NetClassifier.addresses(ifaces, setOf("wlan0"), 8080)
+        assertEquals(listOf(AddressKind.WIFI, AddressKind.HOTSPOT, AddressKind.TAILSCALE), a.map { it.kind })
+        assertEquals("http://192.168.0.12:8080/foo.git", a[0].cloneUrl("foo"))
+        assertEquals(AccessRoute.HOTSPOT, NetClassifier.route("10.42.17.1", false, a))
+        assertEquals(AccessRoute.LOCALHOST, NetClassifier.route("127.0.0.1", false, a))
+        assertEquals(AccessRoute.NGROK, NetClassifier.route("127.0.0.1", true, a))
+        assertEquals(AccessRoute.TAILSCALE, NetClassifier.route("100.101.2.3", false, a))
+        assertFalse(NetClassifier.isTailscale("100.128.0.1"))
+    }
+}
+
+class AuthUnitTest {
+    @Test fun hashAndVerify() {
+        val h = PasswordHasher.hash("password1", 1000)
+        assertTrue(PasswordHasher.verify("password1", h)); assertFalse(PasswordHasher.verify("password2", h))
+        assertFalse(h.contains("password1"))
+    }
+
+    @Test fun firstRunGeneratesPasswordShownOnce() {
+        val s = SettingsStore(File(tempDir(), "s.json"), FakeCipher)
+        val pw = s.initialPassword()!!
+        assertEquals(16, pw.length)
+        assertEquals("git", s.current.username)
+        assertTrue(PasswordHasher.verify(pw, s.current.passwordHash))
+        s.completeOnboarding()
+        assertNull(s.initialPassword())
+        try { s.setPassword("short"); error("x") } catch (_: SettingsException) {}
+        try { s.setPort(80); error("x") } catch (_: SettingsException) {}
+    }
+
+    @Test fun rateLimiterWindow() {
+        var t = 0L
+        val l = AuthRateLimiter({ t })
+        repeat(10) { assertFalse(l.recordFailure("1.2.3.4")) }
+        assertTrue(l.recordFailure("1.2.3.4"))
+        assertTrue(l.isBlocked("1.2.3.4")); assertFalse(l.isBlocked("5.6.7.8"))
+        t += 300_001; assertFalse(l.isBlocked("1.2.3.4"))
+        repeat(10) { l.recordFailure("9.9.9.9") }; t += 61_000
+        assertFalse(l.recordFailure("9.9.9.9")) // old failures expired
+    }
+}
+
+class NotificationRulesTest {
+    private val ok = MirrorSource("u", originStatus = OriginStatus.OK)
+    @Test fun onlyTransitions() {
+        val failed = ok.copy(lastError = ErrorCategory.NETWORK)
+        assertEquals(listOf(NoticeKind.FAILED), NotificationRules.decide("r", ok, failed, 0, false).map { it.kind })
+        assertTrue(NotificationRules.decide("r", failed, failed.copy(lastError = ErrorCategory.TIMEOUT), 0, false).isEmpty())
+        assertEquals(listOf(NoticeKind.RECOVERED), NotificationRules.decide("r", failed, ok, 0, false).map { it.kind })
+        assertEquals(listOf(NoticeKind.ORIGIN_GONE), NotificationRules.decide("r", ok, ok.copy(originStatus = OriginStatus.GONE, lastError = ErrorCategory.ORIGIN_GONE), 0, false).map { it.kind })
+        assertEquals(listOf(NoticeKind.ARCHIVED, NoticeKind.UPDATED), NotificationRules.decide("r", ok, ok, 2, true).map { it.kind })
+    }
+
+    @Test fun queryFiltersAndSorts() {
+        val s = Settings()
+        val a = RepoMeta("1", "beta", RepoType.LOCAL, createdAt = 10, createdBy = CreatedBy.PUSH, lastPushAt = 100)
+        val b = RepoMeta("2", "Alpha", RepoType.MIRROR, createdAt = 5, createdBy = CreatedBy.MIRROR_ADD,
+            mirror = MirrorSource("u", originStatus = OriginStatus.GONE, lastCheckAt = 6))
+        val items = RepoQuery.items(listOf(a, b), s, 7, emptyMap())
+        assertEquals(listOf("Alpha", "beta"), RepoQuery.apply(items, RepoSort.NAME, RepoFilter.ALL, "").map { it.meta.name })
+        assertEquals(listOf("beta", "Alpha"), RepoQuery.apply(items, RepoSort.RECENT, RepoFilter.ALL, "").map { it.meta.name })
+        assertEquals(listOf("Alpha"), RepoQuery.apply(items, RepoSort.NAME, RepoFilter.PROBLEM, "").map { it.meta.name })
+        assertEquals(listOf("beta"), RepoQuery.apply(items, RepoSort.NAME, RepoFilter.ALL, "ET").map { it.meta.name })
+    }
+}
+
+class RemoteCatalogTest {
+    @Test fun githubPaginationAndRateLimit() = runBlocking {
+        val hits = AtomicInteger()
+        var port = 0
+        val srv = embeddedServer(CIO, port = 0, host = "127.0.0.1") {
+            routing {
+                get("/users/octo/repos") {
+                    val page = call.request.queryParameters["page"] ?: "1"
+                    if (page == "1" && hits.getAndIncrement() == 0) {
+                        call.response.header("X-RateLimit-Remaining", "0"); call.response.header("Retry-After", "1")
+                        call.respondText("{}", status = HttpStatusCode.Forbidden); return@get
+                    }
+                    if (page == "1") call.response.header("Link", "<http://127.0.0.1:$port/users/octo/repos?per_page=100&type=owner&page=2>; rel=\"next\"")
+                    val name = if (page == "1") "one" else "two"
+                    call.respondText("""[{"name":"$name","full_name":"octo/$name","description":null,"clone_url":"https://github.com/octo/$name.git","size":2,"fork":${page == "2"},"archived":false,"private":false}]""")
+                }
+            }
+        }.start(wait = false)
+        port = srv.engine.resolvedConnectors().first().port
+        try {
+            val waits = mutableListOf<Long>()
+            val list = RemoteCatalog(apiBaseOverride = "http://127.0.0.1:$port").list(BulkSourceKind.GITHUB_USER, "octo", onRateLimited = { waits += it })
+            assertEquals(listOf("one", "two"), list.map { it.name })
+            assertEquals(2048L, list[0].sizeBytes)
+            assertTrue(list[1].fork)
+            assertTrue(waits.first() > 0); assertEquals(0L, waits.last())
+        } finally { srv.stop(0, 0) }
+    }
+
+    @Test fun gitlabGroup() = runBlocking {
+        val srv = embeddedServer(CIO, port = 0, host = "127.0.0.1") {
+            routing {
+                get("/groups/{g}/projects") {
+                    assertEquals("tok", call.request.header("PRIVATE-TOKEN"))
+                    call.respondText("""[{"path":"p","path_with_namespace":"g/p","description":"d","http_url_to_repo":"https://gitlab.com/g/p.git","archived":true,"forked_from_project":{"id":1},"visibility":"private"}]""")
+                }
+            }
+        }.start(wait = false)
+        val port = srv.engine.resolvedConnectors().first().port
+        try {
+            val r = RemoteCatalog(apiBaseOverride = "http://127.0.0.1:$port").list(BulkSourceKind.GITLAB_GROUP, "g", token = "tok").single()
+            assertTrue(r.archived && r.fork && r.isPrivate)
+            assertNull(r.sizeBytes)
+        } finally { srv.stop(0, 0) }
+    }
+
+    @Test fun rateLimitHeaders() {
+        val c = RemoteCatalog({ 1_000_000L })
+        assertEquals(1_000_000L + 30_000, c.rateLimitUntil(429, "30", null, null))
+        assertEquals(1_700_000_000_000L, c.rateLimitUntil(403, null, "0", "1700000000"))
+        assertNull(c.rateLimitUntil(403, null, "10", "1700000000"))
+    }
+}
+
+class TunnelManagerTest {
+    @Test fun reconnectsWithBackoffAndStopsOnBadToken() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val calls = AtomicInteger()
+        val drop = CountDownLatch(1)
+        val backend = TunnelBackend { token, port ->
+            if (token == "bad") throw TunnelAuthException("ERR_NGROK_105")
+            if (calls.incrementAndGet() == 1) throw java.io.IOException("network down")
+            object : TunnelSession {
+                override val publicUrl = "https://abc.ngrok.app"
+                override fun awaitClosed() { drop.await() }
+                override fun close() { drop.countDown() }
+            }
+        }
+        val m = TunnelManager(backend, scope, baseDelayMs = 10, maxDelayMs = 40)
+        assertEquals(40, m.backoff(10))
+        m.start("good", 8080)
+        withTimeout(5_000) { m.state.first { it is TunnelState.Connected } }
+        assertEquals("https://abc.ngrok.app", m.publicUrl)
+        m.stop()
+        assertEquals(TunnelState.Off, m.state.value)
+        m.start("bad", 8080)
+        withTimeout(5_000) { m.state.first { it is TunnelState.TokenRejected } }
+        scope.cancel()
+    }
+}

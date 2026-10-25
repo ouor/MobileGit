@@ -7,7 +7,7 @@ import java.io.FileOutputStream
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
-val CoreJson = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
+val CoreJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
 /** Atomic JSON persistence: write tmp + fsync + rename, so a crash leaves either the old or the new file. */
 object JsonFile {

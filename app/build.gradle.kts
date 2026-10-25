@@ -62,13 +62,13 @@ dependencies {
     implementation(libs.work.runtime.ktx)
     implementation(libs.zxing.core)
     implementation(libs.slf4j.nop)
-    implementation(libs.ngrok.java)
-    // The android classifier jar carries both the JNI classes and libngrok_java.so (extracted at runtime by com.ngrok.Runtime).
-    implementation(variantOf(libs.ngrok.java.native) { classifier("linux-android-aarch_64") }) { isTransitive = false }
+    // F-04: ngrok-go v2 (MIT) bound with gomobile; rebuild with ngrok-mobile/build.sh (arm64 + x86_64, 16KB pages).
+    implementation(files("libs/ngrokmobile.aar"))
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.test.runner)
 }
