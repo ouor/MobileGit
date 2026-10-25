@@ -288,16 +288,17 @@ class ServerService : Service() {
                         is TunnelState.Retrying -> getString(R.string.server_notif_ngrok_retrying, t.reason)
                         is TunnelState.TokenRejected -> getString(R.string.server_notif_ngrok_token)
                     }
-                    getSystemService(android.app.NotificationManager::class.java).notify(Notifier.ID_SERVER, buildNotification(primary, ngrok))
+                    getSystemService(android.app.NotificationManager::class.java).notify(Notifier.ID_SERVER, buildNotification(primary, ngrok, public = t is TunnelState.Connected))
                 }
             }
         }
     }
 
-    private fun buildNotification(text: String, ngrok: String?): Notification {
+    /** CR-10: "외부 공개 중" only while the tunnel is connected (same rule as the app); other tunnel states are in the body. */
+    private fun buildNotification(text: String, ngrok: String?, public: Boolean = false): Notification {
         val stop = PendingIntent.getService(this, 1, Intent(this, ServerService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, Notifier.CH_SERVER).setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(getString(if (core.tunnel.state.value != TunnelState.Off) R.string.server_notif_title_public else R.string.server_notif_title))
+            .setContentTitle(getString(if (public) R.string.server_notif_title_public else R.string.server_notif_title))
             .setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(listOfNotNull(text, ngrok).joinToString("\n")))
             .setOngoing(true).setOnlyAlertOnce(true)
             .setContentIntent(Notifier.openApp(this, null, "main", 0))
