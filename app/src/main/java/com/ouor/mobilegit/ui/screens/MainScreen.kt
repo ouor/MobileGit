@@ -1,5 +1,13 @@
 package com.ouor.mobilegit.ui.screens
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.NotificationsOff
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import com.ouor.mobilegit.ui.ago
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
@@ -130,11 +138,15 @@ fun MainScreen(nav: Nav) {
     val settings by core.settings.state.collectAsStateWithLifecycle()
     val tunnel by core.tunnel.state.collectAsStateWithLifecycle()
     val items by core.repoItems.collectAsStateWithLifecycle(initialValue = null)
+    val overview by core.overview.collectAsStateWithLifecycle(initialValue = null)
+    val ngrokOff by core.server.ngrokOffAfterRestart.collectAsStateWithLifecycle()
 
     var sort by rememberSaveable { mutableStateOf(RepoSort.RECENT) }
     var filter by rememberSaveable { mutableStateOf(RepoFilter.ALL) }
     var query by rememberSaveable { mutableStateOf("") }
-    var addSheet by remember { mutableStateOf(false) }
+    var addSheet by rememberSaveable { mutableStateOf(false) }
+    var addStep by rememberSaveable { mutableIntStateOf(0) } // 0 = choices, 1 = new local repo guide
+    var guideName by rememberSaveable { mutableStateOf(DEFAULT_NAME) }
     var dialog by remember { mutableStateOf<String?>(null) }
 
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -152,11 +164,10 @@ fun MainScreen(nav: Nav) {
 
     val all = items.orEmpty()
     val shown = remember(items, sort, filter, query) { RepoQuery.apply(all, sort, filter, query) }
-    val delayed = all.count { Badge.DELAYED in it.badges }
-    val problems = all.count { it.badges.any { b -> b in com.ouor.mobilegit.core.Badges.problem } }
+    val problems = all.count { it.needsAttention }
+    val notifOk = remember(resumeTick) { androidx.core.app.NotificationManagerCompat.from(ctx).areNotificationsEnabled() }
 
     val list = rememberLazyListState()
-    var pushGuide by remember { mutableStateOf(false) }
     androidx.compose.material3.Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
@@ -185,8 +196,16 @@ fun MainScreen(nav: Nav) {
                 }
             }
             if (settings.ngrokEnabled) item(key = "ngrok") {
-                Banner(Tone.Danger, Icons.Outlined.Public, tunnelTitle(tunnel, server is ServerState.Running), tunnelText(tunnel, server is ServerState.Running), detail = tunnelDetail(tunnel),
+                // R2-06 AC3: the risky combination says so in the title
+                Banner(Tone.Danger, if (settings.exposedWithoutPassword) Icons.Outlined.LockOpen else Icons.Outlined.Public,
+                    if (settings.exposedWithoutPassword) str(R.string.main_exposed_no_password) else tunnelTitle(tunnel, server is ServerState.Running),
+                    tunnelText(tunnel, server is ServerState.Running) + if (settings.exposedWithoutPassword) "\n" + str(if (settings.authEnabled) R.string.main_exposed_push_only_body else R.string.main_exposed_off_body) else "",
+                    detail = tunnelDetail(tunnel),
                     actionLabel = str(R.string.main_ngrok_off), onAction = { core.settings.update { it.copy(ngrokEnabled = false) }; snack(str(R.string.main_ngrok_off_done)) })
+            }
+            if (ngrokOff) item(key = "ngrokOff") {
+                Banner(Tone.Info, Icons.Outlined.Public, str(R.string.server_notif_ngrok_off_after_restart), str(R.string.main_ngrok_off_after_restart_body),
+                    actionLabel = str(R.string.main_ngrok_settings), onAction = { core.server.ackNgrokOff(); nav.go(Routes.SETTINGS) }, onDismiss = { core.server.ackNgrokOff() })
             }
             if (damagedState.isNotEmpty()) item(key = "damaged") {
                 Banner(Tone.Danger, Icons.Outlined.ErrorOutline, str(R.string.main_damaged_title), str(R.string.main_damaged_body),
@@ -206,11 +225,9 @@ fun MainScreen(nav: Nav) {
                     actionLabel = str(R.string.main_battery_action), onAction = { nav.go(Routes.BATTERY) },
                     onDismiss = { core.settings.update { it.copy(batteryHintDismissedAt = System.currentTimeMillis()) }; snack(str(R.string.main_battery_later)) })
             }
-            val chips = !settings.effectiveAuthEnabled || delayed > 0
-            if (chips) item(key = "chips") {
+            if (!settings.effectiveAuthEnabled && !settings.ngrokEnabled) item(key = "chips") {
                 FlowRow(Modifier.fillMaxWidth().padding(top = Space.xs), horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-                    if (!settings.effectiveAuthEnabled) WarningChip(str(R.string.main_chip_password_off), Icons.Outlined.LockOpen, Tone.Danger) { nav.go(Routes.SETTINGS) }
-                    if (delayed > 0) WarningChip(str(R.string.main_chip_delayed, delayed), Icons.Outlined.HourglassBottom) { dialog = "delayed" }
+                    WarningChip(str(R.string.main_chip_password_off), Icons.Outlined.LockOpen, Tone.Danger) { nav.go(Routes.SETTINGS) }
                 }
             }
             item(key = "repoHeader") {
@@ -225,6 +242,12 @@ fun MainScreen(nav: Nav) {
                             Text(if (sort == RepoSort.RECENT) str(R.string.main_sort_recent) else str(R.string.main_sort_name))
                         }
                     }
+                    overview?.takeIf { all.isNotEmpty() }?.let { o -> Summary(o, onAttention = { filter = RepoFilter.PROBLEM }, onStalled = { nav.go(Routes.BATTERY) }) }
+                    if (!notifOk && all.any { it.meta.mirror != null }) Banner(Tone.Warning, Icons.Outlined.NotificationsOff, str(R.string.notif_off_title), str(R.string.notif_off_body),
+                        Modifier.padding(top = Space.sm), actionLabel = str(R.string.notif_off_action), onAction = { openNotificationSettings(ctx) })
+                    if (server !is ServerState.Running && server !is ServerState.Starting && !settings.serverOffHintDismissed && all.any { it.meta.mirror != null })
+                        Banner(Tone.Info, Icons.Outlined.Info, str(R.string.main_server_off_hint), null, Modifier.padding(top = Space.sm),
+                            onDismiss = { core.settings.update { it.copy(serverOffHintDismissed = true) } })
                     if (all.isNotEmpty()) {
                         SearchField(query) { query = it }
                         LazyRow(Modifier.padding(top = Space.sm), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
@@ -243,14 +266,11 @@ fun MainScreen(nav: Nav) {
                 items == null -> item(key = "loading") { Loading() }
                 all.isEmpty() -> item(key = "empty") {
                     EmptyState(Icons.Outlined.Inventory2, str(R.string.main_empty_title), str(R.string.main_empty_body)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-                            SecondaryButton(str(R.string.mirror_title), icon = Icons.Outlined.SyncAlt) { nav.go(Routes.add()) }
-                            SecondaryButton(str(R.string.main_add_empty), icon = Icons.Outlined.CreateNewFolder) { nav.go(Routes.CREATE) }
-                        }
+                        SecondaryButton(str(R.string.mirror_title), icon = Icons.Outlined.SyncAlt) { nav.go(Routes.add()) }
                         Spacer(Modifier.height(Space.sm))
-                        SecondaryButton(str(R.string.main_add_bulk), icon = Icons.Outlined.Groups) { nav.go(Routes.BULK) }
+                        SecondaryButton(str(R.string.bulk_title), icon = Icons.Outlined.Groups) { nav.go(Routes.BULK) }
                         Spacer(Modifier.height(Space.sm))
-                        SecondaryButton(str(R.string.main_push_title), icon = Icons.Outlined.Computer) { pushGuide = true }
+                        SecondaryButton(str(R.string.main_new_local), icon = Icons.Outlined.Computer) { addStep = 1; addSheet = true }
                     }
                 }
                 shown.isEmpty() -> item(key = "noMatch") {
@@ -259,33 +279,27 @@ fun MainScreen(nav: Nav) {
                     }
                 }
                 else -> items(shown, key = { it.meta.id }) { item ->
-                    RepoRow(item, onClick = { nav.go(Routes.repo(item.meta.name)) },
+                    RepoRow(item, settings.checkIntervalHours, onClick = { nav.go(Routes.repo(item.meta.name)) },
                         onUpdate = if (item.meta.mirror != null) ({ core.mirrors.updateNow(item.meta.name); snack(str(R.string.main_update_started, item.meta.name)) }) else null)
                 }
             }
         }
     }
 
-    if (addSheet) ModalBottomSheet(onDismissRequest = { addSheet = false }, containerColor = MaterialTheme.colorScheme.surfaceContainer) {
-        Column(Modifier.padding(horizontal = Space.lg).padding(bottom = Space.xl).navigationBarsPadding()) {
+    if (addSheet) ModalBottomSheet(onDismissRequest = { addSheet = false; addStep = 0; guideName = DEFAULT_NAME },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = addStep == 1), containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+        // R2-12: back from the guide returns to the three choices; the typed name stays until the sheet closes
+        BackHandler(enabled = addStep == 1) { addStep = 0 }
+        if (addStep == 0) Column(Modifier.padding(horizontal = Space.lg).padding(bottom = Space.xl).navigationBarsPadding()) {
             Text(str(R.string.main_add_repo), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = Space.sm, vertical = Space.sm))
             AddOption(Icons.Outlined.SyncAlt, str(R.string.mirror_title), str(R.string.main_add_mirror_sub)) { addSheet = false; nav.go(Routes.add()) }
             AddOption(Icons.Outlined.Groups, str(R.string.bulk_title), str(R.string.main_add_bulk_sub)) { addSheet = false; nav.go(Routes.BULK) }
-            AddOption(Icons.Outlined.Computer, str(R.string.main_push_title), str(R.string.main_push_sub)) { addSheet = false; pushGuide = true }
-            AddOption(Icons.Outlined.CreateNewFolder, str(R.string.empty_repo_title), str(R.string.main_add_empty_sub)) { addSheet = false; nav.go(Routes.CREATE) }
-        }
+            AddOption(Icons.Outlined.Computer, str(R.string.main_new_local), str(R.string.main_new_local_sub)) { addStep = 1 }
+        } else PushGuide(addrs.firstOrNull()?.baseUrl, settings.port, settings.username, guideName, { guideName = it },
+            onBack = { addStep = 0 }, onEmpty = { addSheet = false; addStep = 0; guideName = DEFAULT_NAME; nav.go(Routes.CREATE) })
     }
 
-    if (pushGuide) PushGuideSheet(addrs.firstOrNull()?.baseUrl, settings.port, settings.username) { pushGuide = false }
-
     when (dialog) {
-        "delayed" -> AlertDialog(
-            onDismissRequest = { dialog = null },
-            title = { Text(str(R.string.main_delayed_title)) },
-            text = { Text(str(R.string.main_delayed_body)) },
-            confirmButton = { TextButton(onClick = { dialog = null; nav.go(Routes.BATTERY) }) { Text(str(R.string.main_battery_guide)) } },
-            dismissButton = { TextButton(onClick = { dialog = null; filter = RepoFilter.PROBLEM }) { Text(str(R.string.main_view_repo)) } },
-        )
         "tailscale" -> AlertDialog(
             onDismissRequest = { dialog = null },
             title = { Text(str(R.string.main_tailscale_title)) },
@@ -294,7 +308,6 @@ fun MainScreen(nav: Nav) {
                     str(R.string.main_tailscale_vpn_note))
             },
             confirmButton = { TextButton(onClick = { dialog = null }) { Text(str(R.string.main_check)) } },
-            dismissButton = { TextButton(onClick = { dialog = null; nav.go(Routes.SETTINGS) }) { Text(str(R.string.main_ngrok_settings)) } },
         )
     }
 }
@@ -349,7 +362,6 @@ private fun ServerCard(
                 Text(if (showAddr) breakable(sub) else sub, style = if (showAddr) CodeText.body else MaterialTheme.typography.bodySmall,
                     color = if (server is ServerState.Failed) tone(Tone.Danger).content else if (showAddr) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (showAddr) IconButton(onClick = onQr) { Icon(Icons.Outlined.QrCode2, str(R.string.common_qr_large)) }
             IconButton(onClick = { open = !open }) { Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, str(R.string.main_server_details)) }
             Switch(checked = on, onCheckedChange = { onToggle(it) }, enabled = server !is ServerState.Stopping, colors = appSwitchColors(),
                 modifier = Modifier.semantics { contentDescription = str(R.string.main_server_switch) })
@@ -368,7 +380,7 @@ private fun ServerCard(
         if (open) Column(Modifier.padding(top = Space.md, end = Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
             Text(str(R.string.main_server_port_prefix, port) + when { !auth -> str(R.string.main_auth_none); anon -> str(R.string.main_auth_push_only); else -> str(R.string.main_auth_on) },
                 style = MaterialTheme.typography.bodyMedium)
-            addrs.forEach { a -> AddressBar(str(R.string.main_address_kind, a.kind.label()), a.baseUrl, enabled = running) }
+            addrs.forEach { a -> AddressBar(str(R.string.main_address_kind, a.kind.label()), a.baseUrl, enabled = running, onQr = if (running) onQr else null) }
             if (addrs.isNotEmpty()) Text(if (running) str(R.string.main_address_hint) else str(R.string.main_address_when_on), style = MaterialTheme.typography.bodyMedium)
             // review #11: the plain-HTTP warning belongs next to the address, not only in settings
             if (addrs.any { it.kind == AddressKind.WIFI || it.kind == AddressKind.HOTSPOT }) Banner(Tone.Warning, Icons.Outlined.Shield, str(R.string.main_plain_http), str(R.string.main_plain_http_body))
@@ -380,25 +392,74 @@ private fun ServerCard(
     }
 }
 
-/** Review #1: how to turn a PC project into a repo on this phone (push creates it). */
-@OptIn(ExperimentalMaterial3Api::class)
+private const val DEFAULT_NAME = "my-project"
+
+/** R2-11 "새 로컬 레포": push from a PC creates the repo; an empty repo is the fallback without a PC. */
 @Composable
-private fun PushGuideSheet(baseUrl: String?, port: Int, username: String, onDismiss: () -> Unit) {
-    var name by rememberSaveable { mutableStateOf("my-project") }
-    val n = name.trim().ifBlank { "my-project" }
+private fun PushGuide(baseUrl: String?, port: Int, username: String, name: String, onName: (String) -> Unit, onBack: () -> Unit, onEmpty: () -> Unit) {
+    val n = name.trim().ifBlank { DEFAULT_NAME }
     val url = "${baseUrl ?: str(R.string.main_address_placeholder, port)}/$n.git"
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainer) {
-        Column(Modifier.padding(horizontal = Space.screen).padding(bottom = Space.xl).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-            Text(str(R.string.main_push_title), style = MaterialTheme.typography.titleLarge)
-            Text(str(R.string.main_push_body), style = MaterialTheme.typography.bodyMedium)
-            androidx.compose.material3.OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(str(R.string.main_push_name)) },
-                shape = MaterialTheme.shapes.medium)
-            Text(str(R.string.main_push_step), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = Space.xs))
-            core().ops.pushCommands(url).forEach { CommandBlock(it) }
-            Text(str(R.string.main_push_account, username), style = MaterialTheme.typography.bodyMedium)
-            Text(str(R.string.main_push_vscode), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(Modifier.padding(horizontal = Space.screen).padding(bottom = Space.xl).navigationBarsPadding().verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack, modifier = Modifier.padding(end = Space.xs)) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, str(R.string.common_back)) }
+            Text(str(R.string.main_new_local), style = MaterialTheme.typography.titleLarge)
         }
+        Text(str(R.string.main_push_body), style = MaterialTheme.typography.bodyMedium)
+        androidx.compose.material3.OutlinedTextField(name, onName, Modifier.fillMaxWidth(), singleLine = true, label = { Text(str(R.string.main_push_name)) },
+            shape = MaterialTheme.shapes.medium)
+        Text(str(R.string.main_push_step), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = Space.xs))
+        core().ops.pushCommands(url).forEach { CommandBlock(it) }
+        Text(str(R.string.main_push_account, username), style = MaterialTheme.typography.bodyMedium)
+        Text(str(R.string.main_push_network), style = MaterialTheme.typography.bodyMedium)
+        Text(str(R.string.main_push_vscode), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // R2-07 AC2: LFS is not stored; how to push such a project anyway
+        com.ouor.mobilegit.ui.components.AdvancedSection(title = str(R.string.main_push_lfs_title)) {
+            Text(str(R.string.main_push_lfs_body), style = MaterialTheme.typography.bodyMedium)
+            Text("bash", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            CommandBlock("GIT_LFS_SKIP_PUSH=1 git push -u phone main")
+            Text("PowerShell", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            CommandBlock("\$env:GIT_LFS_SKIP_PUSH=1; git push -u phone main")
+        }
+        Text(str(R.string.main_push_size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(Space.xs))
+        SecondaryButton(str(R.string.main_push_empty_instead), icon = Icons.Outlined.CreateNewFolder, onClick = onEmpty)
     }
+}
+
+/** R2-02: "미러 12개 · 정상 11 · 주의 1 · 마지막 확인 10분 전 · 로컬 3개". */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Summary(o: com.ouor.mobilegit.core.RepoOverview, onAttention: () -> Unit, onStalled: () -> Unit) {
+    val style = MaterialTheme.typography.bodyMedium
+    if (o.checksStalled) {
+        Banner(Tone.Warning, Icons.Outlined.HourglassBottom, str(R.string.main_summary_stalled),
+            o.lastCheckAt?.let { str(R.string.main_summary_last_check, ago(it)) }, Modifier.padding(top = Space.sm),
+            actionLabel = str(R.string.main_battery_guide), onAction = onStalled)
+        return
+    }
+    FlowRow(Modifier.fillMaxWidth().padding(top = Space.xs), verticalArrangement = Arrangement.Center) {
+        val dim = MaterialTheme.colorScheme.onSurfaceVariant
+        val parts = buildList {
+            if (o.mirrors > 0) add(str(R.string.main_summary_mirrors, o.mirrors))
+            if (o.mirrors > 0 && o.attention > 0) add(str(R.string.main_summary_healthy, o.healthy))
+        }
+        if (parts.isNotEmpty()) Text(parts.joinToString(" · ") + " · ", style = style, color = dim, modifier = Modifier.padding(vertical = Space.xs))
+        if (o.attention > 0) Text(str(R.string.main_summary_attention, o.attention), style = style, color = tone(Tone.Warning).content, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.clip(MaterialTheme.shapes.extraSmall).clickable(role = Role.Button, onClick = onAttention).padding(vertical = Space.xs))
+        else Text(str(R.string.main_summary_all_ok), style = style, color = tone(Tone.Success).content, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = Space.xs))
+        val tail = buildList {
+            o.lastCheckAt?.let { add(str(R.string.main_summary_last_check, ago(it))) }
+            if (o.locals > 0) add(str(R.string.main_summary_locals, o.locals))
+        }
+        if (tail.isNotEmpty()) Text(" · " + tail.joinToString(" · "), style = style, color = dim, modifier = Modifier.padding(vertical = Space.xs))
+    }
+}
+
+/** App notification settings (R2-16). */
+fun openNotificationSettings(ctx: android.content.Context) {
+    ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+        .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
 }
 
 @Composable

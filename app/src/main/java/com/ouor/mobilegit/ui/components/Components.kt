@@ -1,5 +1,7 @@
 package com.ouor.mobilegit.ui.components
 
+import com.ouor.mobilegit.ui.text
+import com.ouor.mobilegit.ui.tone
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.ui.graphics.Color
 import com.ouor.mobilegit.ui.breakable
@@ -402,7 +404,7 @@ fun Divider() = HorizontalDivider(Modifier.padding(horizontal = Space.lg), color
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun RepoRow(item: RepoListItem, onClick: () -> Unit, onUpdate: (() -> Unit)?) {
+fun RepoRow(item: RepoListItem, intervalHours: Int, onClick: () -> Unit, onUpdate: (() -> Unit)?) {
     val m = item.meta
     var menu by remember { mutableStateOf(false) }
     val mirror = m.type == RepoType.MIRROR
@@ -421,7 +423,11 @@ fun RepoRow(item: RepoListItem, onClick: () -> Unit, onUpdate: (() -> Unit)?) {
                 Column(Modifier.weight(1f)) {
                     Text(m.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     val whenText = if (mirror && m.mirror?.waitingForForeground == true) str(R.string.detail_waiting_foreground_short) else if (mirror) m.mirror?.lastSuccessUpdateAt?.let { str(R.string.common_updated_ago, ago(it)) } ?: str(R.string.common_before_first_fetch) else m.lastPushAt?.let { "push ${ago(it)}" } ?: str(R.string.common_before_push)
-                    Text("${if (mirror) str(R.string.common_kind_mirror) else str(R.string.common_kind_local)} · ${whenText} · ${bytes(m.sizeBytes)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    val kind = if (mirror) str(R.string.common_kind_mirror) else str(R.string.common_kind_local)
+                    val issue = item.issue
+                    // R2-01: the reason replaces "업데이트 N분 전" when something needs attention
+                    if (issue != null) Text("$kind · ${issue.text(intervalHours)}", style = MaterialTheme.typography.bodySmall, color = tone(issue.tone).content, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    else Text("$kind · ${whenText} · ${bytes(m.sizeBytes)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                     if (item.badges.isNotEmpty()) BadgeRow(item.badges, Modifier.padding(top = Space.xs + Space.xxs))
                     item.progress?.let { p ->
                         val f = p.progress?.fraction

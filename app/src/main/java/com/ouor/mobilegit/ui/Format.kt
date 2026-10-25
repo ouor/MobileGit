@@ -62,7 +62,7 @@ fun Badge.style(): BadgeStyle = when (this) {
     Badge.AUTH_REQUIRED -> BadgeStyle(str(R.string.badge_auth_required), Tone.Warning, Icons.Outlined.Key)
     Badge.DELAYED -> BadgeStyle(str(R.string.badge_delayed), Tone.Warning, Icons.Outlined.HourglassBottom)
     Badge.LFS_MISSING -> BadgeStyle(str(R.string.badge_lfs_missing), Tone.Neutral, Icons.Outlined.Inventory2)
-    Badge.HISTORY_CHANGED -> BadgeStyle(str(R.string.badge_history_changed), Tone.Warning, Icons.Outlined.History) // core R2-01; UI may restyle
+    Badge.HISTORY_CHANGED -> BadgeStyle(str(R.string.badge_history_changed), Tone.Warning, Icons.Outlined.History)
 }
 
 /** Most severe first, so the first badge is the one that matters. */
@@ -125,3 +125,21 @@ fun breakable(s: String): String = buildString {
         }
     }
 }
+
+/** "3일째", "5시간째", "방금부터": how long something has been going on. */
+fun running(since: Long, now: Long = System.currentTimeMillis()): String {
+    val h = (now - since).coerceAtLeast(0) / 3_600_000
+    return when { h >= 24 -> str(R.string.fmt_days_running, h / 24 + 1); h >= 1 -> str(R.string.fmt_hours_running, h); else -> str(R.string.fmt_just_started) }
+}
+
+/** R2-01 AC1: the row's second line when the repo needs attention ([RepoListItem.issue]). */
+fun com.ouor.mobilegit.core.RepoIssue.text(intervalHours: Int, now: Long = System.currentTimeMillis()): String = when (badge) {
+    Badge.ORIGIN_GONE -> since?.let { str(R.string.issue_origin_gone_since, ago(it, now)) } ?: str(R.string.badge_origin_gone)
+    Badge.AUTH_REQUIRED -> str(R.string.badge_auth_required)
+    Badge.FAILED -> listOfNotNull(str(R.string.issue_failed), category?.let { str(com.ouor.mobilegit.app.Notifier.categoryRes(it)) }, since?.let { running(it, now) }).joinToString(" · ")
+    Badge.DELAYED -> str(R.string.issue_delayed, intervalHours, running(since ?: now, now))
+    Badge.HISTORY_CHANGED -> since?.let { str(R.string.issue_history_changed, ago(it, now)) } ?: str(R.string.badge_history_changed)
+    else -> badge.style().label
+}
+
+val com.ouor.mobilegit.core.RepoIssue.tone get() = if (badge == Badge.ORIGIN_GONE || badge == Badge.FAILED) Tone.Danger else Tone.Warning
