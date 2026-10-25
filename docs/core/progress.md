@@ -293,3 +293,13 @@ JVM 테스트 78개 통과(신규 `StorageTest` 12개 포함). 실기기 `OnDevi
 - UI 코드에 최소로 넣은 것: `ui/Format.kt`의 `REVIEW` 분기, `RepoDetailScreen`의 `lastArchivedAt` 한 줄.
 - JVM 테스트 전체 통과.
 
+
+## 14. F-26 웹에서 미러 추가
+
+### WM-00 앱이 닫혀 있을 때 첫 받기 (실기기 확인, 2026-10-25)
+- 기기: 테스트폰 d418f2d1 (Android 16, M2012K11AG), 배터리 최적화 허용 목록에 없음.
+- 방법: 서버를 켠 뒤 앱 화면을 닫고(뒤로 → 홈) 화면을 껐다. 디버그 빌드 전용 진입점 `DebugAddMirrorReceiver`(`app/src/debug`)로 adb broadcast를 보냈다. 이 진입점은 30초를 기다린 뒤 `MirrorController.add`를 부른다. 브로드캐스트 수신으로 생기는 잠깐의 백그라운드 허용이 끝난 뒤에 부르기 위해서다. 웹 요청과 같은 조건이다.
+- 결과 1 (화면 꺼짐, Dozing): `add` 뒤 0.15초 안에 첫 받기 시작, 1.4초 만에 끝남. `waitingForForeground = false`. 시스템 로그: `Background started FGS: Allowed … uidState: FGS … code:PROC_STATE_FGS`. 서버 포그라운드 서비스가 돌고 있어서 WorkManager의 포그라운드 전환이 허용된다.
+- 결과 2 (`dumpsys deviceidle force-idle`로 깊은 Doze): 같음. 0.1초 안에 시작, 1.2초에 끝남.
+- 결론: **미뤄지지 않는다.** 서버가 켜져 있는 한 웹 등록의 첫 받기는 바로 시작된다. WM-05 AC3의 "앱을 열면 시작" 안내는 예외 경로(서버 없이 다른 경로로 등록된 경우, 제조사 정책 등)로만 남는다. 코어는 `waitingForForeground`를 레포 요약에 그대로 내준다.
+- 확인용으로 만든 레포 2개(`wm00-test`, `wm00-doze`)는 확인 뒤 지웠다. 레포 15개 그대로.

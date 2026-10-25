@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- WM-00 (debug builds only): register a mirror without the app UI, like the web route will -->
+        <receiver android:name=".app.DebugAddMirrorReceiver" android:exported="true">
+            <intent-filter><action android:name="com.ouor.mobilegit.DEBUG_ADD_MIRROR" /></intent-filter>
+        </receiver>
+    </application>
+</manifest>
