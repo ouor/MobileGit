@@ -148,6 +148,12 @@ class ServerController(private val context: Context, private val core: () -> Cor
         Notifier.serverBlocked(context)
     }
 
+    /** QA-13: a new port makes an old "port N in use" failure stale; go back to the plain stopped state. */
+    fun onPortChanged() {
+        val st = _state.value
+        if (st is ServerState.Failed && st.kind == ServerFailure.PORT_IN_USE) _state.value = ServerState.Stopped
+    }
+
     /** QA-02: called when an activity of the app becomes visible; foreground service starts are allowed then. */
     fun resumeIfBlocked() {
         val st = _state.value

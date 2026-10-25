@@ -113,6 +113,7 @@ class Core(private val context: Context) {
         scope.launch {
             settings.state.map { it.checkIntervalHours to it.checkWifiOnly }.distinctUntilChanged().drop(1).collect { scheduler.schedulePeriodicCheck() }
         }
+        scope.launch { settings.state.map { it.port }.distinctUntilChanged().drop(1).collect { server.onPortChanged() } }
         server.restoreIfEnabled()
     }
 }

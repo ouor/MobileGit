@@ -143,6 +143,9 @@ class OnDeviceTest {
                 assertEquals(com.ouor.mobilegit.app.ServerFailure.PORT_IN_USE, st.kind)
                 kotlinx.coroutines.delay(1_000) // an escaped coroutine exception would kill this process (and the test) here
                 assertTrue(!core.gitServer.isRunning)
+                // QA-13: choosing another port clears the stale "port N in use" failure
+                core.settings.setPort(oldPort)
+                assertEquals(ServerState.Stopped, withTimeout(5_000) { core.server.state.first { it !is ServerState.Failed } })
             } finally {
                 core.server.stop()
                 core.settings.setPort(oldPort)
