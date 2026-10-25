@@ -148,7 +148,7 @@ fun com.ouor.mobilegit.core.RepoIssue.text(intervalHours: Int, now: Long = Syste
 /** Row colour follows the core severity (CR-11): 오류 red, 주의 orange. */
 val com.ouor.mobilegit.core.RepoIssue.tone get() = if (severity == com.ouor.mobilegit.core.Severity.ERROR) Tone.Danger else Tone.Warning
 
-/** "15:20" (today) or "10.26 15:20". */
+/** "15:20" (today) or "2026.10.26 15:20" (glossary 8.2: detail cards and history use this, not "N분 전"). */
 fun clock(t: Long, now: Long = System.currentTimeMillis()): String {
     val day = SimpleDateFormat("yyyyMMdd", Locale.KOREA)
     return SimpleDateFormat(if (day.format(Date(t)) == day.format(Date(now))) "HH:mm" else "yyyy.MM.dd HH:mm", Locale.KOREA).format(Date(t))

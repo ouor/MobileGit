@@ -191,10 +191,10 @@
     <string name="main_clear_filters">필터 지우기</string>
     <string name="main_update_started">%1$s 업데이트를 시작했어요</string>
     <string name="main_add_mirror_sub">GitHub·GitLab 레포 주소를 붙여넣으면 원본을 자동으로 따라가는 읽기 전용 미러를 만들어요</string>
-    <string name="main_add_bulk_sub">계정이나 조직의 레포를 골라 한 번에 미러해요.</string>
+    <string name="main_add_bulk_sub">계정이나 조직의 레포를 골라 한 번에 미러해요</string>
     <string name="main_battery_guide">배터리 안내</string>
     <string name="main_tailscale_title">밖에서도 접속하려면</string>
-    <string name="main_tailscale_body">Tailscale 앱을 설치하고 연결하면 모바일 데이터에서도 접속할 수 있습니다. mobilegit은 Tailscale IP를 감지해 주소로 보여 줄 뿐 Tailscale을 제어하지 않아요.\n\n</string>
+    <string name="main_tailscale_body">Tailscale 앱을 설치하고 연결하면 모바일 데이터에서도 접속할 수 있어요. mobilegit은 Tailscale IP를 감지해 주소로 보여 줄 뿐 Tailscale을 제어하지 않아요.\n\n</string>
     <string name="main_tailscale_vpn_note">안드로이드는 VPN을 하나만 쓸 수 있어서 다른 VPN과 동시에 쓸 수 없어요.</string>
     <string name="main_check">확인</string>
     <string name="main_ngrok_settings">ngrok 설정</string>
@@ -332,7 +332,7 @@
     <string name="detail_tab_info">정보</string>
     <string name="detail_tab_sync_history">업데이트 이력 %1$s</string>
     <string name="detail_history_empty_title">아직 기록이 없어요</string>
-    <string name="detail_history_empty_body">확인이나 업데이트가 실행되면 여기에 남아요. 변경 없는 확인은 마지막 확인 시각만 갱신해요.</string>
+    <string name="detail_history_empty_body">확인이나 업데이트가 실행되면 여기에 남아요. 바뀐 것이 없는 확인은 이력에 남기지 않고 마지막 확인 시각만 바꿔요.</string>
     <string name="detail_kind_mirror">읽기 전용 미러</string>
     <string name="detail_kind_local">로컬 레포 · push 가능</string>
     <string name="detail_size_unmeasured">용량 계산 전</string>
@@ -354,7 +354,7 @@
     <string name="detail_lfs_title">LFS 파일은 받지 않아요 (포인터만)</string>
     <string name="detail_lfs_body">이 레포는 Git LFS를 써요. 큰 파일 본체는 받지 않고, 그 파일을 가리키는 작은 포인터 파일만 저장해요.</string>
     <string name="detail_submodules_title">서브모듈 %1$s개</string>
-    <string name="detail_submodules_body">서브모듈은 함께 보존되지 않습니다. 필요하면 따로 미러로 추가하세요.</string>
+    <string name="detail_submodules_body">서브모듈은 함께 보존되지 않아요. 필요하면 따로 미러로 추가하세요.</string>
     <string name="detail_archive_title">보존된 기록</string>
     <string name="detail_archive_url_placeholder">&lt;clone 주소&gt;</string>
     <string name="detail_manage">관리</string>
@@ -403,10 +403,10 @@
     <string name="detail_event_refs_changed">브랜치·태그 %1$s개 변경</string>
     <string name="detail_event_new_commits">새 커밋 %1$s개</string>
     <string name="detail_event_archived">강제 push나 삭제로 %1$s개를 보존했어요</string>
-    <string name="detail_event_time">%1$s · %2$s초</string>
+    <string name="detail_event_time">%1$s초 걸림</string>
     <string name="detail_collapse">접기</string>
     <string name="detail_expand">자세히</string>
-    <string name="export_bundle_body">모든 브랜치·태그와 보존 기록까지 담아요. PC에서 git clone %1$s.bundle 로 복원해요.</string>
+    <string name="export_bundle_body">모든 브랜치·태그와 보존된 기록까지 담아요. PC에서 git clone %1$s.bundle 로 복원해요.</string>
     <string name="export_source_zip">소스 zip</string>
     <string name="export_source_zip_body">고른 브랜치의 최신 파일만, .git 없이 담아요.</string>
     <string name="export_branch">브랜치</string>
@@ -421,7 +421,7 @@
     <string name="delete_running">삭제 중…</string>
     <string name="delete_done">%1$s을(를) 삭제했어요</string>
     <string name="delete_failed">삭제하지 못했어요</string>
-    <string name="delete_origin_gone_warning">이 레포는 원본이 없어 복구할 수 없을 수 있습니다</string>
+    <string name="delete_origin_gone_warning">이 레포는 원본이 없어 지우면 다시 받지 못할 수 있어요</string>
     <string name="delete_export_first">먼저 내보내기를 해 두세요.</string>
 
     <!-- settings -->
@@ -453,7 +453,7 @@
     <string name="settings_pull_refs_sub">GitHub PR마다 생기는 refs/pull/* 브랜치예요. 끄면 받는 시간과 용량이 크게 줄어요. 레포마다 따로 정할 수 있어요</string>
     <string name="settings_notifications">알림</string>
     <string name="settings_notify_success">업데이트 완료 알림</string>
-    <string name="settings_notify_success_sub">실패·원본 없음·보존 발생 알림은 항상 보내요</string>
+    <string name="settings_notify_success_sub">실패·원본 없음·보존된 기록 알림은 항상 보내요</string>
     <string name="settings_system_notifications">시스템 알림 설정</string>
     <string name="settings_system_notifications_sub">채널별로 끄거나 켤 수 있어요</string>
     <string name="settings_count">%1$s개</string>
@@ -497,7 +497,7 @@
     <string name="backup_progress">%1$s / %2$s 레포 처리 중</string>
     <string name="backup_preparing">백업 준비 중…</string>
     <string name="backup_running">백업 중…</string>
-    <string name="backup_intro">선택한 레포를 zip 하나로 만들어요. 레포별 .bundle(보존 기록 포함)과 manifest.json(이름, 원본, refs SHA 등)이 들어가요. 토큰과 비밀번호는 넣지 않아요. SD 카드나 클라우드 드라이브에 저장할 수 있어요.</string>
+    <string name="backup_intro">선택한 레포를 zip 하나로 만들어요. 레포별 .bundle(보존된 기록 포함)과 manifest.json(이름, 원본, refs SHA 등)이 들어가요. 토큰과 비밀번호는 넣지 않아요. SD 카드나 클라우드 드라이브에 저장할 수 있어요.</string>
     <string name="backup_repo_count">레포 %1$s개</string>
     <string name="backup_empty_title">백업할 레포가 없어요</string>
     <string name="backup_empty_body">레포를 추가하면 백업할 수 있어요.</string>
@@ -562,7 +562,7 @@
     <string name="detail_push_created">새로 만듦</string>
     <string name="detail_push_deleted">삭제</string>
     <string name="detail_push_forced">강제 push</string>
-    <string name="detail_push_from">%1$s · %2$s에서</string>
+    <string name="detail_push_from">%1$s에서</string>
     <string name="add_shared_title">다른 앱에서 받은 주소예요</string>
     <string name="add_shared_body">주소를 확인한 뒤 연결해 보세요. 확인하기 전에는 이 주소에 접속하지 않아요.</string>
     <string name="add_shared_confirm">연결 확인</string>
@@ -650,7 +650,7 @@
     <string name="notif_off_body">원본 사고(실패, 원본 없음, 히스토리 바뀜)를 놓칠 수 있어요.</string>
     <string name="notif_off_action">알림 켜기</string>
     <string name="main_new_local">새 로컬 레포</string>
-    <string name="main_new_local_sub">PC 프로젝트를 이 폰에 push해서 만들어요. PC 없이 빈 레포로 먼저 만들 수도 있어요.</string>
+    <string name="main_new_local_sub">PC 프로젝트를 이 폰에 push하거나 PC 없이 빈 레포로 먼저 만들어요</string>
     <string name="main_push_network">와이파이가 없으면 폰 핫스팟이나 USB 테더링에 PC를 연결하세요.</string>
     <string name="main_push_lfs_title">Git LFS를 쓰는 프로젝트라면</string>
     <string name="main_push_lfs_body">이 폰은 Git LFS 파일을 받지 않아요. LFS를 쓰는 프로젝트는 아래 명령으로 push하세요. 큰 파일은 빠지고, 그 파일을 가리키는 작은 포인터 파일만 올라가요.</string>
@@ -748,6 +748,7 @@
     <string name="settings_exposed_pending">ngrok이 연결되면 비밀번호 없이 인터넷에 열려요</string>
     <string name="tunnel_token_rejected_here">ngrok이 토큰을 거부했어요. 아래 ngrok 토큰을 확인하세요.</string>
     <string name="settings_ngrok_token_row">ngrok 토큰 (authtoken)</string>
+    <string name="settings_ngrok_token_title">ngrok 토큰</string>
     <string name="main_summary_errors">오류 %1$d</string>
     <string name="main_summary_stalled_body">백그라운드 확인이 멈췄어요. 배터리 최적화에서 mobilegit을 빼면 다시 확인해요.</string>
     <string name="fork_irreversible">되돌릴 수 없어요.</string>

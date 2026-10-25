@@ -173,8 +173,10 @@ fun MainScreen(nav: Nav) {
     androidx.compose.material3.Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
-            ExtendedFloatingActionButton(onClick = { addSheet = true }, icon = { Icon(Icons.Outlined.Add, null) }, text = { Text(str(R.string.main_add_repo)) },
-                expanded = all.isEmpty() || !list.canScrollForward, shape = MaterialTheme.shapes.large,
+            val fabExpanded = all.isEmpty() || !list.canScrollForward
+            // QA2-12: collapsed to "+", the icon carries the name
+            ExtendedFloatingActionButton(onClick = { addSheet = true }, icon = { Icon(Icons.Outlined.Add, if (fabExpanded) null else str(R.string.main_add_repo)) },
+                text = { Text(str(R.string.main_add_repo)) }, expanded = fabExpanded, shape = MaterialTheme.shapes.large,
                 containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)
         },
     ) { padding ->
@@ -461,7 +463,8 @@ private fun Summary(c: com.ouor.mobilegit.core.RepoOverview, onProblems: () -> U
         c.lastCheckAt?.let { add(Triple(str(R.string.main_summary_last_check, ago(it)), null, false)) }
         if (c.locals > 0) add(Triple(str(R.string.main_summary_locals, c.locals), null, false))
     }
-    FlowRow(Modifier.fillMaxWidth().padding(top = Space.xs), verticalArrangement = Arrangement.Center) {
+    // QA2-07: the tappable parts are 48dp tall; centre every part so all text shares one baseline
+    FlowRow(Modifier.fillMaxWidth().padding(top = Space.xs), verticalArrangement = Arrangement.Center, itemVerticalAlignment = Alignment.CenterVertically) {
         parts.forEachIndexed { i, (text, t, click) ->
             val label = if (i < parts.lastIndex) "$text · " else text
             val m = if (click) Modifier.minimumInteractiveComponentSize().clip(MaterialTheme.shapes.extraSmall).clickable(role = Role.Button, onClick = onProblems) else Modifier.padding(vertical = Space.xs)

@@ -101,7 +101,7 @@ import com.ouor.mobilegit.core.SyncResult
 import com.ouor.mobilegit.ui.ExportRunner
 import com.ouor.mobilegit.ui.Nav
 import com.ouor.mobilegit.ui.Routes
-import com.ouor.mobilegit.ui.ago
+import com.ouor.mobilegit.ui.clock
 import com.ouor.mobilegit.ui.bytes
 import com.ouor.mobilegit.ui.components.AddressBar
 import com.ouor.mobilegit.ui.components.AppScaffold
@@ -276,7 +276,7 @@ private fun InfoTab(item: RepoListItem, export: ExportRunner, onSheet: (String) 
                     Text(str(R.string.detail_archive_none), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else NavRow(str(R.string.detail_archive_title), { nav.go(Routes.archives(m.name)) }, icon = Icons.Outlined.Archive,
-                subtitle = str(R.string.detail_archive_count, m.archivedRefCount) + (m.historyChangedAt?.let { " · " + str(R.string.detail_archive_last, ago(it)) } ?: ""))
+                subtitle = str(R.string.detail_archive_count, m.archivedRefCount) + (m.historyChangedAt?.let { " · " + str(R.string.detail_archive_last, clock(it)) } ?: ""))
         }
 
         // 고급 stays last before 관리 (design-system 9)
@@ -312,21 +312,21 @@ private fun OriginCard(item: RepoListItem, nav: Nav, onSheet: (String) -> Unit) 
         AddressBar(str(R.string.detail_origin_url), mir.remoteUrl)
         Spacer(Modifier.height(Space.sm))
         val sameTime = mir.lastCheckAt != null && mir.lastCheckAt == mir.lastSuccessUpdateAt
-        if (sameTime) InfoRow(str(R.string.detail_checked_updated), ago(mir.lastCheckAt!!))
+        if (sameTime) InfoRow(str(R.string.detail_checked_updated), clock(mir.lastCheckAt!!))
         else {
-            InfoRow(str(R.string.detail_last_check), mir.lastCheckAt?.let { ago(it) } ?: str(R.string.detail_not_yet))
-            InfoRow(str(R.string.detail_last_update), mir.lastSuccessUpdateAt?.let { ago(it) } ?: str(R.string.detail_not_yet))
+            InfoRow(str(R.string.detail_last_check), mir.lastCheckAt?.let { clock(it) } ?: str(R.string.detail_not_yet))
+            InfoRow(str(R.string.detail_last_update), mir.lastSuccessUpdateAt?.let { clock(it) } ?: str(R.string.detail_not_yet))
         }
         val settings by core.settings.state.collectAsStateWithLifecycle()
         val next = (mir.lastCheckAt ?: m.createdAt) + settings.checkIntervalMillis
         InfoRow(str(R.string.detail_check_interval), (if (mir.autoUpdateExcluded) str(R.string.detail_check_only_mode) + " · " else "") +
-            str(R.string.detail_check_next, settings.checkIntervalHours, if (next > System.currentTimeMillis()) com.ouor.mobilegit.ui.clock(next) else str(R.string.detail_check_soon)))
+            str(R.string.detail_check_next, settings.checkIntervalHours, if (next > System.currentTimeMillis()) clock(next) else str(R.string.detail_check_soon)))
         InfoRow(str(R.string.detail_scope), str(if (mir.includePullRefs ?: settings.mirrorPullRefs) R.string.detail_scope_mirror_pull else R.string.detail_scope_mirror) + " · " + str(R.string.detail_scope_no_lfs))
         if (mir.pendingChanges > 0) InfoRow(str(R.string.detail_changes), str(R.string.detail_changes_value, mir.pendingChanges), valueTone = Tone.Info)
         mir.waitingReason.label()?.let { InfoRow(str(R.string.status_waiting), it, valueTone = Tone.Warning) }
         if (mir.waitingForForeground) InfoRow(str(R.string.status_waiting), str(R.string.detail_waiting_foreground), valueTone = Tone.Warning)
         mir.lastError?.let { InfoRow(str(R.string.detail_last_error), str(Notifier.categoryRes(it)) + if (mir.consecutiveFailures > 1) str(R.string.detail_failures_suffix, mir.consecutiveFailures) else "", valueTone = Tone.Danger) }
-        mir.nextRetryAt?.takeIf { it > System.currentTimeMillis() }?.let { InfoRow(str(R.string.detail_next_retry), dateTime(it)) }
+        mir.nextRetryAt?.takeIf { it > System.currentTimeMillis() }?.let { InfoRow(str(R.string.detail_next_retry), clock(it)) }
         if (mir.originStatus == OriginStatus.AUTH_REQUIRED) {
             Spacer(Modifier.height(Space.sm))
             Banner(Tone.Warning, Icons.Outlined.Key, str(R.string.detail_auth_title), str(R.string.detail_auth_body), actionLabel = str(R.string.detail_manage_tokens), onAction = { nav.go(Routes.credentials(host)) })
@@ -393,7 +393,7 @@ private fun LocalInfoCard(m: RepoMeta) {
     val branches by produceState(emptyList<String>(), m) { value = withContext(Dispatchers.IO) { runCatching { core.ops.branches(m.name) }.getOrDefault(emptyList()) } }
     var open by remember { mutableStateOf(false) }
     SectionCard(title = str(R.string.detail_tab_info)) {
-        InfoRow(str(R.string.detail_last_push), m.lastPushAt?.let { "${ago(it)} · ${m.lastPushIp ?: str(R.string.detail_ip_unknown)}" } ?: str(R.string.detail_not_yet))
+        InfoRow(str(R.string.detail_last_push), m.lastPushAt?.let { "${clock(it)} · ${m.lastPushIp ?: str(R.string.detail_ip_unknown)}" } ?: str(R.string.detail_not_yet))
         InfoRow(str(R.string.detail_created_by), when (m.createdBy) { CreatedBy.PUSH -> str(R.string.detail_created_push); CreatedBy.APP_EMPTY -> str(R.string.detail_created_app); CreatedBy.FORK -> str(R.string.detail_created_fork); else -> str(R.string.common_kind_mirror) } + " · ${dateTime(m.createdAt)}")
         m.forkedFromUrl?.let { InfoRow(str(R.string.detail_forked_from), "${it}\n${dateTime(m.forkedAt)}") }
     }
@@ -432,14 +432,14 @@ private fun EventRow(e: SyncEvent, onArchive: (String) -> Unit) {
                     style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                 Spacer(Modifier.width(Space.sm)); Pill(rl, rt); Spacer(Modifier.width(Space.xs)); Pill(e.trigger.label(), Tone.Neutral)
                 Spacer(Modifier.weight(1f))
-                Text(ago(e.startedAt), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(clock(e.startedAt), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             val summary = buildList {
                 if (e.refChanges.isNotEmpty()) add(str(R.string.detail_event_refs_changed, e.refChanges.size))
                 if (e.newCommitCount > 0) add(str(R.string.detail_event_new_commits, if (e.newCommitCount >= 10000) "10000+" else e.newCommitCount.toString()))
                 if (e.archivedRefCount > 0) add(str(R.string.detail_event_archived, e.archivedRefCount))
                 e.waitingReason?.label()?.let { add(it) }
-                add(str(R.string.detail_event_time, dateTime(e.startedAt), "%.1f".format(e.durationMs / 1000.0)))
+                add(str(R.string.detail_event_time, "%.1f".format(e.durationMs / 1000.0)))
             }
             Text(summary.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = if (e.result == SyncResult.FAILED) tone(Tone.Danger).content else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = Space.xs))
@@ -479,7 +479,7 @@ private fun PushRow(g: List<PushEvent>) {
                 Spacer(Modifier.width(Space.sm))
                 Pill(e.route.label(), Tone.Neutral)
                 Spacer(Modifier.weight(1f))
-                Text(ago(e.at), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(clock(e.at), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             g.forEach { p ->
                 val name = p.branch ?: p.ref.removePrefix("refs/tags/").removePrefix("refs/")
@@ -497,7 +497,7 @@ private fun PushRow(g: List<PushEvent>) {
                         style = CodeText.small, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text(str(R.string.detail_push_from, dateTime(e.at), e.clientIp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Text(str(R.string.detail_push_from, e.clientIp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = Space.sm))
         }
     }

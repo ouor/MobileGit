@@ -259,7 +259,7 @@ fun SettingsScreen(nav: Nav) {
         }
         "user" -> InputDialog(str(R.string.bulk_user_label), s.username, "git", onDismiss = { dialog = null }) { core.settings.setUsername(it); snack(str(R.string.settings_username_changed)) }
         "password" -> PasswordDialog(onDismiss = { dialog = null })
-        "token" -> InputDialog("ngrok authtoken", "", str(R.string.settings_ngrok_token_hint), password = true, note = str(R.string.settings_ngrok_token_clear_hint), onDismiss = { dialog = null }) {
+        "token" -> InputDialog(str(R.string.settings_ngrok_token_title), "", str(R.string.settings_ngrok_token_hint), password = true, note = str(R.string.settings_ngrok_token_clear_hint), onDismiss = { dialog = null }) {
             core.settings.setNgrokAuthtoken(it.ifBlank { null })
             if (it.isBlank()) core.settings.update { st -> st.copy(ngrokEnabled = false) }
             snack(if (it.isBlank()) str(R.string.cred_deleted) else str(R.string.settings_ngrok_token_saved))
