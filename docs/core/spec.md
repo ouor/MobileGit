@@ -36,8 +36,13 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 ### F-01 서버 on/off
 - `core.server.start(): Boolean`: `settings.serverEnabled = true`로 저장하고 `ServerService`(포그라운드, specialUse)를 시작한다. 알림 권한이 없어도 동작한다.
 - `core.server.stop()`: 서비스 종료. 진행 중인 clone/push는 최대 몇 초 기다린 뒤 끊는다.
-- `core.server.state: StateFlow<ServerState>`: `Stopped | Starting | Running(port) | Stopping | Failed(portInUse, message)`.
-  - `Failed(portInUse = true)`이면 포트 변경 화면으로 안내한다(AC4).
+- `core.server.state: StateFlow<ServerState>`: `Stopped | Starting | Running(port) | Stopping | Failed(portInUse, message, kind, detail)`.
+  - `message`는 사용자에게 그대로 보여 줄 한국어 문장이다. `detail`은 원문 기술 정보(예외 메시지)라 "자세히"나 로그에만 쓴다.
+  - `kind: ServerFailure`:
+    - `PORT_IN_USE`(= `portInUse == true`): 스위치 꺼짐. 포트 변경 화면으로 안내(AC3/AC4). 포트가 사용 중이어도 앱은 죽지 않는다(QA-01).
+    - `BACKGROUND_START_BLOCKED`(QA-02): 앱 업데이트 직후 등 백그라운드에서 Android가 포그라운드 서비스 시작을 거부함(Android 12+). `settings.serverEnabled`는 **켜진 채** 남고, "mobilegit 서버가 꺼져 있어요 / 앱을 열면 서버가 다시 켜져요" 알림이 뜬다. 앱의 어떤 화면이든 열리면(`Activity.onStart`) 코어가 자동으로 다시 켠다(`ServerController.resumeIfBlocked()`). UI는 메인 카드에 "앱을 열면 다시 켜져요" 류의 안내만 보이면 되고, 스위치는 켜짐 의도로 보여도 된다. 재부팅(`BOOT_COMPLETED`)과 프로세스 kill 복구는 기존대로 동작한다.
+    - `OTHER`: 그 밖의 시작 실패. `message`는 "서버를 시작하지 못했어요".
+  - 기존 `Failed(portInUse, message)` 생성/분해 코드는 그대로 컴파일된다(새 필드는 기본값이 있음).
 - 프로세스가 강제 종료되면 START_STICKY로 재시작되고, 같은 부팅 안이면 `restoreIfEnabled()`가 서버를 복구한다(AC7).
 - 알림의 "서버 끄기" 버튼은 `ServerService.ACTION_STOP`이다.
 - 포트 변경(CR-1): 실행 중에 `settings.setPort(p)`를 부르면 서비스가 알아서 새 포트로 다시 연다. `state`는 `Stopping` → `Running(p)`로 바뀌고, 새 포트가 사용 중이면 `Failed(portInUse = true)`가 되며 서버는 꺼진다. 진행 중인 전송은 끄기와 같은 유예(최대 수 초)를 받는다. ngrok 터널도 다시 연결된다.
@@ -83,7 +88,10 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 1. 입력란 또는 공유 시트 텍스트를 `RemoteUrls.extractCandidates(text): List<String>`로 나눈다.
    - 텍스트에 URL이 있으면 URL만 뽑는다. 없으면 줄 단위로 나눈다.
    - `MainActivity`가 `ACTION_SEND text/plain`을 받는 예시를 구현해 두었다.
-2. `mirrors.preview(input): AddPreview(input, normalized, suggestedName, existing, error)`.
+2. `mirrors.preview(input): AddPreview(input, normalized, suggestedName, existing, error)`, 그리고 `errorKind: AddPreviewError?`(QA-03).
+   - `errorKind == ALREADY_MIRRORED`이면 `existing`이 그 레포다. "이미 미러됨" + "기존 레포로 이동"(`existing.name`)을 보여 준다. `error` 문구("이미 미러됨: <이름>")를 "지원하지 않는 주소"로 바꿔 보여 주면 안 된다.
+   - `errorKind == UNSUPPORTED_URL`: 정규화 실패(https/http git 주소가 아님).
+   - `null`이면 추가 가능.
    - 브라우저 주소(`/tree/..`, `/-/blob/..`, `.git` 생략)를 정규화한다.
    - 이미 미러 중이면 `existing`을 채운다(AC5).
 3. (선택) `mirrors.probe(url, credentialId?): ProbeResult`: `Reachable(refCount, defaultBranch, pullRefCount) | AuthRequired | NotFound | Failed(category, detail)`.
@@ -155,7 +163,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 - 서버가 처리한다. `git push http://<주소>/<새이름>.git main`이면 첫 POST에서 LOCAL 레포가 만들어진다(`CreatedBy.PUSH`).
 - ref가 하나도 들어오지 않으면 다시 지운다.
 - HEAD는 main, master, 처음 push된 브랜치 순으로 정한다.
-- 이름이 잘못되면 400 응답과 사유 문구를 돌려준다.
+- 이름이 잘못되면 400 응답과 사유 문구를 돌려준다(QA-08). git 클라이언트에는 `remote: Invalid repository name '<이름>': <사유>`로 보인다. 사유는 `RepoNames.validate`와 같다(비어 있음, 100자 초과, 영문/숫자로 시작 안 함, 허용되지 않는 문자 목록, `.git`으로 끝남).
 
 ### F-14 앱에서 빈 레포 생성
 - `ops.createEmpty(name, description): RepoMeta`. 예외는 `RepoException`.
@@ -166,7 +174,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
    - `kind`: `GITHUB_USER`, `GITHUB_ORG`, `GITLAB_USER`, `GITLAB_GROUP`.
    - 예외는 `CatalogException(status)`이다(404, 401 등).
 2. `catalog.alreadyMirrored(list, repos)`: 이미 있는 항목을 표시할 때 쓴다.
-3. `mirrors.addFromCatalog(kind, account, host, selected, credentialId?): BulkJob`.
+3. `mirrors.addFromCatalog(kind, account, host, selected, credentialId?): BulkJob`. 카탈로그의 설명이 `RepoMeta.description`으로 저장된다(QA-09). URL 하나로 추가할 때는 `mirrors.add(..., description = "")`로 직접 넣을 수 있고, 코어가 호스트 API를 따로 부르지는 않는다.
 4. 상태: `bulkJobs.jobs`. `BulkJob(items[BulkItem(status QUEUED/RUNNING/DONE/FAILED, error)], rateLimitedUntil, status)`, `count(status)`.
 5. 실패 항목 재시도: `mirrors.retryFailed(jobId)`.
 
@@ -221,7 +229,9 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 - `RepoMeta.hasLfs`: 기본 브랜치의 `.gitattributes`에 `filter=lfs`가 있는지.
 - `RepoMeta.submoduleUrls`: `.gitmodules`에 적힌 URL들.
 - 배지 `LFS_MISSING`. 웹 blob 응답은 LFS 포인터면 `lfs: {oid, size}`를 담는다.
-- 동기화나 push 후 자동으로 갱신된다.
+- 동기화나 push 후 자동으로 갱신된다(push는 응답 직후 갱신).
+- LFS push(QA-05): 서버는 LFS 객체를 저장하지 않는다(PRD 9장 "제외, 경고만"). git-lfs가 설치된 PC에서 push하면 `info/lfs/objects/batch`가 422와 함께 git-lfs가 그대로 출력하는 안내를 돌려준다: "mobilegit은 Git LFS 파일을 저장하지 않습니다 … GIT_LFS_SKIP_PUSH=1 로 push 하세요". 사용자가 `GIT_LFS_SKIP_PUSH=1`로 다시 push하면 커밋과 포인터 파일만 올라가고 `LFS_MISSING` 배지가 붙는다. clone/pull 시 LFS 다운로드 요청에는 `GIT_LFS_SKIP_SMUDGE=1` 안내를 준다. 잠금 API(`locks/verify`)는 404라 git-lfs가 "잠금 미지원"으로 넘어간다.
+  - 결정 근거: 객체를 조용히 받는 척(성공 응답)하면 PC는 업로드된 줄 알지만 폰에는 파일이 없어 "조용히 빠지지 않게 경고"(PRD 9장, 인터뷰 01/02/05)에 어긋난다. 사용자가 명시적으로 포인터만 올리게 하는 쪽을 택했다. A-07 LFS 안내에도 이 명령을 적는 것을 권한다.
 
 ### F-25 첫 실행 온보딩
 - `settings.initialPassword(): String?`: 온보딩 화면에서 한 번 보여 줄 자동 생성 비밀번호.
@@ -294,7 +304,9 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 {"ref":"main","path":"README.md","format":"markdown","raw":"hello\n","html":"<p>hello</p>\n"}
 // GET /api/v1/repos/demo/readme?path=docs/guide.md → {"ref":"main","path":"docs/guide.md","format":"markdown","raw":"…","html":"…"}
 // format: "markdown" | "text". 상대 경로 링크와 이미지(src/href)는 원문 그대로 두므로 웹이 응답의 path 기준으로 바꾼다(README와 같음). html은 서버에서 정화되어 있어 innerHTML로 넣어도 된다
-// (원시 HTML은 이스케이프, javascript: 링크는 제거).
+// 원시 HTML은 GitHub와 비슷한 안전한 부분집합만 남긴다(QA-04, jsoup Safelist): h1~h6·p·div의 align, img(src/alt/width/height),
+// picture, details/summary, table, kbd 등은 유지. script·이벤트 핸들러(on*)·style 속성·iframe·form·input, http(s)/mailto가 아닌 URL은 제거.
+// class는 code의 language-* 만 허용. 상대 경로 링크는 그대로 둔다.
 
 // GET /api/v1/repos/demo/commits?page=1&perPage=2
 {"ref":"main","path":"","page":1,"perPage":2,"hasMore":true,"commits":[
@@ -355,4 +367,4 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
    - 다음 사이클에 1GB, 2GB 실측 후 수치를 확정한다.
 4. **웹 API 형식과 README 렌더링 위치**
    - REST + JSON(`/api/v1/`, 3절)이다.
-   - README는 **서버에서** commonmark-java로 HTML 렌더링하고 정화한다. `raw`도 같이 준다. 웹 쪽에 마크다운 라이브러리가 필요 없고 XSS 정화를 한 곳에서 관리할 수 있다.
+   - README는 **서버에서** commonmark-java로 HTML 렌더링하고 jsoup 허용 목록으로 정화한다(QA-04). `raw`도 같이 준다. 웹 쪽에 마크다운 라이브러리가 필요 없고 XSS 정화를 한 곳에서 관리할 수 있다.

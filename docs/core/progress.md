@@ -75,7 +75,21 @@ Go 테스트(`ngrok-mobile`, `go test`)는 실제 ngrok 서비스가 가짜 토�
 
 테스트: JVM `webFramingSpaCacheAndGzip`, `compressionScope`, `readmeRendersAnyMarkdownFile` 추가, 전체 40개 통과. 실기기에서 헤더를 직접 확인하지는 않았다(같은 Ktor CIO 엔진의 JVM 테스트로 확인).
 
-## 6. 남은 일 / 위험
+## 6. QA 1차 처리 (`docs/qa/round1/report.md` 4장)
+
+| ID | 결과 | 커밋 | 검증 |
+|---|---|---|---|
+| QA-01 포트 사용 중 크래시 | CIO accept 코루틴의 BindException을 서버 부모 컨텍스트의 CoroutineExceptionHandler로 가둠 → `Failed(PORT_IN_USE)` | `44b01da` | JVM `portInUseLeaksNoUncaughtException`(수정 전 실패 재현), 실기기 `busyPortFailsWithoutCrash`(실제 서비스, 앱 프로세스 생존) |
+| QA-02 업데이트 뒤 서버 미복구 | `Failed(kind = BACKGROUND_START_BLOCKED)` + 한국어 문구(원문은 `detail`), 알림, 앱 화면이 열리면 자동 재시작 | `fbab46e` | 실기기: 서버 켬 → `adb install -r` → 시스템 로그 "Background started FGS: Disallowed", 크래시 없음, 알림 표시 → 앱 열기 → 서버 응답(401) 복구, 알림 사라짐 |
+| QA-03 이미 미러된 URL | 코어는 `existing`을 채우고 있었음. `AddPreview.errorKind`(`ALREADY_MIRRORED`/`UNSUPPORTED_URL`) 추가. 화면 문구는 UI 몫 | `dbb641e` | JVM `alreadyMirroredKindAndCatalogDescription` |
+| QA-04 README raw HTML | jsoup 1.23.2(MIT) Safelist로 안전한 부분집합 허용 | `414c004` | JVM `MarkdownSanitizeTest` 2개, 기존 XSS 테스트 유지 |
+| QA-05 LFS push 실패 | LFS batch API가 git-lfs에 표시되는 안내(GIT_LFS_SKIP_PUSH=1)를 돌려줌. 객체는 저장하지 않음 | `44b01da` | JVM `lfsPushGetsGuidanceAndPointerPushWorks`(실제 git-lfs 3.7.1로 거부 문구 확인 후 포인터 push 성공) |
+| QA-08 잘못된 이름 사유 | 규칙별 사유를 400 본문으로 → git이 `remote:`로 표시 | `44b01da` | JVM `invalidNamePushShowsReason`, `NameReasonTest` |
+| QA-09 미러 설명 | 일괄 미러에서 카탈로그 설명 저장, `add(description=)` | `dbb641e` | JVM 위 테스트 |
+
+테스트: JVM 47개, 실기기 5개 통과. QA-04는 웹 화면에서 직접 보지 않았다(API 출력만 검증).
+
+## 7. 남은 일 / 위험
 
 | 항목 | 메모 |
 |---|---|
