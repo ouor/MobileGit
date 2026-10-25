@@ -23,7 +23,7 @@ export function ClonePanel({ detail }: { detail: RepoDetail }) {
       <CodeField value={`git clone ${url}`} label="clone 명령 복사" />
       {detail.readOnly && (
         <p className="text-xs text-muted-foreground">
-          읽기 전용이라 push는 거부돼요. 고치려면 앱에서 로컬 레포로 분리하세요.
+          읽기 전용이라 push는 거부돼요. 고치려면 앱에서 로컬 레포 만들기를 하세요.
         </p>
       )}
       {/* The fetch command lives on the 보존된 기록 page only (RV2 review: one place, not two). */}
@@ -85,7 +85,7 @@ export function RepoLayout({
               {detail.forkedFromUrl && (
                 <span className="inline-flex items-center gap-1">
                   <GitForkIcon className="size-3.5" />
-                  {shortUrl(detail.forkedFromUrl)}에서 분리
+                  {shortUrl(detail.forkedFromUrl)} 미러에서 만듦
                 </span>
               )}
               {r.type === "MIRROR" ? <Time ms={r.lastUpdateAt} prefix="업데이트 " empty="첫 받기 전" /> : <Time ms={r.lastPushAt} prefix="마지막 push " empty="push 전" />}
