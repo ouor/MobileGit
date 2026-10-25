@@ -54,6 +54,11 @@ data class Settings(
     val effectiveAnonymousRead get() = anonymousReadOnLan && authEnabled
     /** R2-06 AC3: ngrok is on and "비밀번호 요구" is "push만" or "끄기"; the UI shows the danger banner. */
     val exposedWithoutPassword get() = ngrokEnabled && (!authEnabled || anonymousReadOnLan)
+    /** R2ARC-02: "비밀번호 요구" as one setting: 0 = 읽기·쓰기 (always), 1 = push만, 2 = 끄기. */
+    val authLevel: Int get() = when { !authEnabled -> 2; anonymousReadOnLan -> 1; else -> 0 }
+    fun withAuthLevel(level: Int) = copy(authEnabled = level != 2, anonymousReadOnLan = level == 1)
+    /** R2ARC-02: going from these settings to [next] opens the phone to the internet without a password (R2-06 warning). */
+    fun becomesExposed(next: Settings) = next.exposedWithoutPassword && !exposedWithoutPassword
     val checkIntervalMillis get() = checkIntervalHours * 3_600_000L
 }
 

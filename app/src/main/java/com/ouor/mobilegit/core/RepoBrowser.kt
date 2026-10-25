@@ -103,13 +103,13 @@ object RepoBrowser {
     fun summary(m: RepoMeta, s: Settings, now: Long, checksStalled: Boolean = false): RepoSummaryDto = summary(m).let { d ->
         // the shared app rules; "updating" is not known here and is not an attention state
         val item = RepoListItem(m, Badges.of(m, s, now, null, checksStalled), null)
-        d.copy(needsAttention = item.needsAttention, issue = item.issue, severity = item.severity,
+        d.copy(needsAttention = item.needsAttention, issue = item.issue, severity = item.severity, lastActivityAt = item.lastActivityAt, // R2ARC-03
             includePullRefs = m.mirror?.let { it.includePullRefs ?: s.mirrorPullRefs })
     }
 
     private fun summary(m: RepoMeta) = RepoSummaryDto(
         name = m.name, type = m.type, description = m.description, defaultBranch = m.defaultBranch,
-        lastActivityAt = listOfNotNull(m.lastPushAt, m.mirror?.lastUpdateAt, m.createdAt).maxOrNull(),
+        lastActivityAt = null, // set from RepoListItem by the public summary (R2ARC-03)
         lastUpdateAt = m.mirror?.lastSuccessUpdateAt, lastPushAt = m.lastPushAt,
         originUrl = m.mirror?.remoteUrl ?: m.forkedFromUrl, originStatus = m.mirror?.originStatus,
         hasLfs = m.hasLfs, sizeBytes = m.sizeBytes,

@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -91,13 +92,16 @@ class Core(private val context: Context) {
     val server = ServerController(context) { this }
 
     /** F-05: rows with badges; re-evaluated each minute so "지연" appears without other changes. */
-    val repoItems: Flow<List<RepoListItem>> = combine(
+    private val itemsAt = combine(
         repos.repos, settings.state, coordinator.running, flow { while (true) { emit(System.currentTimeMillis()); delay(60_000) } },
-    ) { r, s, run, now -> RepoQuery.items(r, s, now, run) }
+    ) { r, s, run, now -> Triple(RepoQuery.items(r, s, now, run), s, now) }
+        .shareIn(scope, SharingStarted.WhileSubscribed(5_000), replay = 1) // R2AND-13: computed once for list and summary
 
-    /** R2-02: the summary line above the list (same 1-minute tick as [repoItems]). */
-    val overview: Flow<com.ouor.mobilegit.core.RepoOverview> = combine(repoItems, settings.state) { items, s ->
-        com.ouor.mobilegit.core.RepoQuery.overview(items, s, System.currentTimeMillis())
+    val repoItems: Flow<List<RepoListItem>> = itemsAt.map { it.first }
+
+    /** R2-02: the summary line above the list, from the same items and moment as [repoItems]. */
+    val overview: Flow<com.ouor.mobilegit.core.RepoOverview> = itemsAt.map { (items, s, now) ->
+        com.ouor.mobilegit.core.RepoQuery.overview(items, s, now)
     }
 
     /** F-16 AC1: clone URL per address kind (no credentials, AC3). */

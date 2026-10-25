@@ -172,6 +172,8 @@ class ExportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
     companion object {
         const val K_KIND = "kind"; const val K_REPOS = "repos"; const val K_REPOS_FILE = "reposFile"; const val K_REF = "ref"; const val K_URI = "uri"
         const val K_OUT_FILE = "file"; const val K_ERROR = "error"
+        /** R2ARC-05: where a "save to file" export went: display name, and folder name when known ([folderOf]). */
+        const val K_SAVED_NAME = "savedName"; const val K_SAVED_FOLDER = "savedFolder"
 
         /**
          * CR-9: folder name of a SAF document for the "saved" notification, when the provider's document id shows it:
@@ -230,8 +232,9 @@ class ExportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                     runCatching { DocumentsContract.deleteDocument(applicationContext.contentResolver, uri) }
                     throw e
                 }
-                notifySaved(uri, fileName)
-                Result.success(workDataOf(K_OUT_FILE to null))
+                val (savedName, folder) = savedLocation(uri, fileName)
+                notifySaved(savedName, folder)
+                Result.success(workDataOf(K_OUT_FILE to null, K_SAVED_NAME to savedName, K_SAVED_FOLDER to folder))
             } else {
                 // Share: needs a local file. Refuse up front when it would push free space under the floor (ARC-07).
                 val estimate = repos.sumOf { core.repos.get(it)?.sizeBytes ?: 0L }
@@ -247,13 +250,17 @@ class ExportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
 
     /** CR-9 / R2-10 AC2: when the app is not on screen, say where the file went (the UI shows a snackbar otherwise). */
     @Suppress("MissingPermission")
-    private fun notifySaved(uri: Uri, fallbackName: String) {
+    /** R2ARC-05: display name and folder of the saved document; queried here, on the worker thread, once for both the notification and the app. */
+    private fun savedLocation(uri: Uri, fallbackName: String): Pair<String, String?> {
+        val name = runCatching {
+            applicationContext.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+        }.getOrNull() ?: fallbackName
+        return name to folderOf(uri.authority, runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull())
+    }
+
+    private fun notifySaved(name: String, folder: String?) {
         val ctx = applicationContext
         if (MobileGitApp.visibleActivities > 0 || !Notifier.canPost(ctx)) return
-        val name = runCatching {
-            ctx.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
-        }.getOrNull() ?: fallbackName
-        val folder = folderOf(uri.authority, runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull())
         val body = if (folder != null) ctx.getString(R.string.notif_export_saved_in, folder, name) else ctx.getString(R.string.notif_export_saved, name)
         val nid = Notifier.savedId(id.hashCode())
         androidx.core.app.NotificationManagerCompat.from(ctx).notify(nid, NotificationCompat.Builder(ctx, Notifier.CH_EXPORT)

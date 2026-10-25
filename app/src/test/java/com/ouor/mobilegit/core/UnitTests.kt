@@ -264,6 +264,12 @@ class NotificationRulesTest {
         // WR-6: the web summary uses the same rule as the app row
         val web = RepoBrowser.summary(b, s, 7)
         assertTrue(web.needsAttention); assertEquals(items[1].issue, web.issue); assertEquals(false, web.includePullRefs)
+        assertEquals(items[1].lastActivityAt, web.lastActivityAt) // R2ARC-03: same "최근 활동" as the app
+        // R2ARC-02: the three-level setting and the warning rule live in core
+        val base = Settings(ngrokEnabled = true)
+        assertEquals(listOf(0, 1, 2), (0..2).map { base.withAuthLevel(it).authLevel })
+        assertTrue(base.becomesExposed(base.withAuthLevel(1))); assertFalse(base.withAuthLevel(2).becomesExposed(base.withAuthLevel(1)))
+        assertTrue(base.copy(ngrokEnabled = false).withAuthLevel(2).becomesExposed(base.withAuthLevel(2)))
         assertNull(RepoBrowser.summary(a, s, 7).includePullRefs)
         assertEquals(RepoIssue(Badge.HISTORY_CHANGED, 50, null), RepoBrowser.summary(c, s, 60).issue)
         val json = CoreJson.encodeToString(RepoSummaryDto.serializer(), web)
