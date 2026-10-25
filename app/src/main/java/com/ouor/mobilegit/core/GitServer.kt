@@ -13,6 +13,7 @@ import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.connector
 import io.ktor.server.engine.embeddedServer
+import io.ktor.server.application.serverConfig
 import io.ktor.server.request.header
 import io.ktor.server.request.path
 import io.ktor.server.request.receiveStream
@@ -23,6 +24,7 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -96,11 +98,33 @@ class GitServer(
     @Synchronized
     fun start(port: Int, host: String = "0.0.0.0"): ServerStartResult {
         if (server != null) return ServerStartResult.Started(this.port, ngrokPort)
-        val s = embeddedServer(CIO, configure = {
+        // QA-01: CIO binds inside its accept coroutine, so a BindException there is an *uncaught* coroutine exception
+        // (fatal on Android). The handler keeps it inside; start() sees the failure through resolvedConnectors().
+        val bindFailure = java.util.concurrent.atomic.AtomicReference<Throwable?>()
+        val guard = CoroutineExceptionHandler { _, e -> bindFailure.compareAndSet(null, e) }
+        val s = embeddedServer(CIO, serverConfig {
+            parentCoroutineContext = guard
+            module { webModule() }
+        }, configure = {
             connector { this.host = host; this.port = port }
             connector { this.host = "127.0.0.1"; this.port = 0 }
             connectionIdleTimeoutSeconds = 120
-        }) {
+        })
+        return try {
+            s.start(wait = false)
+            val ports = runBlocking { s.engine.resolvedConnectors() }.map { it.port }
+            this.port = ports[0]; ngrokPort = ports[1]
+            server = s
+            ServerStartResult.Started(this.port, ngrokPort)
+        } catch (e: Throwable) {
+            runCatching { s.stop(0, 0) }
+            val cause = bindFailure.get() ?: e
+            if (generateSequence(cause) { it.cause }.any { it is BindException }) ServerStartResult.PortInUse(port)
+            else ServerStartResult.Failed(cause.message ?: cause.javaClass.simpleName)
+        }
+    }
+
+    private fun io.ktor.server.application.Application.webModule() {
             // WR-4: gzip for the web UI and JSON only. Git traffic (packs are already zlib-compressed and git
             // clients stream them) and raw downloads (exact bytes, Content-Length) stay uncompressed.
             install(Compression) {
@@ -114,18 +138,9 @@ class GitServer(
             get("/{repo}/info/refs") { infoRefs(call) }
             post("/{repo}/git-upload-pack") { uploadPack(call) }
             post("/{repo}/git-receive-pack") { receivePack(call) }
+            post("/{repo}/info/lfs/objects/batch") { lfsBatch(call) }
+            post("/{repo}/info/lfs/locks/verify") { lfsNotFound(call) }
             get("/{staticPath...}") { static(call) }
-        } }
-        return try {
-            s.start(wait = false)
-            val ports = runBlocking { s.engine.resolvedConnectors() }.map { it.port }
-            this.port = ports[0]; ngrokPort = ports[1]
-            server = s
-            ServerStartResult.Started(this.port, ngrokPort)
-        } catch (e: Throwable) {
-            runCatching { s.stop(0, 0) }
-            if (generateSequence(e) { it.cause }.any { it is BindException }) ServerStartResult.PortInUse(port)
-            else ServerStartResult.Failed(e.message ?: e.javaClass.simpleName)
         }
     }
 
@@ -183,6 +198,11 @@ class GitServer(
         try { return block() } finally { set -= job }
     }
 
+    private fun invalidNameMessage(call: ApplicationCall): String {
+        val raw = call.parameters["repo"].orEmpty()
+        return "Invalid repository name '$raw': ${RepoNames.validate(RepoNames.fromPathSegment(raw)) ?: "알 수 없는 이유"}\n"
+    }
+
     private fun repoName(call: ApplicationCall): String? = call.parameters["repo"]?.let(RepoNames::fromPathSegment)?.takeIf(RepoNames::isValid)
 
     private fun body(call: ApplicationCall, raw: InputStream): InputStream =
@@ -197,6 +217,36 @@ class GitServer(
         setPackConfig(PackConfig(this@uploadPack).apply { threads = 1 })
     }
 
+    // ---------------- Git LFS (not supported, F-24 / QA-05) ----------------
+
+    /**
+     * QA-05: LFS objects are out of scope (PRD 9장, F-24 "경고만"). Without this endpoint git-lfs reports a confusing
+     * "Repository or object not found". The batch API's error body `message` is printed by git-lfs as-is, so the user
+     * learns why and how to push only the git objects (pointer files). Not silently accepting uploads keeps the
+     * "don't lose files quietly" rule: the user opts in with GIT_LFS_SKIP_PUSH=1.
+     */
+    private suspend fun lfsBatch(call: ApplicationCall) {
+        val ctx = Ctx(call)
+        val name = repoName(call)
+        if (!ctx.authorize(false, name, AccessAction.READ)) return
+        val upload = withContext(Dispatchers.IO) { runCatching { call.receiveStream().readNBytes(64 * 1024).toString(Charsets.UTF_8) }.getOrDefault("") }
+            .contains(Regex(""""operation"\s*:\s*"upload""""))
+        val msg = if (upload)
+            "mobilegit은 Git LFS 파일을 저장하지 않습니다 (LFS 미지원). LFS 파일 없이 커밋만 올리려면 GIT_LFS_SKIP_PUSH=1 로 push 하세요 " +
+                "(bash: GIT_LFS_SKIP_PUSH=1 git push ..., PowerShell: \$env:GIT_LFS_SKIP_PUSH=1). 휴대폰에는 LFS 포인터 파일만 남습니다."
+        else
+            "mobilegit에는 LFS 파일 본문이 없습니다 (LFS 미지원). 포인터 파일만 받으려면 GIT_LFS_SKIP_SMUDGE=1 로 clone/pull 하세요."
+        ctx.log(name, if (upload) AccessAction.PUSH else AccessAction.READ, 422)
+        call.respondText(CoreJson.encodeToString(LfsError.serializer(), LfsError(msg)),
+            ContentType.parse("application/vnd.git-lfs+json"), HttpStatusCode.UnprocessableEntity)
+    }
+
+    /** Locking API: 404 makes git-lfs treat locking as unsupported and carry on. */
+    private suspend fun lfsNotFound(call: ApplicationCall) =
+        call.respondText("""{"message":"Git LFS locking is not supported"}""", ContentType.parse("application/vnd.git-lfs+json"), HttpStatusCode.NotFound)
+
+    @Serializable private data class LfsError(val message: String, val documentation_url: String? = null)
+
     // ---------------- git smart HTTP ----------------
 
     private suspend fun infoRefs(call: ApplicationCall) {
@@ -209,7 +259,9 @@ class GitServer(
         val isPush = service == "git-receive-pack"
         val action = if (isPush) AccessAction.PUSH else AccessAction.READ
         if (!ctx.authorize(isPush, name, action)) return
-        if (name == null) { ctx.log(null, action, 404); call.respondText("Invalid repository name\n", status = HttpStatusCode.NotFound); return }
+        if (name == null) { // QA-08: git prints a text/plain error body as "remote: ...", so say why
+            ctx.log(null, action, 400); call.respondText(invalidNameMessage(call), status = HttpStatusCode.BadRequest); return
+        }
         val meta = store.get(name)
         call.response.header(HttpHeaders.CacheControl, "no-cache, max-age=0, must-revalidate")
         if (!isPush) {
@@ -297,7 +349,7 @@ class GitServer(
         if (!ctx.authorize(true, name, AccessAction.PUSH)) return
         if (name == null) {
             ctx.log(null, AccessAction.PUSH, 400)
-            call.respondText("Invalid repository name: ${RepoNames.validate(call.parameters["repo"] ?: "")}\n", status = HttpStatusCode.BadRequest); return
+            call.respondText(invalidNameMessage(call), status = HttpStatusCode.BadRequest); return
         }
         store.get(name)?.takeIf { it.type == RepoType.MIRROR }?.let {
             ctx.log(name, AccessAction.PUSH, 403); call.respondText(mirrorMessage(it) + "\n", status = HttpStatusCode.Forbidden); return

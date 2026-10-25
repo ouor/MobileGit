@@ -175,6 +175,25 @@ class GitServerTest {
         assertEquals(ServerStartResult.PortInUse(port), other.start(port, "127.0.0.1"))
     }
 
+    // QA-01: on Android an uncaught exception on any thread kills the process, so a failed bind must not leak
+    // out of CIO's accept coroutine. Also covers a port held by a non-Ktor socket.
+    @Test fun portInUseLeaksNoUncaughtException() {
+        val leaked = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+        val prev = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { _, e -> leaked += e }
+        try {
+            java.net.ServerSocket(0, 50, java.net.InetAddress.getByName("127.0.0.1")).use { busy ->
+                repeat(3) {
+                    val other = GitServer(store, Authenticator({ settings.current }, AuthRateLimiter()), log, { settings.current }, { emptyList() }, { null }, { 0 })
+                    assertEquals(ServerStartResult.PortInUse(busy.localPort), other.start(busy.localPort, "127.0.0.1"))
+                    assertFalse(other.isRunning)
+                }
+            }
+            Thread.sleep(500)
+            assertEquals(emptyList<Throwable>(), leaked.toList())
+        } finally { Thread.setDefaultUncaughtExceptionHandler(prev) }
+    }
+
     private val CRLF = "\r\n"
 
     /** Raw HTTP/1.1 exchange so framing headers are seen exactly as sent (HttpURLConnection hides them). */
@@ -247,6 +266,39 @@ class GitServerTest {
         val (c400, notMd) = get("/api/v1/repos/demo/readme?path=docs/notes.txt"); assertEquals(400, c400); assertTrue(notMd.contains("NOT_MARKDOWN"))
         val (cBig, big) = get("/api/v1/repos/demo/readme?path=docs/big.md"); assertEquals(400, cBig); assertTrue(big.contains("TOO_LARGE"))
         assertEquals(404, get("/api/v1/repos/demo/readme?path=docs/missing.md").first)
+    }
+
+    // QA-05: real git-lfs client: the push stops with our guidance, and GIT_LFS_SKIP_PUSH=1 pushes the pointers.
+    @Test fun lfsPushGetsGuidanceAndPointerPushWorks() {
+        assumeTrue(GitCli.available && GitCli.run(File("."), "lfs", "version").code == 0)
+        val dir = tempDir("lfs")
+        GitCli.ok(dir, "init", "-b", "main")
+        GitCli.ok(dir, "lfs", "install", "--local")
+        GitCli.ok(dir, "lfs", "track", "*.bin")
+        File(dir, "a.bin").writeBytes(ByteArray(4096) { it.toByte() })
+        GitCli.ok(dir, "add", ".gitattributes", "a.bin")
+        GitCli.ok(dir, "commit", "-m", "lfs")
+        val denied = GitCli.run(dir, "-c", "credential.helper=", "push", url("lfsrepo.git"), "main")
+        assertNotEquals(denied.out, 0, denied.code)
+        assertTrue(denied.out, denied.out.contains("GIT_LFS_SKIP_PUSH"))
+        val ok = GitCli.run(dir, "-c", "credential.helper=", "push", url("lfsrepo.git"), "main", env = mapOf("GIT_LFS_SKIP_PUSH" to "1"))
+        assertEquals(ok.out, 0, ok.code)
+        // derived facts are refreshed right after the response is written: wait briefly
+        val deadline = System.currentTimeMillis() + 5_000
+        while (store.get("lfsrepo")?.hasLfs != true && System.currentTimeMillis() < deadline) Thread.sleep(50)
+        assertTrue(store.require("lfsrepo").hasLfs)
+    }
+
+    // QA-08: the git client shows why a name is invalid.
+    @Test fun invalidNamePushShowsReason() {
+        assumeTrue(GitCli.available)
+        val work = Commits.initWork()
+        Commits.commit(work, "a.txt", "1")
+        for ((name, why) in listOf("-bad" to "시작", "x.git" to ".git", "a".repeat(101) to "101")) {
+            val r = GitCli.run(work.repository.workTree, "-c", "credential.helper=", "push", url("$name.git"), "main")
+            assertNotEquals(0, r.code)
+            assertTrue(r.out, r.out.contains("Invalid repository name") && r.out.contains(why))
+        }
     }
 
     @Test fun compressionScope() {

@@ -7,7 +7,11 @@ object RepoNames {
 
     /** PRD 6.1. Returns null when valid, otherwise a user-facing reason. */
     fun validate(name: String): String? = when {
-        !pattern.matches(name) -> "이름은 영문/숫자로 시작하고 영문, 숫자, '.', '_', '-'만 쓸 수 있으며 100자 이하여야 합니다"
+        name.isEmpty() -> "이름이 비어 있습니다"
+        name.length > 100 -> "이름은 100자 이하여야 합니다 (지금 ${name.length}자)"
+        !name[0].isLetterOrDigit() || name[0].code > 127 -> "이름은 영문이나 숫자로 시작해야 합니다"
+        !pattern.matches(name) -> "이름에는 영문, 숫자, '.', '_', '-'만 쓸 수 있습니다 (허용되지 않는 문자: " +
+            name.filterNot { it.isLetterOrDigit() && it.code < 128 || it in "._-" }.toSet().joinToString(", ") { if (it == ' ') "공백" else "'$it'" } + ")"
         name.endsWith(".git", ignoreCase = true) -> "이름은 .git으로 끝날 수 없습니다"
         else -> null
     }
