@@ -33,4 +33,6 @@
 | 26-qa201-dropped-connection-network-error.png | 끊긴 연결 → "업데이트 실패 · 네트워크 오류" | QA2-01 재검증 |
 | 27-qa201-real-404-origin-gone.png | 진짜 404 → "원본 없음" | QA2-01 재검증 |
 | 28-qa201-gone-then-network-error.png | 원본 없음 상태에서 네트워크 오류 → "업데이트 실패 · 네트워크 오류" | QA2-01 재검증 |
-| 29-qa206-settings-public-while-failed.png | 설정: 제목은 "ngrok · 실패"인데 아래에 "비밀번호 없이 공개 중" | QA2-06 |
+| 29-qa206-settings-ngrok-pending.png | 위험 조합 + 터널 실패: 설정 ngrok 영역 "ngrok · 실패" 아래 "연결되면 비밀번호 없이 공개돼요." | QA2-06 재검증 |
+| 29b-qa206-settings-auth-pending.png | 같은 상태의 비밀번호 요구 아래 "연결되면 비밀번호 없이 공개돼요." | QA2-06 재검증 |
+| 30-cr10-server-notification-ngrok-failed.png | 터널 실패 때 서버 알림: 제목 "mobilegit 서버 실행 중", 둘째 줄 "ngrok: 토큰 확인 필요" | CR-10 |
