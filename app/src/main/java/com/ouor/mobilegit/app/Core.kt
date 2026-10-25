@@ -174,7 +174,7 @@ class BootReceiver : BroadcastReceiver() {
         // R2-05 AC4 / D-8: never re-open the phone to the internet unattended after a reboot or an update
         if (core.settings.current.ngrokEnabled) {
             core.settings.update { it.copy(ngrokEnabled = false) }
-            core.server.ngrokOffAfterRestart.value = true
+            core.server.markNgrokOffAfterRestart()
         }
         if (core.settings.current.startOnBoot && core.settings.current.serverEnabled) core.server.start()
     }

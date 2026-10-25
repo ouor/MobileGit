@@ -267,6 +267,32 @@ class MirrorSyncTest {
         assertEquals(SyncResult.NO_CHANGE, runBlocking { coordinator.update("up", SyncTrigger.MANUAL) }.result)
     }
 
+    /** QA2-01: a dropped connection is a network failure, never "원본 없음"; a later network error clears a stale GONE. */
+    @Test fun droppedConnectionIsNetworkNotOriginGone() {
+        addAndFetch()
+        val drop = java.net.ServerSocket(0, 50, java.net.InetAddress.getByName("127.0.0.1"))
+        val t = Thread { runCatching { while (true) drop.accept().use { s -> s.getInputStream().read(ByteArray(4096)) } } }.apply { isDaemon = true; start() }
+        try {
+            store.updateMirror("up") { it.copy(remoteUrl = "http://127.0.0.1:${drop.localPort}/up.git") }
+            val ev = runBlocking { coordinator.update("up", SyncTrigger.MANUAL) }
+            assertEquals(ev.errorDetail, ErrorCategory.NETWORK, ev.errorCategory)
+            assertEquals(OriginStatus.OK, store.require("up").mirror!!.originStatus)
+            assertTrue(notices.none { it.kind == NoticeKind.ORIGIN_GONE })
+            // a real 404 is "원본 없음" ...
+            store.updateMirror("up") { it.copy(remoteUrl = "http://127.0.0.1:$upPort/nope.git") }
+            assertEquals(ErrorCategory.ORIGIN_GONE, runBlocking { coordinator.update("up", SyncTrigger.MANUAL) }.errorCategory)
+            assertEquals(OriginStatus.GONE, store.require("up").mirror!!.originStatus)
+            // ... and a following connection refusal turns it into "업데이트 실패 · 네트워크 오류"
+            val refused = java.net.ServerSocket(0).run { localPort.also { close() } }
+            store.updateMirror("up") { it.copy(remoteUrl = "http://127.0.0.1:$refused/up.git") }
+            assertEquals(ErrorCategory.NETWORK, runBlocking { coordinator.update("up", SyncTrigger.MANUAL) }.errorCategory)
+            val m = store.require("up")
+            assertEquals(OriginStatus.UNKNOWN, m.mirror!!.originStatus)
+            val badges = Badges.of(m, settings.current, now, null)
+            assertTrue(Badge.FAILED in badges); assertFalse(Badge.ORIGIN_GONE in badges)
+        } finally { drop.close(); t.interrupt() }
+    }
+
     @Test fun delayedBadge() {
         addAndFetch()
         val m = store.require("up")

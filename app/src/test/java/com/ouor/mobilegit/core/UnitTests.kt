@@ -69,6 +69,28 @@ class ExportLocationTest {
     }
 }
 
+class ClassifyTest {
+    private fun cat(e: Throwable) = MirrorEngine.classify(e).category
+    private val uri = org.eclipse.jgit.transport.URIish("https://example.com/a.git")
+
+    /** QA2-01: messages from the network stack must not decide; JGit's types and status texts do. */
+    @Test fun failureCategories() {
+        // Android's HTTP client on a dropped connection
+        assertEquals(ErrorCategory.NETWORK, cat(org.eclipse.jgit.errors.TransportException(uri, "connection failed",
+            java.io.IOException("unexpected end of stream on http://127.0.0.1:9418/...", java.io.EOFException(" not found: size=0")))))
+        assertEquals(ErrorCategory.NETWORK, cat(org.eclipse.jgit.errors.TransportException(uri, "connection failed", java.net.ConnectException("Connection refused"))))
+        assertEquals(ErrorCategory.ORIGIN_GONE, cat(org.eclipse.jgit.errors.NoRemoteRepositoryException(uri, "https://example.com/a.git/info/refs not found")))
+        assertEquals(ErrorCategory.ORIGIN_GONE, cat(org.eclipse.jgit.errors.TransportException(uri, "404 Not Found")))
+        assertEquals(ErrorCategory.AUTH_REQUIRED, cat(org.eclipse.jgit.errors.TransportException(uri, "not authorized")))
+        assertEquals(ErrorCategory.AUTH_REQUIRED, cat(org.eclipse.jgit.errors.TransportException(uri, "403 Forbidden")))
+        assertEquals(ErrorCategory.AUTH_REQUIRED, cat(org.eclipse.jgit.errors.TransportException(uri, "git-upload-pack not permitted on 'https://example.com/a.git/'")))
+        assertEquals(ErrorCategory.REMOTE_ERROR, cat(org.eclipse.jgit.errors.TransportException(uri, "500 Internal Server Error")))
+        // a repo or file named like a status code is not a status
+        assertEquals(ErrorCategory.REMOTE_ERROR, cat(org.eclipse.jgit.errors.TransportException(org.eclipse.jgit.transport.URIish("https://example.com/404.git"), "invalid advertisement of 404-thing")))
+        assertEquals(ErrorCategory.TIMEOUT, cat(org.eclipse.jgit.errors.TransportException(uri, "read timed out", java.net.SocketTimeoutException("Read timed out"))))
+    }
+}
+
 class NetTest {
     @Test fun classifiesAddresses() {
         val ifaces = listOf(NetIface("rndis0", "192.168.42.129"), NetIface("wlan0", "192.168.0.12"), NetIface("swlan0", "10.42.17.1"), NetIface("tun0", "100.101.2.3"),

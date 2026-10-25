@@ -251,3 +251,12 @@ JVM 테스트 78개 통과(신규 `StorageTest` 12개 포함). 실기기 `OnDevi
 - UI 코드는 `ui/Format.kt`의 enum 분기 3개만 넣었다(새 enum 값으로 빌드가 깨지지 않게). spec 8절 끝에 적었다.
 - 14장 항목은 구현하지 않았다.
 - JVM 테스트 78개 통과.
+
+## 12. 2차 QA 코어 결함 (`docs/qa/round2/report.md`)
+
+| ID | 원인 | 수정 | 검증 |
+|---|---|---|---|
+| QA2-01 끊긴 연결이 "원본 없음" | `classify`가 오류 원문 전체의 `"not found"`로 판정했다. 안드로이드 HTTP 클라이언트는 끊긴 연결을 "unexpected end of stream … not found: size=0"으로 보고한다. 또 `"\b404\b"` 정규식은 일반 문자열이라 `\b`가 백스페이스가 되어 맞은 적이 없다. `fail()`은 네트워크 오류에서 이전 GONE을 유지했다 | 예외 타입 우선: `SocketTimeoutException` → TIMEOUT, `SocketException`·`EOFException`·`UnknownHostException`·`SSLException` → NETWORK, `NoRemoteRepositoryException` 또는 JGit의 HTTP 상태 문구(`404 …`) → ORIGIN_GONE, JGit 문구(not authorized, 401/403, `not permitted on`) → AUTH_REQUIRED. 상태 정규식은 raw string이고 `TransportException`의 본문(URI 뒤)에만 적용. `fail()`: 저장 공간 외의 실패는 이전 GONE/AUTH를 UNKNOWN으로 내린다(OK는 유지) | JVM `droppedConnectionIsNetworkNotOriginGone`(닫히는 소켓 → NETWORK·원본 없음 알림 없음, 404 → GONE, 이어서 연결 거부 → NETWORK·배지 FAILED), `ClassifyTest.failureCategories` |
+| QA2-04 재시작 안내가 상태 알림에 없음 | 업데이트 직후에는 백그라운드 서버 시작이 막혀 보이는 상태 알림이 "서버가 꺼져 있어요"였고, 서버 알림의 안내는 앱 안 배너를 닫으면(`ackNgrokOff`) 같이 사라졌다 | 알림용 플래그를 배너와 분리(`ngrokOffNotice`). "서버가 꺼져 있어요" 알림 본문에 한 줄 추가, 서버가 켜지면 서버 알림에 그 실행 동안 표시(ngrok을 켜면 사라짐) | 빌드. 실기기 재현(ngrok 켜고 `install -r`)은 설정에 가짜 토큰이 남아 하지 않음, QA 재확인 필요 |
+
+- 실기기: 7절 절차로 백업 후 `installDebug`. 레포 15개 유지, 서버 8080 수신, 크래시 없음. JVM 테스트 81개 통과.

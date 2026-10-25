@@ -53,12 +53,13 @@ class Notifier(private val context: Context, private val notifyOnSuccess: () -> 
 
         /** QA-02: the server could not restart in the background; tapping opens the app, which restarts it. */
         @Suppress("MissingPermission")
-        fun serverBlocked(context: Context) {
+        fun serverBlocked(context: Context, extra: String? = null) {
             if (!canPost(context)) return
+            val body = listOfNotNull(context.getString(R.string.notif_server_blocked_body), extra).joinToString("\n")
             NotificationManagerCompat.from(context).notify(ID_SERVER_BLOCKED, NotificationCompat.Builder(context, CH_SERVER)
                 .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(context.getString(R.string.notif_server_blocked_title))
-                .setContentText(context.getString(R.string.notif_server_blocked_body))
+                .setContentText(body).setStyle(NotificationCompat.BigTextStyle().bigText(body))
                 .setContentIntent(openApp(context, null, "main", ID_SERVER_BLOCKED))
                 .setAutoCancel(true).build())
         }

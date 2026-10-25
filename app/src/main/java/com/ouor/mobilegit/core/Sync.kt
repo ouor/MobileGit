@@ -302,7 +302,9 @@ class SyncCoordinator(
         val status = when (f.category) {
             ErrorCategory.ORIGIN_GONE -> OriginStatus.GONE
             ErrorCategory.AUTH_REQUIRED -> if (!hasCred && mir.initialFetchDone) OriginStatus.GONE else OriginStatus.AUTH_REQUIRED
-            else -> mir.originStatus
+            ErrorCategory.STORAGE_FULL -> mir.originStatus // a local problem says nothing about the origin
+            // QA2-01: the origin could not be asked, so an earlier "gone"/"needs auth" is no longer known to hold
+            else -> if (mir.originStatus == OriginStatus.OK) OriginStatus.OK else OriginStatus.UNKNOWN
         }
         val category = if (status == OriginStatus.GONE) ErrorCategory.ORIGIN_GONE else f.category
         val n = mir.consecutiveFailures + 1

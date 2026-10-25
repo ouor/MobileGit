@@ -76,9 +76,15 @@ class ServerController(private val context: Context, private val core: () -> Cor
     /**
      * R2-05 AC4 / D-8: true after a reboot or app update switched ngrok off ([BootReceiver]). The server notification
      * then says "외부 공개는 꺼진 채로 다시 시작했어요" once (this run). Cleared when ngrok is switched on again or by [ackNgrokOff].
+     * The in-app banner uses this flow; [ackNgrokOff] (banner dismissed) does not remove the notification line (QA2-04).
      */
     val ngrokOffAfterRestart = MutableStateFlow(false)
     fun ackNgrokOff() { ngrokOffAfterRestart.value = false }
+
+    /** QA2-04: the status notifications' copy of the flag, independent of the banner; shown for one server run. */
+    internal val ngrokOffNotice = MutableStateFlow(false)
+
+    fun markNgrokOffAfterRestart() { ngrokOffAfterRestart.value = true; ngrokOffNotice.value = true }
 
     /** F-01 AC1. Safe to call repeatedly. Returns false if Android refused to start a foreground service right now. */
     fun start(): Boolean {
@@ -177,7 +183,8 @@ class ServerController(private val context: Context, private val core: () -> Cor
     internal fun blockedInBackground(e: Throwable) {
         _state.value = ServerState.Failed(false, context.getString(R.string.server_blocked_background),
             ServerFailure.BACKGROUND_START_BLOCKED, e.message)
-        Notifier.serverBlocked(context)
+        // QA2-04: after an update the server usually cannot start in the background, so this is the status notification seen
+        Notifier.serverBlocked(context, if (ngrokOffNotice.value) context.getString(R.string.server_notif_ngrok_off_after_restart) else null)
     }
 
     /** QA-13: a new port makes an old "port N in use" failure stale; go back to the plain stopped state. */
@@ -256,7 +263,7 @@ class ServerService : Service() {
             // One collector so the tunnel always starts after the re-bind, on the new loopback port.
             launch {
                 c.settings.state.map { Triple(it.ngrokEnabled, it.ngrokAuthtokenEnc, it.port) }.distinctUntilChanged().collect { (on, _, _) ->
-                    if (on) c.server.ackNgrokOff()
+                    if (on) { c.server.ackNgrokOff(); c.server.ngrokOffNotice.value = false }
                     if (c.server.restart() !is ServerState.Running) {
                         c.server.desiredUp = false
                         withContext(Dispatchers.Main.immediate) { shutdown(null) }
@@ -271,7 +278,7 @@ class ServerService : Service() {
                 }
             }
             launch {
-                combine(c.network.addresses, c.tunnel.state, c.server.ngrokOffAfterRestart) { a, t, off -> Triple(a, t, off) }.collect { (addrs, t, offAfterRestart) ->
+                combine(c.network.addresses, c.tunnel.state, c.server.ngrokOffNotice) { a, t, off -> Triple(a, t, off) }.collect { (addrs, t, offAfterRestart) ->
                     val primary = addrs.firstOrNull()?.baseUrl ?: getString(R.string.server_notif_no_network)
                     val note = if (offAfterRestart && t == TunnelState.Off) getString(R.string.server_notif_ngrok_off_after_restart) else null
                     val ngrok = when (t) {
@@ -317,6 +324,7 @@ class ServerService : Service() {
 
     /** [startId] null = stop regardless of later start commands (the server failed). */
     private fun shutdown(startId: Int?) {
+        core.server.ngrokOffNotice.value = false // shown for one server run
         observers?.cancel(); observers = null
         releaseLocks()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)

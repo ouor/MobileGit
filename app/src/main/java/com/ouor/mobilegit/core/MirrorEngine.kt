@@ -14,8 +14,6 @@ import org.eclipse.jgit.transport.ReceiveCommand
 import org.eclipse.jgit.transport.Transport
 import org.eclipse.jgit.transport.URIish
 import java.io.IOException
-import java.net.ConnectException
-import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.text.SimpleDateFormat
@@ -216,15 +214,22 @@ class MirrorEngine(private val clock: Clock = SystemClock, private val timeoutSe
             val chain = generateSequence(e) { it.cause }.toList()
             val msg = chain.joinToString(" | ") { "${it.javaClass.simpleName}: ${it.message}" }
             val lower = msg.lowercase()
+            // QA2-01: decide by exception type and by JGit's own HTTP-status messages, never by free text from the
+            // network stack (Android's HTTP client reports a dropped connection as "unexpected end of stream … not found").
+            // TransportException messages are "<uri>: <text>"; JGit's text for an unexpected status is "<code> <reason>".
+            val transport = chain.filterIsInstance<TransportException>().mapNotNull { t -> t.message?.let { it.substringAfter(": ", it).lowercase() } }
+            fun status(re: String) = Regex(re).let { r -> transport.any { r.containsMatchIn(it) } }
             val cat = when {
-                chain.any { it is NoRemoteRepositoryException } || "not found" in lower || Regex("\b404\b").containsMatchIn(lower) -> ErrorCategory.ORIGIN_GONE
-                "not authorized" in lower || "authentication is required" in lower || Regex("\b40[13]\b").containsMatchIn(lower) ||
-                    "not permitted" in lower || "forbidden" in lower -> ErrorCategory.AUTH_REQUIRED
-                chain.any { it is SocketTimeoutException } || "timed out" in lower || "timeout" in lower -> ErrorCategory.TIMEOUT
+                chain.any { it is SocketTimeoutException } -> ErrorCategory.TIMEOUT
+                chain.any { it is UnknownHostException || it is java.net.SocketException || it is java.io.EOFException || it is SSLException } ||
+                    "unexpected end of stream" in lower || "connection reset" in lower -> ErrorCategory.NETWORK
+                chain.any { it is NoRemoteRepositoryException } || status("""^404\b""") -> ErrorCategory.ORIGIN_GONE
+                // JGitText: notAuthorized, noCredentialsProvider, authenticationNotSupported, serviceNotPermitted (403)
+                status("""^40[13]\b""") || transport.any { "not authorized" in it || "authentication is required" in it ||
+                    "authentication not supported" in it || " not permitted on " in it } -> ErrorCategory.AUTH_REQUIRED
+                "timed out" in lower || "timeout" in lower -> ErrorCategory.TIMEOUT
                 "no space left" in lower || "enospc" in lower -> ErrorCategory.STORAGE_FULL
-                chain.any { it is UnknownHostException || it is ConnectException || it is NoRouteToHostException || it is SSLException } ||
-                    "connection reset" in lower || "unknown host" in lower || "cannot open git-upload-pack" in lower -> ErrorCategory.NETWORK
-                e is TransportException -> ErrorCategory.REMOTE_ERROR
+                "cannot open git-upload-pack" in lower -> ErrorCategory.NETWORK
                 else -> ErrorCategory.REMOTE_ERROR
             }
             return SyncFailure(cat, Redact.text(msg) ?: "", e)
