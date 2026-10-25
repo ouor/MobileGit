@@ -264,3 +264,32 @@
 ### 8.5 스크린샷
 
 `screenshots/`의 14장을 모두 새 빌드로 다시 찍어 교체했다(라이트 12, 다크 2). 목록은 `screenshots/README.md`에서 갱신했다.
+
+### 8.6 QA-13, QA-14 수정 확인 (12:45~12:52)
+
+대상: `a4fa598`, `24f81f7`. 폰에 설치된 빌드는 12:40에 업데이트됐다. 리뷰용 레포 15개는 그대로 남아 있었다(미러 12, 로컬 3).
+
+| ID | 결과 | 확인 내용 |
+|---|---|---|
+| QA-13 | 해결 | 9090을 점유한 채 포트를 9090으로 저장하면 "포트 9090 사용 중"이 뜨고, 앱 프로세스는 살아 있다. "포트 바꾸기"로 8080을 저장하자 실패 배너가 사라지고 "서버 꺼짐 / 켜면 PC에서 clone·push할 수 있어요"만 보였다. 스위치를 켜면 정상으로 켜진다(API 200) |
+| QA-14 | 해결 | 아래 네 가지를 확인했다. 웹 UI 쪽 문제는 없다 |
+
+QA-14 확인 내용:
+- **raw 헤더**
+  - `logo.svg`: `image/svg+xml`, `inline`.
+  - `screenshot.png`: `image/png`, `inline`.
+  - `readme.md`: 그대로 `application/octet-stream`, `attachment`.
+  - 세 응답 모두 `nosniff`와 `Content-Security-Policy: default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox`가 붙는다.
+  - `?download=1`을 붙이면 SVG도 `attachment`가 된다.
+- **README 화면**: 웹 `/r/chalk`에서 SVG 로고(naturalWidth 500)와 PNG 스크린샷(2864)이 모두 보인다.
+- **스크립트 차단**:
+  - 확인용 레포에 `<script>alert()`와 `onload=alert()`를 넣은 SVG를 올렸다.
+  - 이 SVG를 브라우저 주소창으로 직접 열어도, README 이미지로 열어도 대화상자 0건이었다. 스크립트가 바꾸려던 `document.title`도 바뀌지 않았다.
+  - 확인한 뒤 레포는 지웠다.
+- **"원본 다운로드" 버튼**:
+  - 파일 보기의 버튼에 `download` 속성이 있다.
+  - Chromium에서 PNG, SVG, package.json 모두 실제 다운로드 이벤트가 났다(파일 이름 유지). 이미지가 새 탭에서 열리기만 하는 문제는 없다.
+
+스크린샷: 대표 14장 가운데 SVG나 이미지가 들어간 README를 보여 주는 장이 없어(10번은 `field-notes`), 다시 찍지 않았다.
+
+F-18은 QA-14가 해결되어 **통과**로 올린다. 따라서 통과 19, 부분 4(F-02, F-06, F-12, F-15), 실패 0, 확인 불가 2(F-04, F-10)가 된다. 남은 열린 문제는 없다.
