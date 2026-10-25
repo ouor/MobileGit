@@ -103,6 +103,7 @@ object Badges {
  * R2-01 AC1 row reason. [since]: failures — start of the current failure run (null for failures recorded before
  * round 2); DELAYED — last check; HISTORY_CHANGED — when the archive happened. [category] for FAILED/ORIGIN_GONE/AUTH.
  */
+@kotlinx.serialization.Serializable
 data class RepoIssue(val badge: Badge, val since: Long?, val category: ErrorCategory?)
 
 /**

@@ -65,3 +65,4 @@
 - **왜**: 웹 목록의 "주의 필요" 필터는 지금 `originStatus`(원본 없음, 인증 필요)만 보고 셉니다. 업데이트 실패, 지연, 히스토리 바뀜이 빠져 앱과 개수가 다릅니다. 같은 이름의 필터가 앱과 웹에서 다른 수를 보이면 사용자가 헷갈립니다. 정보 패널의 "받는 범위"도 앱은 "PR 브랜치 포함/제외"까지 보여 주는데 웹은 그 값을 모릅니다.
 - **지금 웹**: 필터 이름만 "주의 필요"로 맞추고 원본 상태 두 가지로만 셉니다. 받는 범위는 "모든 브랜치·태그 · LFS 파일 저장 안 함"으로, PR 브랜치는 언급하지 않습니다.
 - **반영되면**: 목록 행의 배지·둘째 줄 사유, 필터 개수를 앱과 같게, 받는 범위에 PR 브랜치 포함 여부를 붙입니다.
+- **코어 처리 결과**: 완료. `RepoSummaryDto`에 `needsAttention: boolean`, `issue: {badge, since, category} | null`, `includePullRefs: boolean | null`을 더했다. 목록(`/api/v1/repos`)과 상세의 `repo` 둘 다. 앱 목록과 같은 코드(`Badges.of`, `RepoListItem.needsAttention`/`issue`)로 계산하므로 개수가 같다. `badge`는 `ORIGIN_GONE`·`AUTH_REQUIRED`·`FAILED`·`DELAYED`·`HISTORY_CHANGED`, 우선순위도 앱과 같다. `since`(epoch ms)는 실패면 연속 실패 시작(2차 이전 실패는 null), 지연이면 마지막 확인, 히스토리 바뀜이면 보존 시각. `category`는 실패 분류(`NETWORK` 등) 또는 null. `includePullRefs`는 레포별 설정이 없으면 전역 기본값, 로컬은 null. 형식은 spec 8절 WR-6.

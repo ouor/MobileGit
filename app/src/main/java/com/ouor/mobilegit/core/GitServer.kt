@@ -465,13 +465,13 @@ class GitServer(
         try {
             when {
                 parts == listOf("info") -> json(call, ServerInfoDto.serializer(), ServerInfoDto("mobilegit", appVersion, ctx.baseUrl(), settings().effectiveAuthEnabled, settings().effectiveAnonymousRead))
-                parts == listOf("repos") -> json(call, ListSerializer(RepoSummaryDto.serializer()), store.repos.value.map(RepoBrowser::summary))
+                parts == listOf("repos") -> json(call, ListSerializer(RepoSummaryDto.serializer()), store.repos.value.map { RepoBrowser.summary(it, settings(), System.currentTimeMillis()) })
                 repoParam != null -> {
                     val meta = store.get(repoParam) ?: throw BrowseException(404, "REPO_NOT_FOUND", "레포 '$repoParam'이(가) 없습니다")
                     withContext(Dispatchers.IO) {
                         store.open(meta.name).use { repo ->
                             when (parts.getOrNull(2)) {
-                                null -> json(call, RepoDetailDto.serializer(), RepoBrowser.detail(repo, meta).copy(cloneUrl = "${ctx.baseUrl()}/${meta.name}.git"))
+                                null -> json(call, RepoDetailDto.serializer(), RepoBrowser.detail(repo, meta, settings(), System.currentTimeMillis()).copy(cloneUrl = "${ctx.baseUrl()}/${meta.name}.git"))
                                 "tree" -> json(call, TreeDto.serializer(), heavy { RepoBrowser.tree(repo, q["ref"], q["path"]) })
                                 "blob" -> json(call, BlobDto.serializer(), heavy { RepoBrowser.blob(repo, q["ref"], q["path"]) })
                                 "readme" -> {

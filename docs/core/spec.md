@@ -282,7 +282,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 | 메서드/경로 | 응답 |
 |---|---|
 | `GET /api/v1/info` | `{"app":"mobilegit","version":"0.1.0","baseUrl":"http://192.168.31.120:8080","authRequired":true,"anonymousRead":false}` |
-| `GET /api/v1/repos` | `RepoSummaryDto[]` |
+| `GET /api/v1/repos` | `RepoSummaryDto[]`. 2차부터 `needsAttention`, `issue`, `includePullRefs` 포함(8절 WR-6) |
 | `GET /api/v1/repos/{name}` | `RepoDetailDto` |
 | `GET /api/v1/repos/{name}/tree?ref=&path=` | `TreeDto` |
 | `GET /api/v1/repos/{name}/blob?ref=&path=` | `BlobDto` (텍스트는 1MB까지) |
@@ -484,6 +484,14 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 - `Settings.exposedWithoutPassword`: ngrok 켜짐 + "push만" 또는 "끄기". 위험 배너·경고 표시용.
 - 접속 기록 경로는 지금처럼 `NGROK`. 실패 한도(IP별, ngrok 전체 분당 30회)는 그대로.
 - `/api/v1/info`의 `authRequired`, `anonymousRead`는 저장값이다.
+
+### WR-6 웹 API의 주의 상태와 PR 브랜치
+- `RepoSummaryDto`(`GET /api/v1/repos`의 각 항목, `GET /api/v1/repos/{name}`의 `repo`)에 필드 추가:
+  - `needsAttention: boolean`: 앱 "주의 필요"와 같은 판정(`Badges.problem`, R2-01).
+  - `issue: {badge, since, category} | null`: 앱 행 둘째 줄의 `RepoListItem.issue`와 같은 값. `badge`는 `ORIGIN_GONE`, `AUTH_REQUIRED`, `FAILED`, `DELAYED`, `HISTORY_CHANGED` 중 하나. `since`는 epoch ms 또는 null. `category`는 `ErrorCategory` 또는 null.
+  - `includePullRefs: boolean | null`: 미러가 PR 브랜치를 받는지(레포별 설정, 없으면 전역 기본값). 로컬은 null.
+- 같은 코드(`Badges.of` → `RepoListItem`)로 계산한다. 웹 요청에는 "업데이트 중"을 모르지만 주의 상태에는 영향이 없다.
+- 예: `{"name":"x",…,"needsAttention":true,"issue":{"badge":"FAILED","since":1792886934344,"category":"NETWORK"},"includePullRefs":false}`
 
 ### R2-07 AC6
 - 할 일 없음. 접근 확인 결과 `ProbeResult.Reachable.pullRefCount`, `Settings.mirrorPullRefs`/`MirrorSource.includePullRefs`, 웹 API `RepoSummaryDto.hasLfs`가 이미 있다.

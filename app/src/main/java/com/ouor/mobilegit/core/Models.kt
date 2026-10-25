@@ -16,7 +16,7 @@ import kotlinx.serialization.Serializable
 @Serializable enum class ErrorCategory { NETWORK, AUTH_REQUIRED, ORIGIN_GONE, STORAGE_FULL, REMOTE_ERROR, TIMEOUT }
 
 /** F-05 AC2 상태 배지. */
-enum class Badge { UPDATE_AVAILABLE, UPDATING, FAILED, ORIGIN_GONE, AUTH_REQUIRED, DELAYED, LFS_MISSING,
+@Serializable enum class Badge { UPDATE_AVAILABLE, UPDATING, FAILED, ORIGIN_GONE, AUTH_REQUIRED, DELAYED, LFS_MISSING,
     /** R2-01 AC2: an update archived refs (F-11); cleared when the user opens the archive screen ([RepoStore.markHistorySeen]). */
     HISTORY_CHANGED }
 

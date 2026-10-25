@@ -29,6 +29,11 @@ data class RepoSummaryDto(
     val name: String, val type: RepoType, val description: String, val defaultBranch: String?,
     val lastActivityAt: Long?, val lastUpdateAt: Long?, val lastPushAt: Long?,
     val originUrl: String?, val originStatus: OriginStatus?, val hasLfs: Boolean, val sizeBytes: Long,
+    /** WR-6: same rule as the app list ([RepoListItem.needsAttention] / [RepoListItem.issue], spec 8 R2-01). */
+    val needsAttention: Boolean = false,
+    val issue: RepoIssue? = null,
+    /** WR-6 / R2-07: whether PR refs are mirrored (per-repo override or the global default); null for local repos. */
+    val includePullRefs: Boolean? = null,
 )
 
 @Serializable
@@ -79,7 +84,13 @@ object RepoBrowser {
     const val MAX_COMMIT_PAGE = 1_000
     const val MAX_SCANNED_COMMITS = 200_000
 
-    fun summary(m: RepoMeta) = RepoSummaryDto(
+    fun summary(m: RepoMeta, s: Settings, now: Long): RepoSummaryDto = summary(m).let { d ->
+        // the shared app rules; "updating" is not known here and is not an attention state
+        val item = RepoListItem(m, Badges.of(m, s, now, null), null)
+        d.copy(needsAttention = item.needsAttention, issue = item.issue, includePullRefs = m.mirror?.let { it.includePullRefs ?: s.mirrorPullRefs })
+    }
+
+    private fun summary(m: RepoMeta) = RepoSummaryDto(
         name = m.name, type = m.type, description = m.description, defaultBranch = m.defaultBranch,
         lastActivityAt = listOfNotNull(m.lastPushAt, m.mirror?.lastUpdateAt, m.createdAt).maxOrNull(),
         lastUpdateAt = m.mirror?.lastSuccessUpdateAt, lastPushAt = m.lastPushAt,
@@ -87,13 +98,13 @@ object RepoBrowser {
         hasLfs = m.hasLfs, sizeBytes = m.sizeBytes,
     )
 
-    fun detail(repo: Repository, m: RepoMeta): RepoDetailDto {
+    fun detail(repo: Repository, m: RepoMeta, s: Settings, now: Long): RepoDetailDto {
         val refs = repo.refDatabase.refs
         val head = repo.exactRef(Constants.HEAD)
         fun list(prefix: String) = refs.filter { it.name.startsWith(prefix) && it.objectId != null }
             .map { RefDto(it.name.removePrefix(prefix), it.objectId.name) }.sortedBy { it.name }
         return RepoDetailDto(
-            repo = summary(m), empty = head?.objectId == null && refs.none { it.name.startsWith(Constants.R_HEADS) },
+            repo = summary(m, s, now), empty = head?.objectId == null && refs.none { it.name.startsWith(Constants.R_HEADS) },
             head = head?.target?.name?.removePrefix(Constants.R_HEADS),
             branches = list(Constants.R_HEADS), tags = list(Constants.R_TAGS),
             archivedRefCount = refs.count { it.name.startsWith(RepoStore.ARCHIVE_PREFIX) },

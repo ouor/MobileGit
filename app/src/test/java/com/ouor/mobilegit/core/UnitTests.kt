@@ -198,6 +198,13 @@ class NotificationRulesTest {
         assertEquals(RepoOverview(mirrors = 2, healthy = 1, attention = 1, locals = 1, lastCheckAt = 7, checksStalled = false), RepoQuery.overview(all, s, 8))
         assertTrue(RepoQuery.overview(all, s, 7 + 3 * s.checkIntervalMillis + 1).checksStalled)
         assertEquals(RepoOverview(0, 0, 0, 1, null, false), RepoQuery.overview(RepoQuery.items(listOf(a), s, 8, emptyMap()), s, Long.MAX_VALUE / 2))
+        // WR-6: the web summary uses the same rule as the app row
+        val web = RepoBrowser.summary(b, s, 7)
+        assertTrue(web.needsAttention); assertEquals(items[1].issue, web.issue); assertEquals(false, web.includePullRefs)
+        assertNull(RepoBrowser.summary(a, s, 7).includePullRefs)
+        assertEquals(RepoIssue(Badge.HISTORY_CHANGED, 50, null), RepoBrowser.summary(c, s, 60).issue)
+        val json = CoreJson.encodeToString(RepoSummaryDto.serializer(), web)
+        assertTrue(json, json.contains("\"needsAttention\":true") && json.contains("\"issue\":{\"badge\":\"ORIGIN_GONE\",\"since\":null,\"category\":null}") && json.contains("\"includePullRefs\":false"))
         assertEquals(listOf("Alpha"), RepoQuery.apply(items, RepoSort.NAME, RepoFilter.PROBLEM, "").map { it.meta.name })
         assertEquals(listOf("beta"), RepoQuery.apply(items, RepoSort.NAME, RepoFilter.ALL, "ET").map { it.meta.name })
     }
