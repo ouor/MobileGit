@@ -27,6 +27,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -101,14 +102,24 @@ class ServerController(private val context: Context, private val core: () -> Cor
 
     private fun bootCount(): Int = android.provider.Settings.Global.getInt(context.contentResolver, android.provider.Settings.Global.BOOT_COUNT, -1)
 
-    private val restartLock = Mutex()
+    /**
+     * AND-02: every bring-up, bring-down and re-bind runs under this one lock, so commands that arrive together
+     * (process restart + START_STICKY, boot + package replaced, start then stop) are applied one at a time.
+     */
+    private val lifecycle = Mutex()
+
+    /**
+     * What the latest service command asked for. Set synchronously on the main thread when the command arrives; the
+     * locked steps check it, so the final state follows the last command whatever order the coroutines run in.
+     */
+    @Volatile internal var desiredUp = false
 
     /**
      * CR-1: re-binds the running server on the current `settings.port` (in-flight transfers get the normal stop grace).
      * The service calls this on its own when the port setting changes. Returns [ServerState.Failed] (portInUse) if the
      * new port is taken; the server then stays off like a failed start. No-op when stopped or already on that port.
      */
-    suspend fun restart(): ServerState = restartLock.withLock {
+    suspend fun restart(): ServerState = lifecycle.withLock {
         withContext(Dispatchers.IO) {
             val c = core()
             val cur = _state.value
@@ -116,11 +127,19 @@ class ServerController(private val context: Context, private val core: () -> Cor
             _state.value = ServerState.Stopping
             c.tunnel.stop()
             c.gitServer.stop()
-            bringUp()
+            startServer()
         }
     }
 
-    internal fun bringUp(): ServerState {
+    /** Service only. Starts the server unless a later command asked for "off" (then reports [ServerState.Stopped]). */
+    internal suspend fun bringUp(): ServerState = lifecycle.withLock {
+        withContext(Dispatchers.IO) {
+            if (!desiredUp) return@withContext _state.value.takeIf { it is ServerState.Failed } ?: ServerState.Stopped
+            startServer()
+        }
+    }
+
+    private fun startServer(): ServerState {
         val c = core()
         val port = c.settings.current.port
         val s = when (val r = c.gitServer.start(port)) {
@@ -134,11 +153,17 @@ class ServerController(private val context: Context, private val core: () -> Cor
         return s
     }
 
-    internal fun bringDown() {
-        _state.value = ServerState.Stopping
-        core().tunnel.stop()
-        core().gitServer.stop()
-        _state.value = ServerState.Stopped
+    /** Service only. Stops the server unless a later command asked for "on" again. */
+    internal suspend fun bringDown() = lifecycle.withLock {
+        withContext(Dispatchers.IO) {
+            if (desiredUp) return@withContext
+            if (core().gitServer.isRunning || _state.value !is ServerState.Failed) {
+                _state.value = ServerState.Stopping
+                core().tunnel.stop()
+                core().gitServer.stop()
+                _state.value = ServerState.Stopped
+            }
+        }
     }
 
     /** The foreground service could not be (re)started from the background. Keeps serverEnabled so [resumeIfBlocked] retries. */
@@ -172,59 +197,79 @@ class ServerService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var wake: PowerManager.WakeLock? = null
     private var wifi: WifiManager.WifiLock? = null
+    private var observers: Job? = null
     private val core get() = MobileGitApp.core(this)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    // All service callbacks and the continuations below run on the main thread, so the fields need no locking.
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val ctl = core.server
         if (intent?.action == ACTION_STOP) {
-            scope.launch(Dispatchers.IO) { core.server.bringDown(); stopSelfSafely() }
+            ctl.desiredUp = false
+            scope.launch { ctl.bringDown(); withContext(Dispatchers.Main.immediate) { if (!ctl.desiredUp) shutdown(startId) } }
             return START_NOT_STICKY
         }
-        if (intent == null && !core.settings.current.serverEnabled) { stopSelf(); return START_NOT_STICKY }
-        startInForeground(buildNotification("서버 시작 중…", null))
-        if (core.gitServer.isRunning) return START_STICKY
-        scope.launch(Dispatchers.IO) {
-            val st = core.server.bringUp()
-            if (st !is ServerState.Running) { stopSelfSafely(); return@launch }
-            acquireLocks()
-            observe()
+        if (intent == null && !core.settings.current.serverEnabled) { stopSelf(startId); return START_NOT_STICKY }
+        // AND-01: no foreground service, no server. A server in a cached (freezable) process would look "running"
+        // while being unreachable, and its locks would leak.
+        if (!startInForeground(buildNotification("서버 시작 중…", null))) {
+            if (!ctl.desiredUp) stopSelf(startId)
+            return START_NOT_STICKY
+        }
+        ctl.desiredUp = true
+        scope.launch {
+            val st = ctl.bringUp()
+            withContext(Dispatchers.Main.immediate) {
+                when {
+                    !ctl.desiredUp -> Unit // a stop arrived meanwhile; its own continuation shuts the service down
+                    st is ServerState.Running -> { acquireLocks(); observe() }
+                    else -> { ctl.desiredUp = false; shutdown(startId) }
+                }
+            }
         }
         return START_STICKY
     }
 
-    private fun startInForeground(n: Notification) {
-        try {
-            ServiceCompat.startForeground(this, Notifier.ID_SERVER, n,
-                if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0)
-        } catch (e: Exception) {
-            core.server.blockedInBackground(e)
-            stopSelf()
-        }
+    private fun startInForeground(n: Notification): Boolean = try {
+        ServiceCompat.startForeground(this, Notifier.ID_SERVER, n,
+            if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0)
+        true
+    } catch (e: Exception) {
+        core.server.blockedInBackground(e)
+        false
     }
 
+    /** One set of collectors per service instance (AND-02: a second start must not add a second set). */
     private fun observe() {
+        if (observers?.isActive == true) return
         val c = core
-        // Port changes re-bind the server (CR-1); ngrok follows settings while the server runs (F-04 AC3).
-        // One collector so the tunnel always starts after the re-bind, on the new loopback port.
-        scope.launch {
-            c.settings.state.map { Triple(it.ngrokEnabled, it.ngrokAuthtokenEnc, it.port) }.distinctUntilChanged().collect { (on, _, _) ->
-                if (c.server.restart() !is ServerState.Running) { stopSelfSafely(); return@collect }
-                val token = c.settings.ngrokAuthtoken()
-                if (on && token != null && c.gitServer.ngrokPort > 0) c.tunnel.start(token, c.gitServer.ngrokPort) else c.tunnel.stop()
-            }
-        }
-        scope.launch {
-            combine(c.network.addresses, c.tunnel.state) { a, t -> a to t }.collect { (addrs, t) ->
-                val primary = addrs.firstOrNull()?.baseUrl ?: "접속 가능한 네트워크 없음"
-                val ngrok = when (t) {
-                    TunnelState.Off -> null
-                    is TunnelState.Connected -> "ngrok: ${t.publicUrl}"
-                    is TunnelState.Connecting -> "ngrok: 연결 중"
-                    is TunnelState.Retrying -> "ngrok: 재연결 대기 (${t.reason})"
-                    is TunnelState.TokenRejected -> "ngrok: 토큰 확인 필요"
+        observers = scope.launch {
+            // Port changes re-bind the server (CR-1); ngrok follows settings while the server runs (F-04 AC3).
+            // One collector so the tunnel always starts after the re-bind, on the new loopback port.
+            launch {
+                c.settings.state.map { Triple(it.ngrokEnabled, it.ngrokAuthtokenEnc, it.port) }.distinctUntilChanged().collect { (on, _, _) ->
+                    if (c.server.restart() !is ServerState.Running) {
+                        c.server.desiredUp = false
+                        withContext(Dispatchers.Main.immediate) { shutdown(null) }
+                        return@collect
+                    }
+                    val token = c.settings.ngrokAuthtoken()
+                    if (on && token != null && c.gitServer.ngrokPort > 0) c.tunnel.start(token, c.gitServer.ngrokPort) else c.tunnel.stop()
                 }
-                getSystemService(android.app.NotificationManager::class.java).notify(Notifier.ID_SERVER, buildNotification(primary, ngrok))
+            }
+            launch {
+                combine(c.network.addresses, c.tunnel.state) { a, t -> a to t }.collect { (addrs, t) ->
+                    val primary = addrs.firstOrNull()?.baseUrl ?: "접속 가능한 네트워크 없음"
+                    val ngrok = when (t) {
+                        TunnelState.Off -> null
+                        is TunnelState.Connected -> "ngrok: ${t.publicUrl}"
+                        is TunnelState.Connecting -> "ngrok: 연결 중"
+                        is TunnelState.Retrying -> "ngrok: 재연결 대기 (${t.reason})"
+                        is TunnelState.TokenRejected -> "ngrok: 토큰 확인 필요"
+                    }
+                    getSystemService(android.app.NotificationManager::class.java).notify(Notifier.ID_SERVER, buildNotification(primary, ngrok))
+                }
             }
         }
     }
@@ -239,23 +284,39 @@ class ServerService : Service() {
             .addAction(0, "서버 끄기", stop).build()
     }
 
+    /**
+     * Idempotent (AND-02). The Wi-Fi lock keeps the radio out of power save while the screen is off on Android 13 and
+     * lower; from Android 14 the HIGH_PERF mode is a no-op (AND-14) and LOW_LATENCY only works with the screen on,
+     * so no Wi-Fi lock is taken there.
+     */
     @SuppressLint("WakelockTimeout")
     @Suppress("DEPRECATION")
     private fun acquireLocks() {
-        wake = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "mobilegit:server").apply { acquire() }
-        wifi = (applicationContext.getSystemService(WIFI_SERVICE) as WifiManager)
-            .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "mobilegit:server").apply { acquire() }
+        if (wake?.isHeld != true) wake = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "mobilegit:server").apply { acquire() }
+        if (Build.VERSION.SDK_INT < 34 && wifi?.isHeld != true)
+            wifi = (applicationContext.getSystemService(WIFI_SERVICE) as WifiManager).createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "mobilegit:server").apply { acquire() }
     }
 
-    private fun stopSelfSafely() {
+    private fun releaseLocks() {
         runCatching { wake?.takeIf { it.isHeld }?.release() }; runCatching { wifi?.takeIf { it.isHeld }?.release() }
+        wake = null; wifi = null
+    }
+
+    /** [startId] null = stop regardless of later start commands (the server failed). */
+    private fun shutdown(startId: Int?) {
+        observers?.cancel(); observers = null
+        releaseLocks()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        if (startId == null) stopSelf() else stopSelf(startId)
     }
 
     override fun onDestroy() {
-        runCatching { wake?.takeIf { it.isHeld }?.release() }; runCatching { wifi?.takeIf { it.isHeld }?.release() }
-        if (core.gitServer.isRunning) core.server.bringDown()
+        observers?.cancel()
+        releaseLocks()
+        // AND-07: the system tore the service down while the server was up. Stop it off the main thread (Ktor waits
+        // up to 11 s for transfers) on the app scope, which outlives this service.
+        val ctl = core.server
+        if (ctl.desiredUp) { ctl.desiredUp = false; core.scope.launch { ctl.bringDown() } }
         scope.cancel()
         super.onDestroy()
     }

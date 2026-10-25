@@ -98,7 +98,20 @@ class NetworkMonitor(private val context: Context, scope: CoroutineScope, port: 
         return list
     }
 
-    private val lan = flow { while (true) { emit(snapshot(port.value)); delay(3_000) } }.distinctUntilChanged()
+    private val power = context.getSystemService(PowerManager::class.java)
+
+    /**
+     * AND-06: 3 s while the screen is on (AC3 needs a 5 s refresh, and hotspot/Tailscale changes do not reliably
+     * produce ConnectivityManager callbacks); 60 s while it is off, when only the server notification is listening.
+     */
+    private val lan = flow {
+        var last = 0L
+        while (true) {
+            val now = System.currentTimeMillis()
+            if (power.isInteractive || now - last >= 60_000) { emit(snapshot(port.value)); last = now }
+            delay(3_000)
+        }
+    }.distinctUntilChanged()
 
     /** All addresses, primary first (Wi-Fi → hotspot → Tailscale → ngrok). Empty = "접속 가능한 네트워크 없음" (AC4). */
     val addresses: StateFlow<List<ServerAddress>> = combine(lan, port, ngrokUrl) { l, p, ng ->
