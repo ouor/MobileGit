@@ -87,6 +87,8 @@ class GitServer(
     private val onPushed: (repo: String, created: Boolean) -> Unit = { _, _ -> },
     private val maxConcurrentPacks: Int = 4,
     private val queueWaitMillis: Long = 300_000,
+    /** R2SEC-01: true only while the ngrok tunnel is connected; otherwise the ngrok port is just another loopback port. */
+    private val tunnelConnected: () -> Boolean = { false },
 ) {
     @Volatile private var server: EmbeddedServer<*, *>? = null
     @Volatile var ngrokPort: Int = -1; private set
@@ -161,7 +163,8 @@ class GitServer(
     // ---------------- request context ----------------
 
     private inner class Ctx(val call: ApplicationCall) {
-        val viaNgrok = call.request.local.localPort == ngrokPort
+        // R2SEC-01: the loopback connector is always bound, so it counts as ngrok only while the tunnel is really public.
+        val viaNgrok = call.request.local.localPort == ngrokPort && settings().ngrokEnabled && tunnelConnected()
         /**
          * SEC-01: ngrok *appends* the address it saw to any X-Forwarded-For the client sent ("use the last value",
          * ngrok HTTP endpoint docs), so only the last entry is trustworthy.

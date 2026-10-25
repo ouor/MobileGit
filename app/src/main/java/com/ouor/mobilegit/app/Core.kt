@@ -85,6 +85,7 @@ class Core(private val context: Context) {
         assets = WebAssets { path -> runCatching { context.assets.open("web/$path") }.getOrNull() },
         freeBytes = { env.freeBytes() },
         appVersion = BuildConfig.VERSION_NAME,
+        tunnelConnected = { tunnel.state.value is com.ouor.mobilegit.core.TunnelState.Connected },
     )
     val ops = RepoOps(repos, scheduler, { settings.current }, env, disconnect = gitServer::disconnectRepo)
     val server = ServerController(context) { this }

@@ -23,6 +23,7 @@ class GitServerTest {
     private lateinit var log: AccessLogStore
     private lateinit var server: GitServer
     private var port = 0
+    @Volatile private var tunnelUp = false
     private val password = "s3cret-pass"
 
     @Before fun setUp() {
@@ -35,7 +36,7 @@ class GitServerTest {
         val auth = Authenticator({ settings.current }, AuthRateLimiter())
         val web = File(root, "web").apply { mkdirs(); File(this, "index.html").writeText("<html>ui</html>"); File(this, "app.js").writeText("1"); File(this, "assets").mkdirs(); File(this, "assets/index-abc123.js").writeText("console.log(1);".repeat(200)) }
         server = GitServer(store, auth, log, { settings.current }, { emptyList() },
-            { p -> File(web, p).takeIf { it.isFile }?.inputStream() }, { Long.MAX_VALUE / 4 })
+            { p -> File(web, p).takeIf { it.isFile }?.inputStream() }, { Long.MAX_VALUE / 4 }, tunnelConnected = { tunnelUp })
         val r = server.start(0, "127.0.0.1")
         port = (r as ServerStartResult.Started).port
     }
@@ -115,9 +116,14 @@ class GitServerTest {
         assertEquals(AuthDecision.ANONYMOUS, a.decide(null, "192.168.0.7", isPush = false, viaNgrok = false, anonymousOk = true))
         assertEquals(AuthDecision.CHALLENGE, a.decide(null, "192.168.0.7", isPush = true, viaNgrok = false, anonymousOk = true))
         // R2-06: ngrok follows the user's choice (no silent forcing). "push만" over ngrok: anonymous read, push 401
-        settings.update { it.copy(ngrokEnabled = true) }
-        assertTrue(settings.current.exposedWithoutPassword)
         val ng = server.ngrokPort
+        // R2SEC-01: ngrok off (or on but not connected) -> the ngrok loopback port is plain loopback: no anonymous read
+        assertEquals(401, get("/pub.git/info/refs?service=git-upload-pack", auth = false, viaPort = ng).first)
+        assertEquals(401, get("/api/v1/repos", auth = false, viaPort = ng).first)
+        settings.update { it.copy(ngrokEnabled = true) }
+        assertEquals(401, get("/pub.git/info/refs?service=git-upload-pack", auth = false, viaPort = ng).first)
+        tunnelUp = true
+        assertTrue(settings.current.exposedWithoutPassword)
         assertEquals(200, get("/pub.git/info/refs?service=git-upload-pack", auth = false, viaPort = ng).first)
         assertEquals(401, get("/pub.git/info/refs?service=git-receive-pack", auth = false, viaPort = ng).first)
         assertEquals(401, get("/pub.git/info/refs?service=git-upload-pack", auth = false).first) // loopback still not anonymous

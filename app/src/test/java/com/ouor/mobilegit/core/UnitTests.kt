@@ -153,13 +153,13 @@ class AuthUnitTest {
         val s = SettingsStore(File(tempDir(), "s.json"), FakeCipher).apply { setPassword("right-password"); update { it.copy(ngrokEnabled = true) } }
         val a = Authenticator({ s.current }, AuthRateLimiter())
         fun basic(pw: String) = "Basic " + java.util.Base64.getEncoder().encodeToString("git:$pw".toByteArray())
-        assertEquals(AuthDecision.OK, a.decide(basic("right-password"), "1.1.1.1", false, viaNgrok = true))
+        assertEquals(AuthDecision.OK, a.decide(basic("right-password"), "1.1.1.1", false, viaNgrok = true, anonymousOk = false))
         // SEC-01: a new address per attempt does not dodge the limit
-        val results = (1..40).map { a.decide(basic("guess$it"), "203.0.113.$it", false, viaNgrok = true) }
+        val results = (1..40).map { a.decide(basic("guess$it"), "203.0.113.$it", false, viaNgrok = true, anonymousOk = false) }
         assertEquals(AuthDecision.BLOCKED, results.last())
-        assertEquals(AuthDecision.BLOCKED, a.decide(basic("guess-x"), "198.51.100.1", false, viaNgrok = true))
+        assertEquals(AuthDecision.BLOCKED, a.decide(basic("guess-x"), "198.51.100.1", false, viaNgrok = true, anonymousOk = false))
         // the owner's known-good header still works during the block
-        assertEquals(AuthDecision.OK, a.decide(basic("right-password"), "198.51.100.2", false, viaNgrok = true))
+        assertEquals(AuthDecision.OK, a.decide(basic("right-password"), "198.51.100.2", false, viaNgrok = true, anonymousOk = false))
     }
 
     @Test fun credentialsOnlyOverHttpsOrLocal() {
