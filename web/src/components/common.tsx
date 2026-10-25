@@ -144,7 +144,7 @@ export function CopyButton({ text, label, className }: { text: string; label: st
         <Button
           variant="ghost"
           size="icon-sm"
-          className={cn("relative after:absolute after:-inset-2 after:content-['']", className)}
+          className={cn("pointer-coarse:size-11", className)} // RV2-10: 44px on touch screens
           onClick={(e) => copyText(text, e.currentTarget).then((ok) => setResult(ok ? "ok" : "fail"))}
           aria-label={label}
         >

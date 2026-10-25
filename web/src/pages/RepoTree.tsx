@@ -287,7 +287,7 @@ function AboutCard({ detail }: { detail: RepoDetail }) {
         {r.includePullRefs !== null && <span className="text-muted-foreground">{r.includePullRefs ? "PR 브랜치 포함" : "PR 브랜치 제외"}</span>}
       </span>,
     ])
-  if (r.hasLfs) rows.push(["LFS", "포인터만 (파일은 받지 않음)"])
+  if (r.hasLfs) rows.push(["LFS", "포인터만"])
   rows.push(["브랜치·태그", `브랜치 ${detail.branches.length} · 태그 ${detail.tags.length}`])
   if (r.sizeBytes > 0) rows.push(["용량", formatBytes(r.sizeBytes)])
   const showArchives = r.type === "MIRROR" || detail.archivedRefCount > 0

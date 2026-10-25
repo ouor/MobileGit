@@ -122,13 +122,15 @@
     --sidebar-ring: oklch(0.556 0 0);
 }
 
-/* RV2-10: grows a small link's touch target to 44px tall without moving the layout. */
+/* RV2-10: on touch screens, grows a small text link's touch target to 44px tall without moving the layout. */
 @utility tap {
-  position: relative;
-  &::after {
-    content: "";
-    position: absolute;
-    inset: -12px -4px;
+  @media (pointer: coarse) {
+    position: relative;
+    &::after {
+      content: "";
+      position: absolute;
+      inset: -12px -4px;
+    }
   }
 }
 

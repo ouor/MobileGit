@@ -125,8 +125,8 @@ function KeptCommit({ repo, entry: e }: { repo: string; entry: ArchiveEntry }) {
   )
 }
 
-// The after: box gives the small chip a 44px-tall touch target (RV2-10).
-const shaChip = "relative rounded-md bg-muted px-1.5 py-0.5 font-mono text-sm hover:underline after:absolute after:-inset-x-0.5 after:-inset-y-3 after:content-['']"
+// 44px tall on touch screens (RV2-10).
+const shaChip = "inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 font-mono text-sm hover:underline pointer-coarse:min-h-11 pointer-coarse:px-2.5"
 
 /** Where the original's ref is now, shown like the kept commit (RV2-08). */
 function Current({ repo, entry: e }: { repo: string; entry: ArchiveEntry }) {
@@ -171,7 +171,7 @@ function GroupTable({ repo, entries }: { repo: string; entries: ArchiveEntry[] }
             <TableHead className="w-44">브랜치·태그</TableHead>
             <TableHead>보존된 커밋</TableHead>
             <TableHead className="w-36">지금 원본</TableHead>
-            <TableHead className="w-48 pr-4">이동</TableHead>
+            <TableHead className="w-60 pr-4">이동</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
