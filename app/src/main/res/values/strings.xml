@@ -431,7 +431,7 @@
     <string name="settings_reset_password_sub">비밀번호는 보여 주지 않고 새로 정하기만 해요</string>
     <string name="settings_auth">비밀번호 요구</string>
     <string name="settings_auth_off_sub">같은 네트워크의 누구나 읽고 push할 수 있어요</string>
-    <string name="settings_auth_push_sub">같은 와이파이·Tailscale에서는 clone과 웹 화면이 비밀번호 없이 열려요. push와 ngrok, 폰 안(127.0.0.1)은 계속 비밀번호가 필요해요</string>
+    <string name="settings_auth_push_sub">clone과 웹 화면은 비밀번호 없이 열려요 (ngrok 포함). push와 폰 안(127.0.0.1)은 비밀번호가 필요해요</string>
     <string name="settings_start_on_boot_sub">재부팅 전에 서버가 켜져 있었다면 다시 켜요</string>
     <string name="settings_security_title">연결 경로별 보안</string>
     <string name="settings_ngrok_title">밖에서 접속하기 (ngrok)</string>
@@ -729,10 +729,11 @@
     <string name="risk_title">비밀번호 없이 외부에 공개할까요?</string>
     <string name="risk_body_push_only">비밀번호 없이 외부에 공개하면 주소를 아는 인터넷의 누구나 레포를 읽을 수 있어요.</string>
     <string name="risk_body_off">비밀번호 없이 외부에 공개하면 주소를 아는 인터넷의 누구나 레포를 읽을 수 있어요. 비밀번호가 꺼져 있어 push도 할 수 있어요.</string>
-    <string name="risk_safe_auth_on">비밀번호 요구 켜고 공개</string>
+    <string name="risk_safe_auth_on">비밀번호 요구를 “읽기·쓰기”로 바꾸고 공개</string>
     <string name="risk_safe_ngrok_off">외부 공개 끄고 바꾸기</string>
     <string name="risk_proceed">그래도 진행</string>
     <string name="export_saved_where">%2$s 폴더에 %1$s 파일로 저장했어요. 암호화되지 않은 파일이에요</string>
     <string name="export_saved_name">%1$s 파일로 저장했어요. 암호화되지 않은 파일이에요</string>
     <string name="export_shared_done">공유받은 앱으로 그대로 전달했어요. 암호화되지 않은 파일이에요</string>
+    <string name="main_exposed_pending_body">연결되면 비밀번호 없이 공개돼요.</string>
 </resources>

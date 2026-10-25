@@ -196,10 +196,12 @@ fun MainScreen(nav: Nav) {
                 }
             }
             if (settings.ngrokEnabled) item(key = "ngrok") {
-                // R2-06 AC3: the risky combination says so in the title
+                // R2-06 AC3: the risky combination says so; QA2-03: the title still follows the tunnel, only a live one is "공개 중"
+                val live = server is ServerState.Running && tunnel is TunnelState.Connected
                 Banner(Tone.Danger, if (settings.exposedWithoutPassword) Icons.Outlined.LockOpen else Icons.Outlined.Public,
-                    if (settings.exposedWithoutPassword) str(R.string.main_exposed_no_password) else tunnelTitle(tunnel, server is ServerState.Running),
-                    tunnelText(tunnel, server is ServerState.Running) + if (settings.exposedWithoutPassword) "\n" + str(if (settings.authEnabled) R.string.main_exposed_push_only_body else R.string.main_exposed_off_body) else "",
+                    if (settings.exposedWithoutPassword && live) str(R.string.main_exposed_no_password) else tunnelTitle(tunnel, server is ServerState.Running),
+                    tunnelText(tunnel, server is ServerState.Running) + if (!settings.exposedWithoutPassword) "" else "\n" +
+                        if (live) str(if (settings.authEnabled) R.string.main_exposed_push_only_body else R.string.main_exposed_off_body) else str(R.string.main_exposed_pending_body),
                     detail = tunnelDetail(tunnel),
                     actionLabel = str(R.string.main_ngrok_off), onAction = { core.settings.update { it.copy(ngrokEnabled = false) }; snack(str(R.string.main_ngrok_off_done)) })
             }

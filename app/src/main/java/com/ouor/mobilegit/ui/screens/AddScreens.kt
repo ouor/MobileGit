@@ -1,7 +1,5 @@
 package com.ouor.mobilegit.ui.screens
 
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.outlined.Shield
 import com.ouor.mobilegit.ui.components.AdvancedSection
 import androidx.compose.material.icons.outlined.Check
@@ -381,18 +379,18 @@ fun BulkMirrorScreen(nav: Nav) {
             if (loading && rateUntil == null) item { com.ouor.mobilegit.ui.components.Loading() }
             list?.let { l ->
                 item {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = Space.sm)) {
-                        Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                    // QA2-05: chips wrap on narrow screens; 전체 선택 sits in the list header with the count
+                    FlowRow(Modifier.padding(top = Space.sm), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
                         FilterChip(noForks, { noForks = !noForks }, { Text(str(R.string.bulk_hide_forks)) }, leadingIcon = if (noForks) ({ Icon(Icons.Outlined.Check, null, Modifier.size(18.dp)) }) else null)
-                        Spacer(Modifier.width(Space.sm))
                         FilterChip(noArchived, { noArchived = !noArchived }, { Text(str(R.string.bulk_hide_archived)) }, leadingIcon = if (noArchived) ({ Icon(Icons.Outlined.Check, null, Modifier.size(18.dp)) }) else null)
-                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(str(R.string.bulk_shown_count, l.size, visible.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                         val allOn = selectable.isNotEmpty() && selectable.all { it.cloneUrl in selected }
                         TextButton(onClick = { if (allOn) selected.removeAll(selectable.map { it.cloneUrl }) else selectable.forEach { if (it.cloneUrl !in selected) selected += it.cloneUrl } }) {
                             Text(if (allOn) str(R.string.bulk_select_none) else str(R.string.bulk_select_all), maxLines = 1, softWrap = false)
                         }
                     }
-                    Text(str(R.string.bulk_shown_count, l.size, visible.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (visible.isEmpty()) item { EmptyState(Icons.Outlined.Search, str(R.string.bulk_empty_title), str(R.string.bulk_empty_body)) }
                 items(visible, key = { it.cloneUrl }) { r ->
