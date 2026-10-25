@@ -316,7 +316,31 @@ README 링크 처리(`lib/readme.ts`): 상대 링크는 파일 보기로, `/x`�
 
 확인: installDebug(데이터 유지), Chromium·Firefox 800/1100px에서 표·목록 전환, REVIEW·모르는 kind·시각 없는 묶음·truncated를 응답 가로채기로 확인, 가로 넘침 0, 콘솔 오류 0.
 
-## 15. 남은 문제
+## 15. 웹에서 미러 추가 (F-26, PRD 15장 WM-04·WM-05)
+
+코어 API: spec 3.1(코어 d582e0e, 5a339a1, dcbc554). 웹의 유일한 쓰기다(D-11).
+
+| 항목 | 내용 |
+|---|---|
+| 진입점 (WM-04 AC1) | 레포 목록 상단 "미러 추가" 버튼 → `/add`(W-06, 문서 제목 "미러 추가 · mobilegit") |
+| 흐름 (AC2) | 주소 칸(여러 줄 붙여 넣기를 그대로 보내려고 textarea, Enter는 줄바꿈 대신 무시) → 0.5초 뒤 자동 확인(`POST /api/v1/mirrors/preview`, 늦게 온 이전 응답은 버림) → "추가할 수 있어요" 카드: 정규화 주소, 받는 범위 한 줄("브랜치·태그 N개 받기 · PR 브랜치 제외 · Git LFS 파일과 서브모듈은 받지 않아요", 포함이면 "PR 브랜치 포함 (N개)"), 기본 브랜치 → 이름(제안 이름, 코어와 같은 규칙을 즉시 검사) → "추가"(`POST /api/v1/mirrors`) → 레포 홈으로 이동, 목록·요약 캐시 비움 |
+| 이미 미러됨 (AC3) | "이미 보존 중이에요" + "<이름> 레포로 가기" 링크, "추가" 비활성. 등록 때 409 `ALREADY_MIRRORED`도 같은 링크 |
+| 거부 문구 (AC4) | `lib/mirror.ts` `mirrorErrorText`: 401, EXTERNAL_NOT_ALLOWED, CROSS_SITE, HTTPS_ONLY, UNSUPPORTED_URL, MULTIPLE_URLS, TOKEN_NOT_ACCEPTED, TOKEN_REQUIRED(“끄기”로 익명이면 비밀번호로 접속하라는 말 추가), ORIGIN_NOT_FOUND, PROBE_FAILED(분류), ALREADY_MIRRORED, INVALID_NAME(코어 사유 그대로), NAME_TAKEN, STORAGE_LOW, BUSY, 네트워크. 문구 아래 원문 코드를 작게. 등록 오류는 버튼 위에 두고 이름·주소를 바꾸면 지움 |
+| 비밀번호 안내 (AC5) | `info.authRequired && anonymousRead`("push만")면 버튼 옆 "추가하려면 비밀번호가 필요해요". 401은 브라우저 기본 창 그대로 |
+| 요청 (AC6) | `postJson`: 같은 출처 `fetch`, `Content-Type: application/json`. 실제 요청 헤더 확인 |
+| 토큰 (AC7) | 입력란 없음. 페이지 아래에 "비공개 레포는 폰 앱의 설정 → 원본 접속 토큰에서 등록" 안내 |
+| 머리글 (AC8) | "폰 속 git 서버 · 웹에서는 보기와 미러 추가만 할 수 있어요" |
+| 첫 받기 (WM-05) | `syncing`/`waiting`으로 머리글·목록 행에 "받는 중"(돌아가는 아이콘) 또는 "대기"(이유는 툴팁) 배지. 커밋이 없는 레포 홈은 "원본에서 받는 중이에요 / 끝나면 자동으로 보여 줘요", 대기면 이유(FOREGROUND "폰에서 mobilegit 앱을 열면 받기를 시작해요", STORAGE, WIFI, CHARGING), 실패(`issue`)면 "원본에서 받지 못했어요 / 폰 앱에서 다시 시도하세요". 받는 중·대기 동안 5초마다 상세를 다시 읽고(`useApi().refresh`), 끝나면 파일 트리로 바뀐다 |
+| 테스트 | `lib/mirror.test.ts`: 오류 코드 문구 전부, 토큰 필요(로그인/익명), 받는 범위 줄, 확인 결과 문제, 이름 규칙, 받기 상태. `npm test` 19개 |
+
+확인(테스트폰 d418f2d1, `ANDROID_SERIAL=d418f2d1 ./gradlew installDebug`, PC의 8080은 다른 프로세스가 쓰고 있어 `adb -s d418f2d1 forward tcp:18080 tcp:8080`):
+- 실제 API: http 주소 → HTTPS_ONLY, 두 줄 → MULTIPLE_URLS, 등록된 chalk → 이미 보존 중 + 링크, 아무 글자 → UNSUPPORTED_URL, 공개 레포 `…/is-plain-obj/tree/main` → 정규화·브랜치·태그 22개, 이름 "chalk" → NAME_TAKEN, 등록 → 레포 홈 "받는 중" 약 6초 → 파일 트리로 자동 전환.
+- 응답 가로채기: 401, EXTERNAL_NOT_ALLOWED, CROSS_SITE, STORAGE_LOW, BUSY, ALREADY_MIRRORED.
+- 390 모바일 가로 넘침 0. 테스트로 만든 미러(is-plain-obj)는 디버그 진입점(`--es delete`)으로 지웠다. 레포 15개 그대로.
+- GitHub은 없는 레포에도 인증을 요구해서, 없는 주소가 "원본을 찾을 수 없어요"가 아니라 "비공개 레포예요"로 나온다. 앱과 같은 판정이라 웹은 그대로 둔다.
+- 남은 것: 실제 `waiting`(FOREGROUND 등) 상태와 목록의 "받는 중"은 단위 테스트로만 확인(서버가 켜져 있으면 바로 받기 시작, WM-00). 코어 `INVALID_NAME` 사유는 "…습니다" 말투지만 웹이 이름을 먼저 검사해 거의 보이지 않는다.
+
+## 16. 남은 문제
 
 | 항목 | 내용 |
 |---|---|

@@ -8,6 +8,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { apiUrl, reloadAll, useApi, useStaleCount, type Info } from "@/lib/api"
 import { useRoute } from "@/lib/router"
 import { Commits } from "@/pages/Commits"
+import { AddMirror } from "@/pages/AddMirror"
 import { Archives } from "@/pages/Archives"
 import { FileView } from "@/pages/FileView"
 import { RepoList } from "@/pages/RepoList"
@@ -22,7 +23,7 @@ export default function App() {
   useEffect(() => {
     const [, repo, view, ...rest] = JSON.parse(pathKey) as string[]
     const path = rest.join("/")
-    document.title = repo ? `${path ? `${path} · ` : ""}${{ commits: "커밋 · ", archives: "보존된 기록 · " }[view as string] ?? ""}${repo} · mobilegit` : "mobilegit"
+    document.title = JSON.parse(pathKey)[0] === "add" ? "미러 추가 · mobilegit" : repo ? `${path ? `${path} · ` : ""}${{ commits: "커밋 · ", archives: "보존된 기록 · " }[view as string] ?? ""}${repo} · mobilegit` : "mobilegit"
     if (first.current) first.current = false
     else main.current?.focus({ preventScroll: true })
   }, [pathKey])
@@ -46,6 +47,7 @@ export default function App() {
 function Page({ segments, query }: { segments: string[]; query: URLSearchParams }) {
   const ref = query.get("ref")
   if (segments.length === 0) return <RepoList />
+  if (segments.length === 1 && segments[0] === "add") return <AddMirror />
   const [r, repo, view, ...rest] = segments
   const path = rest.join("/")
   if (r === "r" && repo) {
@@ -156,8 +158,8 @@ function AppHeader() {
           <img src="/favicon.svg" alt="" className="size-7" />
           mobilegit
         </a>
-        {/* "읽기 전용" alone read as if the whole server refused pushes (round 1 review). */}
-        <span className="hidden text-sm text-muted-foreground md:inline">폰 속 git 서버 · 웹에서는 보기만 할 수 있어요</span>
+        {/* "읽기 전용" alone read as if the whole server refused pushes (round 1 review); F-26 adds the one write (WM-04 AC8). */}
+        <span className="hidden text-sm text-muted-foreground md:inline">폰 속 git 서버 · 웹에서는 보기와 미러 추가만 할 수 있어요</span>
         <div className="ml-auto">
           <ThemeToggle />
         </div>

@@ -10,7 +10,7 @@ const issueLabel: Record<RepoIssue["badge"], string> = {
   HISTORY_CHANGED: "히스토리 바뀜",
 }
 
-const categoryLabel: Record<string, string> = {
+export const categoryLabel: Record<string, string> = {
   NETWORK: "네트워크 오류",
   AUTH_REQUIRED: "로그인 필요",
   ORIGIN_GONE: "원본 없음",

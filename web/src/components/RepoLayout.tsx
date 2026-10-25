@@ -1,9 +1,9 @@
-import type { ReactNode } from "react"
+import { useEffect, type ReactNode } from "react"
 import { ArchiveIcon, CodeIcon, DownloadIcon, ExternalLinkIcon, GitCommitHorizontalIcon, GitForkIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
 import { Skeleton } from "@/components/ui/skeleton"
-import { CodeField, ErrorState, LfsBadge, LocalIcon, MirrorIcon, IssueBadge, RepoTypeBadge, Time } from "@/components/common"
+import { CodeField, ErrorState, LfsBadge, LocalIcon, MirrorIcon, IssueBadge, RepoTypeBadge, SyncBadge, Time } from "@/components/common"
 import { apiUrl, repoApi, useApi, type RepoDetail } from "@/lib/api"
 import { shortUrl } from "@/lib/format"
 import { repoHref, useRoute } from "@/lib/router"
@@ -53,8 +53,15 @@ export function RepoLayout({
   cloneInSidebar?: boolean
   children: (detail: RepoDetail) => ReactNode
 }) {
-  const { data: detail, error } = useRepoDetail(repo)
+  const { data: detail, error, refresh } = useRepoDetail(repo)
   const ref = useRoute().query.get("ref")
+  // WM-05 AC2: while the first fetch runs or waits, ask again every 5 s; the home turns into the file tree by itself.
+  const pending = !!detail && detail.empty && (detail.repo.syncing || !!detail.repo.waiting)
+  useEffect(() => {
+    if (!pending) return
+    const t = setInterval(refresh, 5000)
+    return () => clearInterval(t)
+  }, [pending, refresh])
   if (error) return <ErrorState error={error} />
   if (!detail) return <HeaderSkeleton />
   const r = detail.repo
@@ -74,6 +81,7 @@ export function RepoLayout({
               </h1>
               <RepoTypeBadge repo={r} />
               <IssueBadge repo={r} />
+              <SyncBadge repo={r} />
               {r.hasLfs && <LfsBadge />}
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">

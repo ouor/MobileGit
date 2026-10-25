@@ -9,8 +9,10 @@ import {
   FolderGitIcon,
   FolderIcon,
   HistoryIcon,
+  HourglassIcon,
   InboxIcon,
   KeyRoundIcon,
+  LoaderCircleIcon,
 } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -22,6 +24,7 @@ import { PathBar } from "@/components/PathBar"
 import { ClonePanel, cloneUrlFor, RepoLayout } from "@/components/RepoLayout"
 import { apiUrl, repoApi, useApi, usePrefetch, type Readme, type RepoDetail, type Tree, type TreeEntry } from "@/lib/api"
 import { formatBytes, shortUrl } from "@/lib/format"
+import { syncState } from "@/lib/mirror"
 import { repoHref } from "@/lib/router"
 import { MarkdownBody } from "@/components/Markdown"
 
@@ -323,18 +326,26 @@ function AboutCard({ detail }: { detail: RepoDetail }) {
 
 /** W-E: repository without commits. */
 function EmptyRepo({ detail }: { detail: RepoDetail }) {
-  const url = cloneUrlFor(detail.repo.name)
-  const mirror = detail.repo.type === "MIRROR"
+  const r = detail.repo
+  const url = cloneUrlFor(r.name)
+  const mirror = r.type === "MIRROR"
+  const sync = syncState(r)
+  // WM-05: say what the first fetch is doing; a failure shows as the issue badge, retried from the phone.
+  const [icon, title, desc] = !mirror
+    ? [<InboxIcon key="i" />, "아직 커밋이 없어요", "PC의 기존 프로젝트에서 아래 명령으로 push하세요."]
+    : sync?.kind === "syncing"
+      ? [<LoaderCircleIcon key="i" className="animate-spin motion-reduce:animate-none" />, "원본에서 받는 중이에요", "끝나면 자동으로 보여 줘요."]
+      : sync?.kind === "waiting"
+        ? [<HourglassIcon key="i" />, "받기를 기다리고 있어요", `${sync.text}.`]
+        : r.issue
+          ? [<AlertTriangleIcon key="i" />, "원본에서 받지 못했어요", "폰 앱에서 다시 시도하세요."]
+          : [<InboxIcon key="i" />, "아직 커밋이 없어요", "원본이 비어 있어요. 원본에 커밋이 생기면 업데이트할 때 받아요."]
   return (
     <Empty className="border bg-card py-12">
       <EmptyHeader>
-        <EmptyMedia variant="icon">
-          <InboxIcon />
-        </EmptyMedia>
-        <EmptyTitle>아직 커밋이 없어요</EmptyTitle>
-        <EmptyDescription>
-          {mirror ? "원본에서 처음 받는 중이거나 원본이 비어 있어요. 받기가 끝나면 여기에 파일이 보여요." : "PC의 기존 프로젝트에서 아래 명령으로 push하세요."}
-        </EmptyDescription>
+        <EmptyMedia variant="icon">{icon}</EmptyMedia>
+        <EmptyTitle>{title}</EmptyTitle>
+        <EmptyDescription>{desc}</EmptyDescription>
       </EmptyHeader>
       {!mirror && (
         <EmptyContent className="max-w-lg">

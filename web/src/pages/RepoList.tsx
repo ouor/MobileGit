@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { ArrowDownUpIcon, HourglassIcon, InboxIcon, SearchIcon, UploadIcon, XIcon } from "lucide-react"
+import { ArrowDownUpIcon, HourglassIcon, InboxIcon, PlusIcon, SearchIcon, UploadIcon, XIcon } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,7 +16,7 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "
 import { Skeleton } from "@/components/ui/skeleton"
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { CodeField, ErrorState, LfsBadge, ListSkeleton, IssueBadge, LocalIcon, MirrorIcon, Time } from "@/components/common"
+import { CodeField, ErrorState, LfsBadge, ListSkeleton, IssueBadge, LocalIcon, MirrorIcon, SyncBadge, Time } from "@/components/common"
 import { apiUrl, useApi, type Overview, type RepoSummary } from "@/lib/api"
 import { formatBytes, shortUrl } from "@/lib/format"
 import { summaryParts } from "@/lib/issue"
@@ -67,7 +67,16 @@ export function RepoList() {
             <Skeleton className="mt-1 h-4 w-64" />
           )}
         </div>
-        <PushGuide />
+        <div className="flex flex-wrap gap-2">
+          {/* WM-04 AC1: the one write the web offers (F-26). */}
+          <Button asChild>
+            <a href="/add">
+              <PlusIcon />
+              미러 추가
+            </a>
+          </Button>
+          <PushGuide />
+        </div>
       </div>
 
       {overview?.checksStalled && (
@@ -195,6 +204,7 @@ function RepoRow({ repo: r }: { repo: RepoSummary }) {
             {r.name}
           </a>
           <IssueBadge repo={r} />
+          <SyncBadge repo={r} />
           {r.hasLfs && <LfsBadge />}
         </div>
         {r.description && <p className="line-clamp-2 text-sm">{r.description}</p>}

@@ -9,6 +9,7 @@ import {
   HistoryIcon,
   HourglassIcon,
   KeyRoundIcon,
+  LoaderCircleIcon,
   PackageIcon,
   RotateCwIcon,
   ServerCrashIcon,
@@ -21,6 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { reloadAll, type ApiError, type RepoIssue, type RepoSummary } from "@/lib/api"
 import { issueText, issueTone } from "@/lib/issue"
+import { syncState } from "@/lib/mirror"
 import { absoluteTime, relativeTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -84,6 +86,23 @@ export function IssueBadge({ repo }: { repo: RepoSummary }) {
     <ToneBadge t={issueTone(repo)} title={issueHint[issue.badge]}>
       {issueIcon[issue.badge] ?? <AlertTriangleIcon />}
       {issueText(issue)}
+    </ToneBadge>
+  )
+}
+
+/** WM-05: "받는 중" while a fetch runs, "대기" with the reason while it waits. */
+export function SyncBadge({ repo }: { repo: RepoSummary }) {
+  const s = syncState(repo)
+  if (!s) return null
+  return s.kind === "syncing" ? (
+    <ToneBadge t="info">
+      <LoaderCircleIcon className="animate-spin motion-reduce:animate-none" />
+      {s.label}
+    </ToneBadge>
+  ) : (
+    <ToneBadge t="warning" title={s.text}>
+      <HourglassIcon />
+      {s.label}
     </ToneBadge>
   )
 }

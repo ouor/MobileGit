@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react"
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react"
 
 // Types mirror the DTOs in docs/core/spec.md section 3 (RepoBrowser.kt).
 export type OriginStatus = "OK" | "GONE" | "AUTH_REQUIRED" | "UNKNOWN"
@@ -28,6 +28,10 @@ export interface RepoSummary {
   issue: RepoIssue | null
   /** CR-11: ERROR = 오류 (red), WARNING = 주의 (orange), null = fine. */
   severity: "ERROR" | "WARNING" | null
+  /** WM-05: a fetch is running or about to start (받는 중). */
+  syncing: boolean
+  /** WM-05: why the fetch is waiting; FOREGROUND = starts when the app is opened. */
+  waiting: "FOREGROUND" | "STORAGE" | "WIFI" | "CHARGING" | null
   /** Whether the mirror fetches PR branches; null for local repos. */
   includePullRefs: boolean | null
 }
@@ -147,6 +151,9 @@ export interface ArchiveEntry {
 export class ApiError extends Error {
   status: number
   code: string
+  /** F-26 errors: the existing repo (ALREADY_MIRRORED) and the failure category (PROBE_FAILED). */
+  repo?: string | null
+  category?: string | null
   constructor(status: number, code: string, message: string) {
     super(message)
     this.status = status
@@ -183,6 +190,36 @@ async function getJson<T>(url: string): Promise<T> {
   const code: string = body?.error?.code ?? (res.status === 503 ? "BUSY" : "INTERNAL")
   if (code === "BUSY") throw new ApiError(503, code, "폰이 다른 요청을 처리하느라 바빠요. 잠시 뒤 다시 시도하세요.")
   throw new ApiError(res.status, code, body?.error?.message ?? `서버 오류가 났어요 (${res.status})`)
+}
+
+/**
+ * The web's only write (F-26, spec 3.1). Same-origin JSON, so the core's CSRF checks pass and a cross-site page can't
+ * send it. Errors keep the core's code; the page picks the words (lib/mirror.ts). A 401 comes back after the browser's
+ * password prompt was cancelled.
+ */
+export async function postJson<T>(path: string, body: unknown): Promise<T> {
+  let res: Response
+  try {
+    res = await fetch(apiUrl(path), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+      credentials: "same-origin",
+    })
+  } catch {
+    throw new ApiError(0, "NETWORK", "")
+  }
+  if (res.ok) return res.json() as Promise<T>
+  const err = (await res.json().catch(() => null))?.error
+  const e = new ApiError(res.status, err?.code ?? ({ 401: "UNAUTHORIZED", 429: "BLOCKED", 503: "BUSY" } as Record<number, string>)[res.status] ?? "INTERNAL", err?.message ?? "")
+  e.repo = err?.repo
+  e.category = err?.category
+  throw e
+}
+
+/** Drops cached GETs that start with this path, so the next visit asks again (the list after adding a mirror). */
+export const forget = (prefix: string) => {
+  for (const k of [...cache.keys()]) if (k.startsWith(prefix)) cache.delete(k)
 }
 
 // shortcut: in-memory LRU for the tab's lifetime, revalidated on every mount; enough for a read-only single-user browser.
@@ -271,5 +308,7 @@ export function useApi<T>(url: string | null) {
     }
   }, [url, nonce])
 
-  return { data: current.data, error: current.error, loading: !current.data && !current.error && !!url }
+  // refresh: asks again, keeping what is on screen (WM-05 polls the repo while its first fetch runs).
+  const refresh = useCallback(() => setNonce((n) => n + 1), [])
+  return { data: current.data, error: current.error, loading: !current.data && !current.error && !!url, refresh }
 }
