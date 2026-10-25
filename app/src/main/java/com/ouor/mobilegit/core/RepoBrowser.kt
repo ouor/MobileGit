@@ -1,6 +1,8 @@
 package com.ouor.mobilegit.core
 
 import kotlinx.serialization.Serializable
+import org.jsoup.Jsoup
+import org.jsoup.safety.Safelist
 import org.commonmark.ext.autolink.AutolinkExtension
 import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension
 import org.commonmark.ext.gfm.tables.TablesExtension
@@ -208,10 +210,34 @@ object RepoBrowser {
     private val mdParser = Parser.builder().extensions(listOf(TablesExtension.create(), StrikethroughExtension.create(), AutolinkExtension.create())).build()
     private val mdRenderer = HtmlRenderer.builder()
         .extensions(listOf(TablesExtension.create(), StrikethroughExtension.create(), AutolinkExtension.create()))
-        .escapeHtml(true).sanitizeUrls(true).build()
+        .escapeHtml(false).sanitizeUrls(true).build()
 
-    /** Markdown → HTML with raw HTML escaped and javascript:/data: URLs neutralized (NFR-보안). */
-    fun renderMarkdown(md: String): String = mdRenderer.render(mdParser.parse(md))
+    /**
+     * QA-04: GitHub-like safe subset of raw HTML in Markdown (headings with align, img, picture, details, tables, ...).
+     * jsoup's allowlist drops scripts, event handlers, style, iframes/forms and non-http(s)/mailto URLs; relative
+     * links stay as written so the web UI can resolve them against the file's path. No id/class except code language.
+     */
+    private val htmlSafelist: Safelist = Safelist.relaxed()
+        .addTags("details", "summary", "picture", "kbd", "samp", "var", "ins", "del", "s", "hr", "abbr", "mark")
+        .addAttributes(":all", "align", "title")
+        .addAttributes("img", "width", "height", "alt")
+        .addAttributes("td", "align", "valign", "colspan", "rowspan").addAttributes("th", "align", "valign", "colspan", "rowspan")
+        .addAttributes("details", "open").addAttributes("abbr", "title")
+        .addAttributes("code", "class")
+        .addProtocols("a", "href", "#")
+        .preserveRelativeLinks(true)
+
+    private val cleanOutput = org.jsoup.nodes.Document.OutputSettings().prettyPrint(false)
+
+    /** Markdown → HTML, then the HTML (including raw HTML blocks) is cleaned with [htmlSafelist] (NFR-보안). */
+    fun renderMarkdown(md: String): String {
+        val doc = Jsoup.parseBodyFragment(Jsoup.clean(mdRenderer.render(mdParser.parse(md)), "https://repo.invalid/", htmlSafelist, cleanOutput))
+        // class is only for code-block languages; anything else could borrow the web UI's own CSS classes
+        doc.select("code[class]").forEach { if (!codeClass.matches(it.className())) it.removeAttr("class") }
+        return doc.outputSettings(cleanOutput).body().html()
+    }
+
+    private val codeClass = Regex("language-[A-Za-z0-9_+#.-]{1,40}")
 
     fun escapeHtml(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;")
 

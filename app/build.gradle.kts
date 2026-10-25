@@ -61,6 +61,7 @@ dependencies {
     implementation(libs.commonmark.gfm.tables)
     implementation(libs.commonmark.gfm.strikethrough)
     implementation(libs.commonmark.autolink)
+    implementation(libs.jsoup)
     implementation(libs.work.runtime.ktx)
     implementation(libs.zxing.core)
     implementation(libs.slf4j.nop)

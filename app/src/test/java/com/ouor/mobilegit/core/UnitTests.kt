@@ -207,3 +207,38 @@ class TunnelManagerTest {
         scope.cancel()
     }
 }
+
+// QA-04: GitHub-like safe HTML subset in Markdown (jsoup allowlist).
+class MarkdownSanitizeTest {
+    private fun r(md: String) = RepoBrowser.renderMarkdown(md)
+
+    @Test fun safeRawHtmlIsRendered() {
+        val html = r("""<h1 align="center"><br><img src="media/logo.png" width="200" alt="logo"></h1>""" + "\n\n" +
+            "<details open><summary>More</summary>body</details>")
+        assertTrue(html, html.contains("""<h1 align="center">"""))
+        assertTrue(html, html.contains("""src="media/logo.png"""") && html.contains("""width="200""""))
+        assertTrue(html, html.contains("<details open") && html.contains("<summary>More</summary>"))
+        assertFalse(html.contains("&lt;h1"))
+    }
+
+    @Test fun dangerousHtmlIsRemoved() {
+        val html = r("""<img src="x.png" onerror="alert(1)"><script>alert(2)</script><a href="javascript:alert(3)">x</a>""" +
+            """<iframe src="https://evil"></iframe><p style="position:fixed" class="btn">y</p><form action="/x"><input></form>""" +
+            "\n\n[md](javascript:alert(4)) [rel](docs/a.md) [anchor](#usage)\n\n```kotlin\nval a = 1\n```")
+        for (bad in listOf("onerror", "<script", "alert(2)", "javascript:", "<iframe", "style=", "class=\"btn\"", "<form", "<input"))
+            assertFalse("$bad in $html", html.contains(bad))
+        assertTrue(html, html.contains("""href="docs/a.md"""") && html.contains("""href="#usage""""))
+        assertTrue(html, html.contains("""<code class="language-kotlin">"""))
+    }
+}
+
+// QA-08: each rule gives its own reason.
+class NameReasonTest {
+    @Test fun reasons() {
+        assertTrue(RepoNames.validate("-bad")!!.contains("시작"))
+        assertTrue(RepoNames.validate("a".repeat(101))!!.contains("101자"))
+        assertTrue(RepoNames.validate("foo bar")!!.contains("공백"))
+        assertTrue(RepoNames.validate("x.git")!!.contains(".git"))
+        assertNull(RepoNames.validate("ok-name_1.2"))
+    }
+}
