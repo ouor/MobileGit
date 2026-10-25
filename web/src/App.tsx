@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react"
-import { MonitorIcon, MoonIcon, SunIcon } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { CloudOffIcon, MonitorIcon, MoonIcon, RotateCwIcon, SunIcon } from "lucide-react"
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ErrorState } from "@/components/common"
-import { apiUrl, useApi, type Info } from "@/lib/api"
+import { apiUrl, reloadAll, useApi, useStaleCount, type Info } from "@/lib/api"
 import { useRoute } from "@/lib/router"
 import { Commits } from "@/pages/Commits"
 import { FileView } from "@/pages/FileView"
@@ -12,11 +13,23 @@ import { RepoTree } from "@/pages/RepoTree"
 
 export default function App() {
   const { segments, query } = useRoute()
+  const main = useRef<HTMLElement>(null)
+  const pathKey = JSON.stringify(segments)
+  const first = useRef(true)
+  // WEB-05: tabs, history and bookmarks get a name per page; after a client-side move, focus goes to the new content.
+  useEffect(() => {
+    const [, repo, view, ...rest] = JSON.parse(pathKey) as string[]
+    const path = rest.join("/")
+    document.title = repo ? `${path ? `${path} · ` : ""}${view === "commits" ? "커밋 · " : ""}${repo} · mobilegit` : "mobilegit"
+    if (first.current) first.current = false
+    else main.current?.focus({ preventScroll: true })
+  }, [pathKey])
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex min-h-svh flex-col">
         <AppHeader />
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-5 sm:px-6 sm:py-6">
+        <main ref={main} tabIndex={-1} className="mx-auto w-full max-w-6xl flex-1 px-4 py-5 outline-none sm:px-6 sm:py-6">
+          <StaleBanner />
           <Page segments={segments} query={query} />
         </main>
         <AppFooter />
@@ -36,6 +49,24 @@ function Page({ segments, query }: { segments: string[]; query: URLSearchParams 
     if (view === "commits") return <Commits repo={repo} path={path} refParam={ref} page={Math.max(1, Number(query.get("page")) || 1)} />
   }
   return <ErrorState error={{ code: "NOT_FOUND", message: "주소가 올바른지 확인하세요." }} />
+}
+
+/** WEB-03: a refresh failed but the older copy is still shown. */
+function StaleBanner() {
+  if (!useStaleCount()) return null
+  return (
+    <Alert className="mb-4">
+      <CloudOffIcon />
+      <AlertTitle>최신 내용을 받지 못했어요</AlertTitle>
+      <AlertDescription>폰에서 새 내용을 받지 못해 전에 받은 내용을 보여 주고 있어요.</AlertDescription>
+      <AlertAction>
+        <Button variant="outline" size="sm" onClick={reloadAll}>
+          <RotateCwIcon />
+          다시 시도
+        </Button>
+      </AlertAction>
+    </Alert>
+  )
 }
 
 type Theme = "light" | "dark" | "system"
@@ -104,7 +135,8 @@ function AppFooter() {
     <footer className="border-t py-4 text-center text-xs text-muted-foreground">
       mobilegit{info ? ` ${info.version}` : ""} · 웹에서는 보기만 할 수 있어요. 미러 업데이트와 레포 관리는 폰 앱에서, push는 PC의 git으로 해요.
       {info && !info.authRequired && " · 비밀번호 요구 꺼짐"}
-      {info?.anonymousRead && " · 익명 읽기 허용"}
+      {/* The setting only applies on the LAN and Tailscale; loopback and ngrok always ask (SEC-03). */}
+      {info?.anonymousRead && " · 같은 Wi-Fi·Tailscale에서는 로그인 없이 보기 허용"}
     </footer>
   )
 }

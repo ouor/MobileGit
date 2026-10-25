@@ -3,11 +3,11 @@ import { CodeIcon, DownloadIcon, ExternalLinkIcon, GitCommitHorizontalIcon, GitF
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CodeField, ErrorState, LfsBadge, LocalIcon, MirrorIcon, OriginBadge, RepoTypeBadge, Time } from "@/components/common"
 import { apiUrl, repoApi, useApi, type RepoDetail } from "@/lib/api"
 import { shortUrl } from "@/lib/format"
-import { navigate, repoHref, useRoute } from "@/lib/router"
+import { repoHref, useRoute } from "@/lib/router"
+import { cn } from "@/lib/utils"
 
 /** Clone URL relative to the host the browser used (PRD W-02), so Wi-Fi, Tailscale and ngrok all work. */
 export const cloneUrlFor = (repo: string) => `${location.origin}/${repo}.git`
@@ -111,22 +111,37 @@ export function RepoLayout({
           )}
         </div>
         {!detail.empty && (
-          <Tabs value={tab} onValueChange={(v) => navigate(v === "code" ? repoHref.tree(repo, "", ref) : repoHref.commits(repo, "", ref))}>
-            <TabsList variant="line" className="w-full justify-start border-b">
-              <TabsTrigger value="code" className="flex-none">
-                <CodeIcon />
-                코드
-              </TabsTrigger>
-              <TabsTrigger value="commits" className="flex-none">
-                <GitCommitHorizontalIcon />
-                커밋
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          // Real links, not Radix tabs: middle-click, new tab and copy-link work, and arrow keys don't navigate (WEB-09).
+          <nav aria-label="레포 화면" className="flex gap-1 border-b">
+            <TabLink href={repoHref.tree(repo, "", ref)} active={tab === "code"}>
+              <CodeIcon />
+              코드
+            </TabLink>
+            <TabLink href={repoHref.commits(repo, "", ref)} active={tab === "commits"}>
+              <GitCommitHorizontalIcon />
+              커밋
+            </TabLink>
+          </nav>
         )}
       </header>
       {children(detail)}
     </div>
+  )
+}
+
+function TabLink({ href, active, children }: { href: string; active: boolean; children: ReactNode }) {
+  return (
+    <a
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "relative -mb-px inline-flex items-center gap-1.5 border-b-2 px-2.5 pt-1 pb-2 text-sm font-medium transition-colors [&_svg]:size-4",
+        "focus-visible:rounded-sm focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+        active ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {children}
+    </a>
   )
 }
 

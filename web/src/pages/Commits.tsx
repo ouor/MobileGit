@@ -6,15 +6,21 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { CopyButton, ErrorState, ListSkeleton } from "@/components/common"
 import { PathBar } from "@/components/PathBar"
 import { RepoLayout } from "@/components/RepoLayout"
-import { apiUrl, repoApi, useApi, type Commit, type CommitPage, type RepoDetail } from "@/lib/api"
+import { apiUrl, repoApi, useApi, usePrefetch, type Commit, type CommitPage, type RepoDetail } from "@/lib/api"
 import { absoluteTime, clockTime, dayLabel, relativeTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { repoHref } from "@/lib/router"
 
 const PER_PAGE = 50
+// The server refuses pages past 1000 (400 PAGE_TOO_DEEP, GIT-09).
+const MAX_PAGE = 1000
+
+const commitsUrl = (repo: string, path: string, ref: string | null, page: number) =>
+  apiUrl(repoApi(repo, "commits"), { ref, path, page, perPage: PER_PAGE })
 
 /** W-04 */
 export function Commits({ repo, path, refParam, page }: { repo: string; path: string; refParam: string | null; page: number }) {
+  usePrefetch(commitsUrl(repo, path, refParam, page)) // in parallel with the repo detail (WEB-06)
   return (
     <RepoLayout repo={repo} tab="commits">
       {(detail) => <CommitsBody detail={detail} path={path} refParam={refParam} page={page} />}
@@ -24,7 +30,8 @@ export function Commits({ repo, path, refParam, page }: { repo: string; path: st
 
 function CommitsBody({ detail, path, refParam, page }: { detail: RepoDetail; path: string; refParam: string | null; page: number }) {
   const repo = detail.repo.name
-  const { data, error } = useApi<CommitPage>(apiUrl(repoApi(repo, "commits"), { ref: refParam, path, page, perPage: PER_PAGE }))
+  const { data, error } = useApi<CommitPage>(commitsUrl(repo, path, refParam, page))
+  const hasNext = !!data?.hasMore && page < MAX_PAGE
 
   // Group by day like GitHub/Gitea so long histories are easy to scan.
   const groups: { day: string; commits: Commit[] }[] = []
@@ -46,7 +53,13 @@ function CommitsBody({ detail, path, refParam, page }: { detail: RepoDetail; pat
         </p>
       )}
       {error ? (
-        <ErrorState error={error} />
+        <ErrorState error={error.code === "PAGE_TOO_DEEP" ? { code: error.code, message: `웹에서는 ${MAX_PAGE}페이지까지만 볼 수 있어요.` } : error}>
+          {page > 1 && (
+            <Button variant="outline" asChild>
+              <a href={repoHref.commits(repo, path, refParam)}>첫 페이지로</a>
+            </Button>
+          )}
+        </ErrorState>
       ) : !data ? (
         <ListSkeleton rows={8} />
       ) : data.commits.length === 0 ? (
@@ -58,8 +71,9 @@ function CommitsBody({ detail, path, refParam, page }: { detail: RepoDetail; pat
         </Empty>
       ) : (
         <div className="flex flex-col gap-4">
-          {groups.map((g) => (
-            <section key={g.day} className="flex flex-col gap-2">
+          {/* git log order is not strictly by date, so a day can appear twice; the index keeps keys unique (WEB-07). */}
+          {groups.map((g, i) => (
+            <section key={`${i}-${g.day}`} className="flex flex-col gap-2">
               <h2 className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                 <GitCommitHorizontalIcon className="size-4" />
                 {g.day}
@@ -73,7 +87,13 @@ function CommitsBody({ detail, path, refParam, page }: { detail: RepoDetail; pat
           ))}
         </div>
       )}
-      {data && (page > 1 || data.hasMore) && (
+      {data && (data.truncated || (data.hasMore && !hasNext)) && (
+        <p className="rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+          더 오래된 커밋도 있지만 웹에서는 여기까지만 볼 수 있어요
+          {data.truncated ? "(폰이 한 번에 훑는 양을 넘었어요)" : `(${MAX_PAGE}페이지까지)`}. 전체 기록은 PC에서 clone한 뒤 <code className="font-mono">git log</code>로 보세요.
+        </p>
+      )}
+      {data && (page > 1 || hasNext) && (
         <nav className="flex items-center justify-center gap-2" aria-label="페이지 이동">
           {page > 1 ? (
             <Button variant="outline" asChild>
@@ -89,7 +109,7 @@ function CommitsBody({ detail, path, refParam, page }: { detail: RepoDetail; pat
             </Button>
           )}
           <span className="px-2 text-sm text-muted-foreground tabular-nums">{page} 페이지</span>
-          {data.hasMore ? (
+          {hasNext ? (
             <Button variant="outline" asChild>
               <a href={repoHref.commits(repo, path, refParam, page + 1)}>
                 다음

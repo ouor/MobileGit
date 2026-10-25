@@ -8,14 +8,16 @@ import {
   FolderIcon,
   KeyRoundIcon,
   PackageIcon,
+  RotateCwIcon,
   ServerCrashIcon,
+  XIcon,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import type { ApiError, OriginStatus, RepoSummary } from "@/lib/api"
+import { reloadAll, type ApiError, type OriginStatus, type RepoSummary } from "@/lib/api"
 import { absoluteTime, relativeTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -30,8 +32,10 @@ const tone = {
 
 export function ToneBadge({ t, children, title }: { t: keyof typeof tone; children: ReactNode; title?: string }) {
   return (
-    <Badge variant="secondary" className={tone[t]} title={title}>
+    // relative z-10: lifts the badge above a row's stretched link so its title tooltip shows (WEB-12).
+    <Badge variant="secondary" className={cn("relative z-10", tone[t])} title={title}>
       {children}
+      {title && <span className="sr-only">: {title}</span>}
     </Badge>
   )
 }
@@ -89,37 +93,53 @@ export function Time({ ms, prefix }: { ms: number | null | undefined; prefix?: s
   )
 }
 
-export function CopyButton({ text, label, className }: { text: string; label: string; className?: string }) {
-  const [done, setDone] = useState(false)
-  useEffect(() => {
-    if (!done) return
-    const t = setTimeout(() => setDone(false), 1500)
-    return () => clearTimeout(t)
-  }, [done])
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text)
-    } catch {
-      // Clipboard API needs a secure context; the phone is served over plain http on the LAN.
-      const ta = document.createElement("textarea")
-      ta.value = text
-      ta.setAttribute("readonly", "")
-      ta.className = "fixed -left-[9999px]"
-      document.body.appendChild(ta)
-      ta.select()
-      document.execCommand("copy")
-      ta.remove()
-    }
-    setDone(true)
+/** Copies with the Clipboard API, or (plain http on the LAN has none) a hidden textarea. Returns whether it worked. */
+function copyText(text: string, from: HTMLElement): Promise<boolean> {
+  if (window.isSecureContext && navigator.clipboard) return navigator.clipboard.writeText(text).then(() => true, () => false)
+  // The textarea goes next to the button, not into <body>: focus leaving a popover would close it (WEB-02).
+  const ta = document.createElement("textarea")
+  ta.value = text
+  ta.setAttribute("readonly", "")
+  ta.setAttribute("aria-hidden", "true")
+  ta.className = "fixed -left-[9999px] opacity-0"
+  from.parentElement!.appendChild(ta)
+  ta.select()
+  let ok = false
+  try {
+    ok = document.execCommand("copy")
+  } catch {
+    ok = false
   }
+  ta.remove()
+  from.focus()
+  return Promise.resolve(ok)
+}
+
+export function CopyButton({ text, label, className }: { text: string; label: string; className?: string }) {
+  const [result, setResult] = useState<"ok" | "fail" | null>(null)
+  useEffect(() => {
+    if (!result) return
+    const t = setTimeout(() => setResult(null), result === "ok" ? 1500 : 4000)
+    return () => clearTimeout(t)
+  }, [result])
+  const message = result === "ok" ? "복사했어요" : result === "fail" ? "복사하지 못했어요. 글자를 직접 선택해 복사하세요" : label
   return (
-    <Tooltip>
+    <Tooltip open={result ? true : undefined}>
       <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon-sm" className={className} onClick={copy} aria-label={label}>
-          {done ? <CheckIcon className="text-emerald-600 dark:text-emerald-400" /> : <CopyIcon />}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className={className}
+          onClick={(e) => copyText(text, e.currentTarget).then((ok) => setResult(ok ? "ok" : "fail"))}
+          aria-label={label}
+        >
+          {result === "ok" ? <CheckIcon className="text-emerald-600 dark:text-emerald-400" /> : result === "fail" ? <XIcon className="text-destructive" /> : <CopyIcon />}
         </Button>
       </TooltipTrigger>
-      <TooltipContent>{done ? "복사했어요" : label}</TooltipContent>
+      <TooltipContent>{message}</TooltipContent>
+      <span className="sr-only" aria-live="polite">
+        {result ? message : ""}
+      </span>
     </Tooltip>
   )
 }
@@ -163,7 +183,13 @@ const errorTitle: Record<string, string> = {
   UNAUTHORIZED: "로그인이 필요해요",
   BLOCKED: "잠시 차단됐어요",
   NETWORK: "연결할 수 없어요",
+  FORBIDDEN: "접속할 수 없는 주소예요",
+  BUSY: "폰이 바빠요",
+  INTERNAL: "서버 오류가 났어요",
+  PAGE_TOO_DEEP: "너무 뒤 페이지예요",
 }
+// Errors that may go away on their own; these get a "다시 시도" button.
+const retryable = new Set(["NETWORK", "BUSY", "INTERNAL"])
 
 export function ErrorState({ error, children }: { error: ApiError | { code: string; message: string }; children?: ReactNode }) {
   return (
@@ -173,10 +199,20 @@ export function ErrorState({ error, children }: { error: ApiError | { code: stri
           {error.code === "NETWORK" ? <ServerCrashIcon /> : <AlertTriangleIcon />}
         </EmptyMedia>
         <EmptyTitle>{errorTitle[error.code] ?? "문제가 생겼어요"}</EmptyTitle>
-        <EmptyDescription>{error.message}</EmptyDescription>
+        <EmptyDescription>
+          {error.message}
+          {/* The server only sends an error ID for 500s; the details are in the app log (SEC-10). */}
+          {error.code === "INTERNAL" && " 계속되면 앱의 로그에서 이 오류 ID를 찾아 보세요."}
+        </EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
         <div className="flex flex-wrap justify-center gap-2">
+          {retryable.has(error.code) && (
+            <Button onClick={reloadAll}>
+              <RotateCwIcon />
+              다시 시도
+            </Button>
+          )}
           {children}
           <Button variant="outline" asChild>
             <a href="/">레포 목록으로</a>

@@ -1,10 +1,11 @@
-import { apiUrl, repoApi } from "@/lib/api"
-import { repoHref } from "@/lib/router"
+// Relative imports so `node --test` can load this file (WEB-15).
+import { apiUrl, repoApi } from "./api.ts"
+import { repoHref } from "./router.ts"
 
 const external = /^[a-z][a-z0-9+.-]*:/i
 
 /** Resolves a README-relative link against the README's directory ("/x" = repo root, like GitHub). */
-function resolve(readmePath: string, target: string) {
+export function resolve(readmePath: string, target: string) {
   const base = target.startsWith("/") ? [] : readmePath.split("/").slice(0, -1)
   for (const part of target.split("/")) {
     if (!part || part === ".") continue
@@ -19,6 +20,18 @@ function resolve(readmePath: string, target: string) {
   return base.join("/")
 }
 
+// Prefix keeps README ids from clashing with the page's own (GitHub uses the same one).
+export const HEADING_ID_PREFIX = "user-content-"
+
+/** GitHub-style heading anchor: lower case, punctuation dropped, spaces to "-". */
+export function slugify(text: string) {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}\p{N}\s_-]/gu, "")
+    .replace(/\s/g, "-")
+}
+
 /**
  * Makes server-rendered README HTML work inside the SPA: relative links open the file view,
  * relative images load from the raw API, and external images (blocked by the CSP img-src 'self')
@@ -29,8 +42,15 @@ export function rewriteReadme(html: string, repo: string, readmePath: string, re
   tpl.innerHTML = html
   for (const a of tpl.content.querySelectorAll("a[href]")) {
     const href = a.getAttribute("href")!
-    if (href.startsWith("#")) a.removeAttribute("href") // commonmark emits no heading ids, so in-page anchors lead nowhere
-    else if (external.test(href) || href.startsWith("//")) {
+    if (href.startsWith("#")) {
+      let id = href.slice(1)
+      try {
+        id = decodeURIComponent(id)
+      } catch {
+        /* keep as written */
+      }
+      a.setAttribute("href", `#${HEADING_ID_PREFIX}${id.toLowerCase()}`)
+    } else if (external.test(href) || href.startsWith("//")) {
       a.setAttribute("target", "_blank")
       a.setAttribute("rel", "noopener noreferrer")
     } else {
@@ -59,6 +79,15 @@ export function rewriteReadme(html: string, repo: string, readmePath: string, re
       img.setAttribute("src", apiUrl(repoApi(repo, "raw"), { ref, path: resolve(readmePath, src.split(/[?#]/)[0]) }))
       img.setAttribute("loading", "lazy")
     }
+  }
+  // commonmark emits no heading ids; add GitHub's so table-of-contents links work (WEB-13). Repeats get -1, -2.
+  const seen = new Map<string, number>()
+  for (const h of tpl.content.querySelectorAll("h1, h2, h3, h4, h5, h6")) {
+    const base = slugify(h.textContent ?? "")
+    if (!base) continue // e.g. a heading that is only a logo image
+    const n = seen.get(base) ?? 0
+    seen.set(base, n + 1)
+    h.id = HEADING_ID_PREFIX + (n ? `${base}-${n}` : base)
   }
   return tpl.innerHTML
 }

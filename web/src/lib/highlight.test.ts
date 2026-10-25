@@ -1,7 +1,7 @@
 // Run: npm test  (node's built-in runner with type stripping)
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { languageFor, splitHtmlLines } from "./highlight.ts"
+import { canHighlight, HIGHLIGHT_MAX_LINE_LENGTH, HIGHLIGHT_MAX_LINES, languageFor, splitHtmlLines } from "./highlight.ts"
 
 test("spans crossing newlines are closed and reopened", () => {
   const html = 'a <span class="c">/* x\ny */</span> b\n<span class="k">if</span>'
@@ -24,4 +24,10 @@ test("language detection", () => {
   assert.equal(languageFor("app/build.gradle.kts"), "kotlin")
   assert.equal(languageFor("Dockerfile"), "dockerfile")
   assert.equal(languageFor("LICENSE"), null)
+})
+
+test("huge or minified text is not highlighted", () => {
+  assert.equal(canHighlight("a\nb"), true)
+  assert.equal(canHighlight("x".repeat(HIGHLIGHT_MAX_LINE_LENGTH + 1)), false)
+  assert.equal(canHighlight("\n".repeat(HIGHLIGHT_MAX_LINES)), false)
 })

@@ -20,13 +20,16 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { BreakableText, CodeField, ErrorState, ListSkeleton, OriginBadge, Time } from "@/components/common"
 import { PathBar } from "@/components/PathBar"
 import { ClonePanel, cloneUrlFor, RepoLayout } from "@/components/RepoLayout"
-import { apiUrl, repoApi, useApi, type Readme, type RepoDetail, type Tree, type TreeEntry } from "@/lib/api"
+import { apiUrl, repoApi, useApi, usePrefetch, type Readme, type RepoDetail, type Tree, type TreeEntry } from "@/lib/api"
 import { formatBytes, shortUrl } from "@/lib/format"
 import { repoHref } from "@/lib/router"
 import { MarkdownBody } from "@/components/Markdown"
 
 /** W-02 (path = "") and W-02b (sub directory). */
+const treeUrl = (repo: string, path: string, ref: string | null) => apiUrl(repoApi(repo, "tree"), { ref, path })
+
 export function RepoTree({ repo, path, refParam }: { repo: string; path: string; refParam: string | null }) {
+  usePrefetch(treeUrl(repo, path, refParam)) // in parallel with the repo detail (WEB-06)
   return (
     <RepoLayout repo={repo} tab="code" cloneInSidebar={!path}>
       {(detail) => (detail.empty ? <EmptyRepo detail={detail} /> : <TreeBody detail={detail} path={path} refParam={refParam} />)}
@@ -37,7 +40,7 @@ export function RepoTree({ repo, path, refParam }: { repo: string; path: string;
 function TreeBody({ detail, path, refParam }: { detail: RepoDetail; path: string; refParam: string | null }) {
   const repo = detail.repo.name
   const refName = refParam ?? detail.head ?? ""
-  const { data: tree, error } = useApi<Tree>(apiUrl(repoApi(repo, "tree"), { ref: refParam, path }))
+  const { data: tree, error } = useApi<Tree>(treeUrl(repo, path, refParam))
   const isRoot = !path
 
   const main = (
@@ -219,7 +222,7 @@ function OriginAlerts({ detail }: { detail: RepoDetail }) {
         <Alert>
           <KeyRoundIcon />
           <AlertTitle>원본 인증이 필요해요</AlertTitle>
-          <AlertDescription>앱의 원격 자격 증명에서 토큰을 등록하면 다시 업데이트돼요.</AlertDescription>
+          <AlertDescription>앱에서 원본 접속 토큰을 등록하면 다시 업데이트돼요.</AlertDescription>
         </Alert>
       )}
     </>

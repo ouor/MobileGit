@@ -32,13 +32,38 @@ export function languageFor(path: string): string | null {
   return byExt[ext] ?? (ext || null)
 }
 
-/** Returns one HTML string per line, or null when the language is unknown. */
-export async function highlightLines(text: string, path: string): Promise<string[] | null> {
+// Minified or generated files: many lines or one huge line make highlighting slow and the colours useless (WEB-04).
+export const HIGHLIGHT_MAX_LINES = 5000
+export const HIGHLIGHT_MAX_LINE_LENGTH = 10000
+
+export function canHighlight(text: string) {
+  if (text.length > HIGHLIGHT_MAX_BYTES) return false
+  const lines = text.split("\n")
+  return lines.length <= HIGHLIGHT_MAX_LINES && lines.every((l) => l.length <= HIGHLIGHT_MAX_LINE_LENGTH)
+}
+
+// highlight.js runs in a worker (its own lazy chunk) so a big file doesn't freeze the tab (WEB-04).
+let worker: Worker | null = null
+let seq = 0
+
+/** Returns one HTML string per line, or null when the language is unknown or the file is not worth highlighting. */
+export function highlightLines(text: string, path: string): Promise<string[] | null> {
   const lang = languageFor(path)
-  if (!lang) return null
-  const { default: hljs } = await import("highlight.js/lib/common")
-  if (!hljs.getLanguage(lang)) return null
-  return splitHtmlLines(hljs.highlight(text, { language: lang, ignoreIllegals: true }).value)
+  if (!lang || !canHighlight(text)) return Promise.resolve(null)
+  const w = (worker ??= new Worker(new URL("./highlight.worker.ts", import.meta.url), { type: "module" }))
+  const id = ++seq
+  return new Promise((resolve) => {
+    const done = (e: Event) => {
+      const data = (e as MessageEvent<{ id: number; html: string | null }>).data
+      if (data && data.id !== id) return
+      w.removeEventListener("message", done)
+      w.removeEventListener("error", done)
+      resolve(data?.html != null ? splitHtmlLines(data.html) : null)
+    }
+    w.addEventListener("message", done)
+    w.addEventListener("error", done)
+    w.postMessage({ id, text, lang })
+  })
 }
 
 /**

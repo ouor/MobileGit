@@ -162,6 +162,10 @@
 
 /* Extras for the HTML subset the server keeps in READMEs (QA-04): details, kbd, wide tables, sized images. */
 @layer components {
+  /* Heading anchors (WEB-13) land below the sticky header. */
+  .markdown :is(h1, h2, h3, h4, h5, h6) {
+    scroll-margin-top: 4.5rem;
+  }
   .markdown details {
     @apply my-3 rounded-lg border px-4 py-2;
   }
