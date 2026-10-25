@@ -1,5 +1,7 @@
 package com.ouor.mobilegit.ui
 
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.ouor.mobilegit.R
 import android.content.Context
 import android.content.Intent
@@ -28,11 +30,16 @@ import java.util.UUID
  * F-19 export flow shared by A-07, A-09 and A-14: pick a SAF location (AC4) or share, run [ExportWorker] in the
  * background (AC5) and report the result. Observe [running] / [progress] for inline progress UI.
  */
-class ExportRunner internal constructor() {
-    internal var pending: Triple<ExportKind, List<String>, String?>? = null
+class ExportRunner internal constructor(private val savedId: MutableState<String?>, private val savedPending: MutableState<ArrayList<String>?>) {
+    /** Waiting for the SAF picker: kind, repos, ref. Saved as [kind, ref or "", repos...] so it survives process death (AND-09). */
+    internal var pending: Triple<ExportKind, List<String>, String?>?
+        get() = savedPending.value?.let { Triple(ExportKind.valueOf(it[0]), it.drop(2), it[1].ifEmpty { null }) }
+        set(v) { savedPending.value = v?.let { arrayListOf(it.first.name, it.third.orEmpty()).apply { addAll(it.second) } } }
     internal var launch: (String) -> Unit = {}
     internal var enqueue: (ExportKind, List<String>, String?, Uri?) -> Unit = { _, _, _, _ -> }
-    var workId by mutableStateOf<UUID?>(null); internal set
+    var workId: UUID?
+        get() = savedId.value?.let(UUID::fromString)
+        internal set(v) { savedId.value = v?.toString() }
     var progress by mutableStateOf<Pair<Int, Int>?>(null); internal set
     val running get() = workId != null
 
@@ -51,7 +58,9 @@ class ExportRunner internal constructor() {
 fun rememberExportRunner(): ExportRunner {
     val ctx = LocalContext.current
     val snack = LocalSnack.current
-    val runner = remember { ExportRunner() }
+    val id0 = rememberSaveable { mutableStateOf<String?>(null) }
+    val pending0 = rememberSaveable { mutableStateOf<ArrayList<String>?>(null) }
+    val runner = remember { ExportRunner(id0, pending0) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         val p = runner.pending; runner.pending = null
         if (uri != null && p != null) runner.enqueue(p.first, p.second, p.third, uri)

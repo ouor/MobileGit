@@ -104,6 +104,7 @@ class WorkScheduler(private val context: Context, private val settings: () -> Se
 enum class ExportKind { BUNDLE, SOURCE_ZIP, FULL_BACKUP }
 
 private fun progressInfo(context: Context, id: Int, title: String, text: String, progress: Int = -1): ForegroundInfo {
+    val id = Notifier.progressId(id)
     val n = NotificationCompat.Builder(context, Notifier.CH_PROGRESS).setSmallIcon(R.drawable.ic_launcher_foreground)
         .setContentTitle(title).setContentText(text).setOngoing(true).setOnlyAlertOnce(true)
         .apply { if (progress >= 0) setProgress(100, progress, false) else setProgress(0, 0, true) }.build()
@@ -121,13 +122,13 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         // AND-05: become a foreground job only once a slot and the repo lock are ours (not while queued).
         // Android 12+ may refuse when started from the background; the coordinator then defers a first fetch (GIT-08).
         core.coordinator.update(name, trigger) {
-            runCatching { setForeground(progressInfo(applicationContext, name.hashCode(), "$name 받는 중", "업데이트")) }.isSuccess
+            runCatching { setForeground(progressInfo(applicationContext, name.hashCode(), applicationContext.getString(R.string.work_fetching, name), applicationContext.getString(R.string.work_update))) }.isSuccess
         }
         return Result.success()
     }
 
     override suspend fun getForegroundInfo(): ForegroundInfo =
-        progressInfo(applicationContext, (inputData.getString(K_NAME) ?: "").hashCode(), "미러 업데이트", inputData.getString(K_NAME) ?: "")
+        progressInfo(applicationContext, (inputData.getString(K_NAME) ?: "").hashCode(), applicationContext.getString(R.string.work_mirror_update), inputData.getString(K_NAME) ?: "")
 }
 
 class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
@@ -185,7 +186,7 @@ class ExportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val repos = selected.ifEmpty { core.repos.repos.value.map { it.name } }
         val uri = inputData.getString(K_URI)?.let(Uri::parse)
         val nid = id.hashCode()
-        runCatching { setForeground(progressInfo(applicationContext, nid, "내보내기", repos.joinToString(", ").take(60))) }
+        runCatching { setForeground(progressInfo(applicationContext, nid, applicationContext.getString(R.string.notif_channel_export), repos.joinToString(", ").take(60))) }
         sweepCache(applicationContext)
         val dir = File(applicationContext.cacheDir, "exports").apply { mkdirs() }
         val now = System.currentTimeMillis()
@@ -217,7 +218,7 @@ class ExportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 // Share: needs a local file. Refuse up front when it would push free space under the floor (ARC-07).
                 val estimate = repos.sumOf { core.repos.get(it)?.sizeBytes ?: 0L }
                 if (core.env.freeBytes() - estimate < core.settings.current.storageFloorBytes)
-                    throw java.io.IOException("저장 공간이 부족해 공유용 파일을 만들 수 없습니다. 파일로 저장을 선택해 주세요.")
+                    throw java.io.IOException(applicationContext.getString(R.string.work_export_no_space))
                 val file = Exporter.toFileAtomically(File(dir, fileName), write)
                 Result.success(workDataOf(K_OUT_FILE to file.absolutePath)) // share via FileProvider
             }
@@ -226,5 +227,5 @@ class ExportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         } finally { listFile?.delete() }
     }
 
-    override suspend fun getForegroundInfo() = progressInfo(applicationContext, id.hashCode(), "내보내기", "")
+    override suspend fun getForegroundInfo() = progressInfo(applicationContext, id.hashCode(), applicationContext.getString(R.string.notif_channel_export), "")
 }

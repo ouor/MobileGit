@@ -265,6 +265,7 @@ private fun InfoTab(item: RepoListItem, export: ExportRunner, onSheet: (String) 
             val u = urls.firstOrNull()?.second ?: str(R.string.detail_035)
             CommandBlock("git clone --mirror ${u}"); Spacer(Modifier.height(Space.xs))
             CommandBlock("git fetch ${u} 'refs/archive/*:refs/archive/*'")
+            Text(str(R.string.detail_archive_readonly), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
         }
 
         Text(str(R.string.detail_036), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
@@ -304,7 +305,8 @@ private fun OriginCard(item: RepoListItem, nav: Nav, onSheet: (String) -> Unit) 
         }
         if (mir.pendingChanges > 0) InfoRow(str(R.string.detail_044), str(R.string.detail_045, mir.pendingChanges), valueTone = Tone.Info)
         mir.waitingReason.label()?.let { InfoRow(str(R.string.add_084), it, valueTone = Tone.Warning) }
-        mir.lastError?.let { InfoRow(str(R.string.detail_046), Notifier.categoryText(it) + if (mir.consecutiveFailures > 1) str(R.string.detail_047, mir.consecutiveFailures) else "", valueTone = Tone.Danger) }
+        if (mir.waitingForForeground) InfoRow(str(R.string.add_084), str(R.string.detail_waiting_foreground), valueTone = Tone.Warning)
+        mir.lastError?.let { InfoRow(str(R.string.detail_046), str(Notifier.categoryRes(it)) + if (mir.consecutiveFailures > 1) str(R.string.detail_047, mir.consecutiveFailures) else "", valueTone = Tone.Danger) }
         mir.nextRetryAt?.takeIf { it > System.currentTimeMillis() }?.let { InfoRow(str(R.string.detail_048), dateTime(it)) }
         if (mir.originStatus == OriginStatus.AUTH_REQUIRED) {
             Spacer(Modifier.height(Space.sm))
@@ -415,9 +417,9 @@ private fun EventRow(e: SyncEvent) {
             }
             val summary = buildList {
                 if (e.refChanges.isNotEmpty()) add(str(R.string.detail_079, e.refChanges.size))
-                if (e.newCommitCount > 0) add(str(R.string.detail_080, e.newCommitCount))
+                if (e.newCommitCount > 0) add(str(R.string.detail_080, if (e.newCommitCount >= 10000) "10000+" else e.newCommitCount.toString()))
                 if (e.archivedRefCount > 0) add(str(R.string.detail_081, e.archivedRefCount))
-                e.errorCategory?.let { add(Notifier.categoryText(it)) }
+                e.errorCategory?.let { add(str(Notifier.categoryRes(it))) }
                 e.waitingReason?.label()?.let { add(it) }
                 add(str(R.string.detail_082, dateTime(e.startedAt), "%.1f".format(e.durationMs / 1000.0)))
             }
@@ -520,7 +522,7 @@ private fun ForkDialog(m: RepoMeta, nav: Nav, onDismiss: () -> Unit) {
     var newName by remember { mutableStateOf("${m.name}-local") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    val nameErr = if (mode == ForkMode.COPY) RepoNames.validate(newName) ?: if (core.repos.exists(newName)) str(R.string.add_005) else null else null
+    val nameErr = if (mode == ForkMode.COPY) RepoNames.validate(newName) ?: if (core.repos.exists(newName)) str(R.string.add_005) else if (core.repos.damaged.value.any { it.name.equals(newName, true) }) str(R.string.add_name_damaged) else null else null
     ConfirmDialog(
         str(R.string.detail_002), str(R.string.detail_093), if (busy) str(R.string.detail_094) else str(R.string.detail_095),
         onConfirm = {

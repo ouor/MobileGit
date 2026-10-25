@@ -1,5 +1,9 @@
 package com.ouor.mobilegit.ui.screens
 
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import com.ouor.mobilegit.R
 import com.ouor.mobilegit.ui.str
 import android.Manifest
@@ -138,6 +142,7 @@ fun CredentialsScreen(prefillHost: String?, nav: Nav) {
 @Composable
 private fun CredentialDialog(existing: RemoteCredential?, host0: String?, onDismiss: () -> Unit) {
     val core = core()
+    val scope = rememberCoroutineScope()
     val snack = LocalSnack.current
     var host by remember { mutableStateOf(existing?.host ?: host0 ?: "") }
     var user by remember { mutableStateOf(existing?.username ?: "") }
@@ -158,10 +163,14 @@ private fun CredentialDialog(existing: RemoteCredential?, host0: String?, onDism
         }
     }, confirmButton = {
         TextButton(enabled = ok, onClick = {
-            runCatching {
-                if (existing == null) core.credentials.add(host, token, user, label.trim())
-                else core.credentials.update(existing.id, token.ifBlank { null }, user, label.trim())
-            }.onSuccess { snack(str(R.string.manage_023)); onDismiss() }.onFailure { err = it.message }
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        if (existing == null) core.credentials.add(host, token, user, label.trim())
+                        else core.credentials.update(existing.id, token.ifBlank { null }, user, label.trim())
+                    }
+                }.onSuccess { snack(str(R.string.manage_023)); onDismiss() }.onFailure { err = it.message }
+            }
         }) { Text(str(R.string.manage_024)) }
     }, dismissButton = { TextButton(onClick = onDismiss) { Text(str(R.string.common_023)) } })
 }

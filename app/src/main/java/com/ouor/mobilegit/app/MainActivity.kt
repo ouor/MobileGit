@@ -34,7 +34,9 @@ class MainActivity : ComponentActivity() {
 
     private fun routeFor(intent: Intent?): String? {
         if (intent == null) return null
-        if (intent.action == Intent.ACTION_SEND) return intent.getStringExtra(Intent.EXTRA_TEXT)?.let { Routes.add(it) }
+        // AND-19: another app may share hundreds of KB; keep only URL candidates, bounded (TransactionTooLargeException)
+        if (intent.action == Intent.ACTION_SEND) return intent.getStringExtra(Intent.EXTRA_TEXT)
+            ?.let { com.ouor.mobilegit.core.RemoteUrls.extractCandidates(it.take(64 * 1024)).take(200).joinToString("\n") }?.takeIf { it.isNotEmpty() }?.let { Routes.add(it) }
         val repo = intent.getStringExtra(Notifier.EXTRA_REPO)
         return when (intent.getStringExtra(Notifier.EXTRA_TARGET)) {
             "repo" -> repo?.let { Routes.repo(it) }

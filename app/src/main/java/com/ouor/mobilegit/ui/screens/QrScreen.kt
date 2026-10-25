@@ -1,5 +1,9 @@
 package com.ouor.mobilegit.ui.screens
 
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.ImageBitmap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.ouor.mobilegit.ui.breakable
 import com.ouor.mobilegit.ui.components.copyText
 import androidx.compose.material3.OutlinedButton
@@ -73,7 +77,8 @@ fun QrScreen(repo: String?, nav: Nav) {
     var kind by rememberSaveable { mutableStateOf<AddressKind?>(null) }
     val addr = addrs.firstOrNull { it.kind == kind } ?: addrs.firstOrNull()
     val url = addr?.let { if (repo == null) it.baseUrl + "/" else it.cloneUrl(repo) }
-    val qr = remember(url) { url?.let { QrCodes.bitmap(it, 768).asImageBitmap() } }
+    // AND-17: 768px encode off the main thread
+    val qr by produceState<ImageBitmap?>(null, url) { value = url?.let { withContext(Dispatchers.Default) { QrCodes.bitmap(it, 768).asImageBitmap() } } }
 
     DisposableEffect(Unit) {
         val w = (ctx as? Activity)?.window
@@ -94,13 +99,14 @@ fun QrScreen(repo: String?, nav: Nav) {
             Text(if (repo == null) str(R.string.qr_001) else str(R.string.qr_002, repo), color = Color(0xFF191F28), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             IconButton(onClick = nav::back) { Icon(Icons.Outlined.Close, str(R.string.common_005), tint = Color(0xFF191F28)) }
         }
-        if (url == null || qr == null) {
+        if (url == null) {
             Spacer(Modifier.height(80.dp))
             Text(str(R.string.qr_003), color = Color(0xFF4E5968), textAlign = TextAlign.Center)
             return@Column
         }
         Spacer(Modifier.height(Space.lg))
-        Image(qr, str(R.string.qr_004, url), Modifier.fillMaxWidth().widthIn(max = 420.dp).aspectRatio(1f), filterQuality = FilterQuality.None)
+        val qrMod = Modifier.fillMaxWidth().widthIn(max = 420.dp).aspectRatio(1f)
+        qr?.let { Image(it, str(R.string.qr_004, url), qrMod, filterQuality = FilterQuality.None) } ?: androidx.compose.foundation.layout.Box(qrMod)
         Spacer(Modifier.height(Space.lg))
         Text(breakable(url), color = Color(0xFF191F28), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = when { url.length > 40 -> 16.sp; url.length > 24 -> 20.sp; else -> 26.sp },
             lineHeight = 30.sp, textAlign = TextAlign.Center)

@@ -420,7 +420,7 @@ fun RepoRow(item: RepoListItem, onClick: () -> Unit, onUpdate: (() -> Unit)?) {
                 Spacer(Modifier.width(Space.md))
                 Column(Modifier.weight(1f)) {
                     Text(m.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    val whenText = if (mirror) m.mirror?.lastSuccessUpdateAt?.let { str(R.string.common_016, ago(it)) } ?: str(R.string.common_017) else m.lastPushAt?.let { "push ${ago(it)}" } ?: str(R.string.common_018)
+                    val whenText = if (mirror && m.mirror?.waitingForForeground == true) str(R.string.detail_waiting_foreground_short) else if (mirror) m.mirror?.lastSuccessUpdateAt?.let { str(R.string.common_016, ago(it)) } ?: str(R.string.common_017) else m.lastPushAt?.let { "push ${ago(it)}" } ?: str(R.string.common_018)
                     Text("${if (mirror) str(R.string.common_014) else str(R.string.common_019)} · ${whenText} · ${bytes(m.sizeBytes)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                     if (item.badges.isNotEmpty()) BadgeRow(item.badges, Modifier.padding(top = Space.xs + Space.xxs))
                     item.progress?.let { p ->

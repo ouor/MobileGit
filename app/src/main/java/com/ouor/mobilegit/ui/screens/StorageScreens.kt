@@ -1,5 +1,6 @@
 package com.ouor.mobilegit.ui.screens
 
+import com.ouor.mobilegit.ui.theme.CodeText
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.RadioButton
@@ -82,6 +83,8 @@ fun StorageScreen(nav: Nav) {
     var tick by remember { mutableIntStateOf(0) }
     var floorDialog by remember { mutableStateOf(false) }
     val summary by produceState<StorageSummary?>(null, repos, tick) { value = withContext(Dispatchers.IO) { core.storageSummary() } }
+    val damaged by core.repos.damaged.collectAsStateWithLifecycle()
+    val issues = remember(damaged) { core.storageIssues() }
 
     AppScaffold(str(R.string.main_007), onBack = nav::back, actions = {
         IconButton(onClick = { measuring = true; scope.launch { core.refreshSizes(); measuring = false; tick++ } }, enabled = !measuring) { Icon(Icons.Outlined.Refresh, str(R.string.storage_001)) }
@@ -89,6 +92,26 @@ fun StorageScreen(nav: Nav) {
         val s = summary
         if (s == null) { Box(Modifier.padding(padding)) { Loading() }; return@AppScaffold }
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(horizontal = Space.screen, vertical = Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+            // CR-8: files the app could not read at startup; originals were kept, nothing was overwritten
+            if (issues.isNotEmpty()) item(key = "issues") {
+                SectionCard(title = str(R.string.storage_damaged_title)) {
+                    Text(str(R.string.storage_damaged_body), style = MaterialTheme.typography.bodyMedium)
+                    issues.filter { i -> damaged.none { it.issue == i } }.forEach { i ->
+                        val f = java.io.File(i.file).name
+                        Text(when {
+                            f.startsWith("settings") -> str(R.string.storage_damaged_settings)
+                            f.startsWith("credentials") -> str(R.string.storage_damaged_credentials)
+                            else -> f
+                        }, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = Space.md))
+                        i.preservedAs?.let { Text(str(R.string.storage_damaged_kept, it), style = CodeText.small, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                    damaged.forEach { d ->
+                        Text(str(R.string.storage_damaged_repo, d.name), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = Space.md))
+                        Text(d.path, style = CodeText.small, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(str(R.string.storage_damaged_repo_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
             item {
                 SectionCard {
                     Text(str(R.string.storage_002), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

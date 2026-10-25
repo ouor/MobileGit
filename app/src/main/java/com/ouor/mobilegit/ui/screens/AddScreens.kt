@@ -1,5 +1,6 @@
 package com.ouor.mobilegit.ui.screens
 
+import androidx.compose.material.icons.outlined.Shield
 import com.ouor.mobilegit.ui.components.AdvancedSection
 import androidx.compose.material.icons.outlined.Check
 import com.ouor.mobilegit.ui.theme.tone
@@ -144,6 +145,8 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
     var text by rememberSaveable { mutableStateOf(initialText?.let { RemoteUrls.extractCandidates(it).joinToString("\n") } ?: "") }
     var name by rememberSaveable { mutableStateOf("") }
     var nameEdited by rememberSaveable { mutableStateOf(false) }
+    // SEC-05: text from another app is not contacted until the user says so
+    var confirmed by rememberSaveable { mutableStateOf(initialText == null) }
     var credId by rememberSaveable { mutableStateOf<String?>(null) }
     val settings by core.settings.state.collectAsStateWithLifecycle()
     val addrs by core.network.addresses.collectAsStateWithLifecycle()
@@ -169,18 +172,18 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
     }
     val url = preview?.normalized?.url
     val host = preview?.normalized?.host
-    LaunchedEffect(url, credId) {
+    LaunchedEffect(url, credId, confirmed) {
         probe = null
-        if (url == null || preview?.existing != null) return@LaunchedEffect
+        if (url == null || preview?.existing != null || !confirmed) return@LaunchedEffect
         probing = true
         probe = withContext(Dispatchers.IO) { runCatching { core.mirrors.probe(url, credId) }.getOrElse { ProbeResult.Failed(com.ouor.mobilegit.core.ErrorCategory.NETWORK, it.message.orEmpty()) } }
         probing = false
     }
 
-    val nameError = if (name.isBlank()) null else RepoNames.validate(name) ?: if (core.repos.exists(name)) str(R.string.add_005) else null
+    val nameError = if (name.isBlank()) null else RepoNames.validate(name) ?: if (core.repos.exists(name)) str(R.string.add_005) else if (core.repos.damaged.value.any { it.name.equals(name, true) }) str(R.string.add_name_damaged) else null
     val lowSpace = free != null && free.first < free.second
     val multi = candidates.size > 1
-    val canAdd = !busy && !lowSpace && when {
+    val canAdd = !busy && !lowSpace && confirmed && when {
         multi -> true
         else -> url != null && preview?.existing == null && name.isNotBlank() && nameError == null
     }
@@ -217,6 +220,9 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
             )
             if (lowSpace) Banner(Tone.Danger, Icons.Outlined.SdCardAlert, str(R.string.add_012), str(R.string.add_013, bytes(free!!.first), bytes(free.second)))
             error?.let { ErrorState(it) }
+            if (!confirmed && candidates.isNotEmpty()) Banner(Tone.Info, Icons.Outlined.Info, str(R.string.add_shared_title), str(R.string.add_shared_body),
+                actionLabel = str(R.string.add_shared_confirm), onAction = { confirmed = true })
+            if (candidates.any { it.startsWith("http://", ignoreCase = true) }) Banner(Tone.Warning, Icons.Outlined.Shield, str(R.string.add_http_title), str(R.string.add_http_body))
 
             if (multi) {
                 SectionCard(title = str(R.string.add_014, candidates.size)) {
@@ -244,7 +250,7 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
                             Spacer(Modifier.size(Space.sm))
                             CredentialPicker(creds.filter { it.host == host }, credId, { credId = it }, host) { nav.go(Routes.credentials(host)) }
                         }
-                        ProbeView(probing, probe, pullOn) { nav.go(Routes.credentials(host)) }
+                        if (confirmed) ProbeView(probing, probe, pullOn) { nav.go(Routes.credentials(host)) }
                         if ((probe as? ProbeResult.Reachable)?.pullRefCount?.let { it > 0 } == true || includePull != null) AdvancedSection {
                             com.ouor.mobilegit.ui.components.RowGroup {
                                 com.ouor.mobilegit.ui.components.SwitchRow(str(R.string.add_026), pullOn, { v -> includePull = if (v == settings.mirrorPullRefs) null else v },
@@ -272,7 +278,7 @@ private fun ProbeView(probing: Boolean, probe: ProbeResult?, includePull: Boolea
             actionLabel = str(R.string.add_036), onAction = onAddToken)
         probe is ProbeResult.NotFound -> Banner(Tone.Danger, Icons.Outlined.CloudOff, str(R.string.add_037), str(R.string.add_038),
             actionLabel = str(R.string.add_036), onAction = onAddToken)
-        probe is ProbeResult.Failed -> Banner(Tone.Danger, Icons.Outlined.ErrorOutline, Notifier.categoryText(probe.category), probe.detail.take(300) + str(R.string.add_039))
+        probe is ProbeResult.Failed -> Banner(Tone.Danger, Icons.Outlined.ErrorOutline, str(Notifier.categoryRes(probe.category)), probe.detail.take(300) + str(R.string.add_039))
     }
 }
 
@@ -485,7 +491,7 @@ fun CreateRepoScreen(nav: Nav) {
     var desc by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    val nameError = if (name.isEmpty()) null else RepoNames.validate(name) ?: if (core.repos.exists(name)) str(R.string.add_005) else null
+    val nameError = if (name.isEmpty()) null else RepoNames.validate(name) ?: if (core.repos.exists(name)) str(R.string.add_005) else if (core.repos.damaged.value.any { it.name.equals(name, true) }) str(R.string.add_name_damaged) else null
     AppScaffold(str(R.string.add_087), onBack = nav::back, bottomBar = {
         BottomAction(str(R.string.add_088), enabled = name.isNotBlank() && nameError == null, loading = busy, onClick = {
             busy = true; error = null

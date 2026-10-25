@@ -144,8 +144,8 @@ class ServerController(private val context: Context, private val core: () -> Cor
         val port = c.settings.current.port
         val s = when (val r = c.gitServer.start(port)) {
             is ServerStartResult.Started -> ServerState.Running(r.port)
-            is ServerStartResult.PortInUse -> ServerState.Failed(true, "포트 ${r.port} 사용 중")
-            is ServerStartResult.Failed -> ServerState.Failed(false, "서버를 시작하지 못했어요", detail = r.message)
+            is ServerStartResult.PortInUse -> ServerState.Failed(true, context.getString(R.string.server_port_in_use, r.port))
+            is ServerStartResult.Failed -> ServerState.Failed(false, context.getString(R.string.server_start_failed), detail = r.message)
         }
         if (s is ServerState.Failed) c.settings.update { it.copy(serverEnabled = false) }
         else androidx.core.app.NotificationManagerCompat.from(context).cancel(Notifier.ID_SERVER_BLOCKED)
@@ -168,7 +168,7 @@ class ServerController(private val context: Context, private val core: () -> Cor
 
     /** The foreground service could not be (re)started from the background. Keeps serverEnabled so [resumeIfBlocked] retries. */
     internal fun blockedInBackground(e: Throwable) {
-        _state.value = ServerState.Failed(false, "앱이 업데이트되었거나 백그라운드에 있어서 서버를 다시 켜지 못했어요. 앱을 열면 다시 켜져요.",
+        _state.value = ServerState.Failed(false, context.getString(R.string.server_blocked_background),
             ServerFailure.BACKGROUND_START_BLOCKED, e.message)
         Notifier.serverBlocked(context)
     }
@@ -213,7 +213,7 @@ class ServerService : Service() {
         if (intent == null && !core.settings.current.serverEnabled) { stopSelf(startId); return START_NOT_STICKY }
         // AND-01: no foreground service, no server. A server in a cached (freezable) process would look "running"
         // while being unreachable, and its locks would leak.
-        if (!startInForeground(buildNotification("서버 시작 중…", null))) {
+        if (!startInForeground(buildNotification(getString(R.string.server_notif_starting), null))) {
             if (!ctl.desiredUp) stopSelf(startId)
             return START_NOT_STICKY
         }
@@ -257,20 +257,20 @@ class ServerService : Service() {
                     val token = c.settings.ngrokAuthtoken()
                     when {
                         on && token != null && c.gitServer.ngrokPort > 0 -> c.tunnel.start(token, c.gitServer.ngrokPort)
-                        on && c.settings.current.hasNgrokToken && token == null -> c.tunnel.unusableToken("저장된 authtoken을 읽을 수 없습니다. 설정에서 다시 입력해 주세요.")
+                        on && c.settings.current.hasNgrokToken && token == null -> c.tunnel.unusableToken(getString(R.string.tunnel_token_unreadable))
                         else -> c.tunnel.stop()
                     }
                 }
             }
             launch {
                 combine(c.network.addresses, c.tunnel.state) { a, t -> a to t }.collect { (addrs, t) ->
-                    val primary = addrs.firstOrNull()?.baseUrl ?: "접속 가능한 네트워크 없음"
+                    val primary = addrs.firstOrNull()?.baseUrl ?: getString(R.string.server_notif_no_network)
                     val ngrok = when (t) {
                         TunnelState.Off -> null
                         is TunnelState.Connected -> "ngrok: ${t.publicUrl}"
-                        is TunnelState.Connecting -> "ngrok: 연결 중"
-                        is TunnelState.Retrying -> "ngrok: 재연결 대기 (${t.reason})"
-                        is TunnelState.TokenRejected -> "ngrok: 토큰 확인 필요"
+                        is TunnelState.Connecting -> getString(R.string.server_notif_ngrok_connecting)
+                        is TunnelState.Retrying -> getString(R.string.server_notif_ngrok_retrying, t.reason)
+                        is TunnelState.TokenRejected -> getString(R.string.server_notif_ngrok_token)
                     }
                     getSystemService(android.app.NotificationManager::class.java).notify(Notifier.ID_SERVER, buildNotification(primary, ngrok))
                 }
@@ -281,11 +281,11 @@ class ServerService : Service() {
     private fun buildNotification(text: String, ngrok: String?): Notification {
         val stop = PendingIntent.getService(this, 1, Intent(this, ServerService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, Notifier.CH_SERVER).setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle(if (ngrok != null) "mobilegit 서버 (외부 공개 중)" else "mobilegit 서버 실행 중")
+            .setContentTitle(getString(if (ngrok != null) R.string.server_notif_title_public else R.string.server_notif_title))
             .setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(listOfNotNull(text, ngrok).joinToString("\n")))
             .setOngoing(true).setOnlyAlertOnce(true)
             .setContentIntent(Notifier.openApp(this, null, "main", 0))
-            .addAction(0, "서버 끄기", stop).build()
+            .addAction(0, getString(R.string.server_notif_stop), stop).build()
     }
 
     /**

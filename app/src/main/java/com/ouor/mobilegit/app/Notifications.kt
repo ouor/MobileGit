@@ -35,11 +35,11 @@ class Notifier(private val context: Context, private val notifyOnSuccess: () -> 
         fun createChannels(context: Context) {
             val nm = context.getSystemService(NotificationManager::class.java)
             nm.createNotificationChannels(listOf(
-                NotificationChannel(CH_SERVER, "서버 상태", NotificationManager.IMPORTANCE_LOW),
-                NotificationChannel(CH_FAILURE, "동기화 실패", NotificationManager.IMPORTANCE_DEFAULT),
-                NotificationChannel(CH_SUCCESS, "업데이트 완료", NotificationManager.IMPORTANCE_LOW),
-                NotificationChannel(CH_PROGRESS, "백그라운드 작업", NotificationManager.IMPORTANCE_MIN),
-                NotificationChannel(CH_EXPORT, "내보내기", NotificationManager.IMPORTANCE_LOW),
+                NotificationChannel(CH_SERVER, context.getString(R.string.notif_channel_server), NotificationManager.IMPORTANCE_LOW),
+                NotificationChannel(CH_FAILURE, context.getString(R.string.notif_channel_failure), NotificationManager.IMPORTANCE_DEFAULT),
+                NotificationChannel(CH_SUCCESS, context.getString(R.string.notif_channel_success), NotificationManager.IMPORTANCE_LOW),
+                NotificationChannel(CH_PROGRESS, context.getString(R.string.notif_channel_progress), NotificationManager.IMPORTANCE_MIN),
+                NotificationChannel(CH_EXPORT, context.getString(R.string.notif_channel_export), NotificationManager.IMPORTANCE_LOW),
             ))
         }
 
@@ -57,8 +57,8 @@ class Notifier(private val context: Context, private val notifyOnSuccess: () -> 
             if (!canPost(context)) return
             NotificationManagerCompat.from(context).notify(ID_SERVER_BLOCKED, NotificationCompat.Builder(context, CH_SERVER)
                 .setSmallIcon(R.drawable.ic_launcher_foreground)
-                .setContentTitle("mobilegit 서버가 꺼져 있어요")
-                .setContentText("앱을 열면 서버가 다시 켜져요.")
+                .setContentTitle(context.getString(R.string.notif_server_blocked_title))
+                .setContentText(context.getString(R.string.notif_server_blocked_body))
                 .setContentIntent(openApp(context, null, "main", ID_SERVER_BLOCKED))
                 .setAutoCancel(true).build())
         }
@@ -66,33 +66,41 @@ class Notifier(private val context: Context, private val notifyOnSuccess: () -> 
         fun canPost(context: Context) = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED ||
             android.os.Build.VERSION.SDK_INT < 33
 
-        fun categoryText(c: ErrorCategory?) = when (c) {
-            ErrorCategory.NETWORK -> "네트워크 오류"
-            ErrorCategory.AUTH_REQUIRED -> "인증 필요"
-            ErrorCategory.ORIGIN_GONE -> "원본 없음"
-            ErrorCategory.STORAGE_FULL -> "저장 공간 부족"
-            ErrorCategory.REMOTE_ERROR -> "원격 오류"
-            ErrorCategory.TIMEOUT -> "시간 초과"
-            null -> "알 수 없는 오류"
+        fun categoryRes(c: ErrorCategory?) = when (c) {
+            ErrorCategory.NETWORK -> R.string.error_network
+            ErrorCategory.AUTH_REQUIRED -> R.string.error_auth_required
+            ErrorCategory.ORIGIN_GONE -> R.string.error_origin_gone
+            ErrorCategory.STORAGE_FULL -> R.string.error_storage_full
+            ErrorCategory.REMOTE_ERROR -> R.string.error_remote
+            ErrorCategory.TIMEOUT -> R.string.error_timeout
+            null -> R.string.error_unknown
         }
+
+        /** AND-18: event notifications use this tag so their hash IDs never replace [ID_SERVER] / [ID_SERVER_BLOCKED]. */
+        const val TAG_EVENT = "event"
+
+        /** Foreground-progress IDs (WorkManager has no tag): bit 16 set, so never 1 or 2. */
+        fun progressId(seed: Int) = seed or 0x10000
     }
 
     @Suppress("MissingPermission")
     override fun notify(notice: SyncNotice) {
         if (!canPost(context)) return
+        val g: (Int) -> String = { context.getString(it) }
         val (channel, title, text, target) = when (notice.kind) {
-            NoticeKind.FAILED -> Quad(CH_FAILURE, "${notice.repo}: 동기화 실패", categoryText(notice.category), "repo")
-            NoticeKind.ORIGIN_GONE -> Quad(CH_FAILURE, "${notice.repo}: 원본 없음", "원본에 접근할 수 없습니다. 이 미러가 남은 사본일 수 있습니다. 내보내기를 권장합니다.", "repo")
-            NoticeKind.AUTH_REQUIRED -> Quad(CH_FAILURE, "${notice.repo}: 인증 필요", "원격 자격 증명을 확인해 주세요.", "credentials")
-            NoticeKind.ARCHIVED -> Quad(CH_FAILURE, "${notice.repo}: force-push/삭제 감지", "${notice.count}개 ref를 보존했습니다.", "repo")
-            NoticeKind.RECOVERED -> Quad(CH_FAILURE, "${notice.repo}: 복구됨", "동기화가 다시 정상입니다.", "repo")
-            NoticeKind.UPDATED -> if (notifyOnSuccess()) Quad(CH_SUCCESS, "${notice.repo}: 업데이트 완료", "새 변경을 받았습니다.", "repo") else return
+            NoticeKind.FAILED -> Quad(CH_FAILURE, g(R.string.notif_failed_title).format(notice.repo), g(categoryRes(notice.category)), "repo")
+            NoticeKind.ORIGIN_GONE -> Quad(CH_FAILURE, g(R.string.notif_origin_gone_title).format(notice.repo), g(R.string.notif_origin_gone_body), "repo")
+            NoticeKind.AUTH_REQUIRED -> Quad(CH_FAILURE, g(R.string.notif_auth_title).format(notice.repo), g(R.string.notif_auth_body), "credentials")
+            NoticeKind.ARCHIVED -> Quad(CH_FAILURE, g(R.string.notif_archived_title).format(notice.repo), g(R.string.notif_archived_body).format(notice.count), "repo")
+            NoticeKind.RECOVERED -> Quad(CH_FAILURE, g(R.string.notif_recovered_title).format(notice.repo), g(R.string.notif_recovered_body), "repo")
+            NoticeKind.UPDATED -> if (notifyOnSuccess()) Quad(CH_SUCCESS, g(R.string.notif_updated_title).format(notice.repo), g(R.string.notif_updated_body), "repo") else return
         }
-        val id = (notice.repo + notice.kind).hashCode()
+        // requestCode shares the ID space of the server notifications' PendingIntents, so keep it off 0..2 too
+        val id = progressId((notice.repo + notice.kind).hashCode())
         val n = NotificationCompat.Builder(context, channel).setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title).setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setAutoCancel(true).setContentIntent(openApp(context, notice.repo, target, id)).build()
-        NotificationManagerCompat.from(context).notify(id, n)
+        NotificationManagerCompat.from(context).notify(TAG_EVENT, id, n)
     }
 
     private data class Quad(val a: String, val b: String, val c: String, val d: String)

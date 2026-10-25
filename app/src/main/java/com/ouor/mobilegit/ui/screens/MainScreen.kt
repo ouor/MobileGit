@@ -1,5 +1,9 @@
 package com.ouor.mobilegit.ui.screens
 
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material.icons.outlined.ExpandLess
@@ -133,9 +137,15 @@ fun MainScreen(nav: Nav) {
     var addSheet by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<String?>(null) }
 
-    val lowStorage by produceState(false) {
-        while (true) { value = withContext(Dispatchers.IO) { core.env.freeBytes() < core.settings.current.storageFloorBytes }; delay(30_000) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lowStorage by produceState(false, lifecycle) {
+        // AND-17: poll only while the screen is visible
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) { value = withContext(Dispatchers.IO) { core.env.freeBytes() < core.settings.current.storageFloorBytes }; delay(30_000) }
+        }
     }
+    val damagedRepos by core.repos.damaged.collectAsStateWithLifecycle()
+    val damagedState = remember(damagedRepos) { core.storageIssues() }
     var resumeTick by remember { mutableIntStateOf(0) }
     LifecycleResumeEffect(Unit) { resumeTick++; onPauseOrDispose { } }
     val batteryHint = remember(resumeTick, settings.batteryHintDismissedAt) { BatteryHelper.shouldShowHint(ctx, settings.batteryHintDismissedAt) }
@@ -177,6 +187,10 @@ fun MainScreen(nav: Nav) {
             if (settings.ngrokEnabled) item(key = "ngrok") {
                 Banner(Tone.Danger, Icons.Outlined.Public, tunnelTitle(tunnel, server is ServerState.Running), tunnelText(tunnel, server is ServerState.Running), detail = tunnelDetail(tunnel),
                     actionLabel = str(R.string.main_011), onAction = { core.settings.update { it.copy(ngrokEnabled = false) }; snack(str(R.string.main_012)) })
+            }
+            if (damagedState.isNotEmpty()) item(key = "damaged") {
+                Banner(Tone.Danger, Icons.Outlined.ErrorOutline, str(R.string.main_damaged_title), str(R.string.main_damaged_body),
+                    actionLabel = str(R.string.main_damaged_action), onAction = { nav.go(Routes.STORAGE) })
             }
             if (lowStorage) item(key = "storage") {
                 Banner(Tone.Danger, Icons.Outlined.SdCardAlert, str(R.string.main_013), str(R.string.main_014),
