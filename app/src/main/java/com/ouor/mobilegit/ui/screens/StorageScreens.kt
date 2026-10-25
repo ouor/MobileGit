@@ -1,5 +1,7 @@
 package com.ouor.mobilegit.ui.screens
 
+import androidx.compose.foundation.layout.size
+import com.ouor.mobilegit.ui.screens.ExportWarning
 import com.ouor.mobilegit.ui.theme.CodeText
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
@@ -87,7 +89,6 @@ fun StorageScreen(nav: Nav) {
     val issues = remember(damaged) { core.storageIssues() }
 
     AppScaffold(str(R.string.main_storage), onBack = nav::back, actions = {
-        IconButton(onClick = { measuring = true; scope.launch { core.refreshSizes(); measuring = false; tick++ } }, enabled = !measuring) { Icon(Icons.Outlined.Refresh, str(R.string.storage_remeasure)) }
     }) { padding ->
         val s = summary
         if (s == null) { Box(Modifier.padding(padding)) { Loading() }; return@AppScaffold }
@@ -127,10 +128,15 @@ fun StorageScreen(nav: Nav) {
                         Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.outline)
                     }
                     Text(str(R.string.storage_floor_value, bytes(s.floorBytes)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    s.reposBySize.mapNotNull { it.sizeMeasuredAt }.minOrNull()?.let {
-                        Text(str(R.string.storage_measured_once, ago(it)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.xs))
+                    Row(Modifier.padding(top = Space.xs), verticalAlignment = Alignment.CenterVertically) {
+                        val at = s.reposBySize.mapNotNull { it.sizeMeasuredAt }.minOrNull()
+                        Text(if (measuring) str(R.string.storage_remeasuring) else at?.let { str(R.string.storage_measured_once, ago(it)) } ?: str(R.string.detail_size_unmeasured),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                        if (measuring) androidx.compose.material3.CircularProgressIndicator(Modifier.padding(Space.sm).size(18.dp), strokeWidth = 2.dp)
+                        else androidx.compose.material3.TextButton(onClick = { measuring = true; scope.launch { core.refreshSizes(); measuring = false; tick++ } }) {
+                            Icon(Icons.Outlined.Refresh, null, Modifier.size(18.dp)); Spacer(Modifier.width(Space.xs)); Text(str(R.string.storage_remeasure))
+                        }
                     }
-                    if (measuring) Text(str(R.string.storage_remeasuring), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 }
             }
             if (s.belowFloor) item {
@@ -198,6 +204,8 @@ fun BackupScreen(nav: Nav) {
                     else LinearProgressIndicator(Modifier.fillMaxWidth().padding(bottom = Space.xs))
                     Text(p?.let { str(R.string.backup_progress, it.first, it.second) } ?: str(R.string.backup_preparing), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = Space.sm))
                 }
+                ExportWarning()
+                Spacer(Modifier.height(Space.sm))
                 Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
                     SecondaryButton(str(R.string.export_share), Modifier.weight(1f).height(54.dp), enabled = chosen.isNotEmpty() && !export.running) { export.start(ExportKind.FULL_BACKUP, chosen.map { it.name }, toFile = false) }
                     PrimaryButton(if (export.running) str(R.string.backup_running) else str(R.string.export_save_file), Modifier.weight(1f), enabled = chosen.isNotEmpty() && !export.running) {

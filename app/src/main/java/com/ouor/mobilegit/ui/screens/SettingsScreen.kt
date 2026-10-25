@@ -1,5 +1,12 @@
 package com.ouor.mobilegit.ui.screens
 
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.NotificationsOff
+import com.ouor.mobilegit.core.TunnelState
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.Icon
 import com.ouor.mobilegit.ui.components.AdvancedSection
 import com.ouor.mobilegit.ui.components.SectionCard
 import com.ouor.mobilegit.ui.theme.tone
@@ -83,8 +90,19 @@ fun SettingsScreen(nav: Nav) {
     val tunnel by core.tunnel.state.collectAsStateWithLifecycle()
     val server by core.server.state.collectAsStateWithLifecycle()
     val creds by core.credentials.items.collectAsStateWithLifecycle()
+    var resumeTick by remember { mutableIntStateOf(0) }
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) { resumeTick++; onPauseOrDispose { } }
+    val notifOk = remember(resumeTick) { androidx.core.app.NotificationManagerCompat.from(ctx).areNotificationsEnabled() }
     var dialog by remember { mutableStateOf<String?>(null) }
+    var pendingLevel by remember { mutableIntStateOf(0) }
     val running = server is ServerState.Running
+    fun setAuthLevel(l: Int) = core.settings.update { it.copy(authEnabled = l != 2, anonymousReadOnLan = l == 1) }
+    fun turnNgrokOn() = when {
+        !s.hasNgrokToken -> { snack(str(R.string.settings_ngrok_need_token)); dialog = "token" }
+        authLevel(s) != 0 -> dialog = "riskFromNgrok" // R2-06 AC1
+        s.ngrokWarningAccepted -> core.settings.update { it.copy(ngrokEnabled = true) }
+        else -> dialog = "ngrokWarn"
+    }
 
     AppScaffold(str(R.string.main_settings), onBack = nav::back) { padding ->
         ScreenColumn(padding) {
@@ -98,20 +116,23 @@ fun SettingsScreen(nav: Nav) {
                 Divider()
                 Column(Modifier.padding(horizontal = Space.lg, vertical = Space.md)) {
                     Text(str(R.string.settings_auth), style = MaterialTheme.typography.bodyLarge)
-                    val level = when { s.ngrokEnabled -> 0; !s.authEnabled -> 2; s.anonymousReadOnLan -> 1; else -> 0 }
-                    Text(if (s.ngrokEnabled) str(R.string.settings_auth_forced_ngrok) else listOf(str(R.string.settings_auth_all_sub), str(R.string.settings_auth_push_sub), str(R.string.settings_auth_off_sub))[level],
+                    val level = authLevel(s)
+                    Text(listOf(str(R.string.settings_auth_all_sub), str(R.string.settings_auth_push_sub), str(R.string.settings_auth_off_sub))[level],
                         style = MaterialTheme.typography.bodySmall, color = if (level == 2) tone(Tone.Danger).content else MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (s.exposedWithoutPassword) ExposedMark()
                     Spacer(Modifier.height(Space.sm))
                     val opts = listOf(str(R.string.settings_auth_all), str(R.string.settings_auth_push), str(R.string.settings_auth_off))
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                         opts.forEachIndexed { i, label ->
                             SegmentedButton(level == i, {
-                                when (i) {
-                                    0 -> core.settings.update { it.copy(authEnabled = true, anonymousReadOnLan = false) }
-                                    1 -> core.settings.update { it.copy(authEnabled = true, anonymousReadOnLan = true) }
-                                    else -> if (s.authEnabled) dialog = "authOff"
+                                when {
+                                    i == level -> Unit
+                                    i == 0 -> setAuthLevel(0)
+                                    s.ngrokEnabled -> { pendingLevel = i; dialog = "riskFromAuth" } // R2-06 AC2
+                                    i == 1 -> setAuthLevel(1)
+                                    else -> dialog = "authOff"
                                 }
-                            }, SegmentedButtonDefaults.itemShape(i, opts.size), enabled = !s.ngrokEnabled) { Text(label, maxLines = 1) }
+                            }, SegmentedButtonDefaults.itemShape(i, opts.size)) { Text(label, maxLines = 1) }
                         }
                     }
                 }
@@ -133,33 +154,16 @@ fun SettingsScreen(nav: Nav) {
                 }
             }
 
-            SectionHeader(str(R.string.settings_ngrok_title))
-            RowGroup {
-                SwitchRow(str(R.string.settings_ngrok_switch), s.ngrokEnabled, { on ->
-                    when {
-                        !on -> core.settings.update { it.copy(ngrokEnabled = false) }
-                        !s.hasNgrokToken -> { snack(str(R.string.settings_ngrok_need_token)); dialog = "token" }
-                        s.ngrokWarningAccepted -> core.settings.update { it.copy(ngrokEnabled = true) }
-                        else -> dialog = "ngrokWarn"
-                    }
-                }, subtitle = if (s.ngrokEnabled) tunnelText(tunnel, running) else str(R.string.settings_ngrok_sub))
-                Divider()
-                NavRow("authtoken", { dialog = "token" }, value = if (s.hasNgrokToken) str(R.string.settings_ngrok_token_set) else str(R.string.fmt_none), subtitle = str(R.string.settings_ngrok_token_note))
+            SectionCard(title = str(R.string.settings_lost_title)) {
+                listOf(R.string.settings_lost_storage, R.string.settings_lost_no_lock, R.string.settings_lost_tokens, R.string.settings_lost_revoke).forEach {
+                    Text("• " + str(it), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = Space.xxs))
+                }
             }
 
             SectionHeader(str(R.string.settings_sync))
             RowGroup {
-                Column(Modifier.padding(horizontal = Space.lg, vertical = Space.md)) {
-                    Text(str(R.string.settings_check_interval), style = MaterialTheme.typography.bodyLarge)
-                    Text(str(R.string.settings_check_interval_sub), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(Space.sm))
-                    val opts = listOf(1, 6, 12, 24)
-                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                        opts.forEachIndexed { i, h ->
-                            SegmentedButton(s.checkIntervalHours == h, { core.settings.setCheckIntervalHours(h) }, SegmentedButtonDefaults.itemShape(i, opts.size)) { Text(str(R.string.settings_hours, h)) }
-                        }
-                    }
-                }
+                NavRow(str(R.string.settings_sync_summary, s.checkIntervalHours, autoUpdateText(s)), { dialog = "interval" }, icon = Icons.Outlined.Schedule,
+                    subtitle = str(R.string.settings_check_interval_sub))
                 Divider()
                 SwitchRow(str(R.string.settings_auto_update), s.autoUpdate, { v -> core.settings.update { it.copy(autoUpdate = v) } }, subtitle = str(R.string.settings_auto_update_sub))
                 Divider()
@@ -177,6 +181,13 @@ fun SettingsScreen(nav: Nav) {
             }
 
             SectionHeader(str(R.string.settings_notifications))
+            if (!notifOk) Banner(Tone.Warning, Icons.Outlined.NotificationsOff, str(R.string.notif_off_title), str(R.string.notif_off_body),
+                actionLabel = str(R.string.notif_off_action), onAction = { openNotificationSettings(ctx) })
+            SectionCard(title = str(R.string.settings_notify_list_title)) {
+                listOf(R.string.settings_notify_failed, R.string.settings_notify_origin_gone, R.string.settings_notify_token, R.string.settings_notify_history, R.string.settings_notify_recovered).forEach {
+                    Text("• " + str(it), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = Space.xxs))
+                }
+            }
             RowGroup {
                 SwitchRow(str(R.string.settings_notify_success), s.notifyOnSuccess, { v -> core.settings.update { it.copy(notifyOnSuccess = v) } }, subtitle = str(R.string.settings_notify_success_sub))
                 Divider()
@@ -206,6 +217,17 @@ fun SettingsScreen(nav: Nav) {
                 Divider()
                 NavRow(str(R.string.settings_licenses), { dialog = "licenses" }, icon = Icons.Outlined.Public)
             }
+            Text(str(R.string.unsupported_line), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = Space.sm))
+
+            AdvancedSection(title = str(R.string.settings_ngrok_title) + " · " + ngrokStatus(s.ngrokEnabled, tunnel, running)) {
+                if (s.exposedWithoutPassword) ExposedMark()
+                RowGroup {
+                    SwitchRow(str(R.string.settings_ngrok_switch), s.ngrokEnabled, { on -> if (on) turnNgrokOn() else core.settings.update { it.copy(ngrokEnabled = false) } },
+                        subtitle = if (s.ngrokEnabled) tunnelText(tunnel, running) else str(R.string.settings_ngrok_sub))
+                    Divider()
+                    NavRow("authtoken", { dialog = "token" }, value = if (s.hasNgrokToken) str(R.string.settings_ngrok_token_set) else str(R.string.fmt_none), subtitle = str(R.string.settings_ngrok_token_note))
+                }
+            }
         }
     }
 
@@ -221,6 +243,23 @@ fun SettingsScreen(nav: Nav) {
             if (it.isBlank()) core.settings.update { st -> st.copy(ngrokEnabled = false) }
             snack(if (it.isBlank()) str(R.string.cred_deleted) else str(R.string.settings_ngrok_token_saved))
         }
+        "interval" -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text(str(R.string.settings_check_interval)) }, text = {
+            Column {
+                listOf(1, 6, 12, 24).forEach { h ->
+                    Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable(role = androidx.compose.ui.semantics.Role.RadioButton) { core.settings.setCheckIntervalHours(h); dialog = null },
+                        verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.RadioButton(s.checkIntervalHours == h, null, Modifier.padding(Space.sm)); Text(str(R.string.settings_every_hours, h))
+                    }
+                }
+                Text(str(R.string.settings_auto_update_where), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
+            }
+        }, confirmButton = { TextButton(onClick = { dialog = null }) { Text(str(R.string.common_close)) } })
+        "riskFromNgrok" -> RiskDialog(level = authLevel(s), safeLabel = str(R.string.risk_safe_auth_on), onDismiss = { dialog = null },
+            onSafe = { core.settings.update { it.copy(authEnabled = true, anonymousReadOnLan = false, ngrokEnabled = true, ngrokWarningAccepted = true) }; dialog = null },
+            onProceed = { core.settings.update { it.copy(ngrokEnabled = true, ngrokWarningAccepted = true) }; dialog = null })
+        "riskFromAuth" -> RiskDialog(level = pendingLevel, safeLabel = str(R.string.risk_safe_ngrok_off), onDismiss = { dialog = null },
+            onSafe = { val l = pendingLevel; core.settings.update { it.copy(ngrokEnabled = false, authEnabled = l != 2, anonymousReadOnLan = l == 1) }; dialog = null },
+            onProceed = { setAuthLevel(pendingLevel); dialog = null })
         "authOff" -> ConfirmDialog(str(R.string.settings_auth_off_title), str(R.string.settings_auth_off_body), str(R.string.settings_auth_off_confirm),
             destructive = true, onConfirm = { core.settings.update { it.copy(authEnabled = false) }; dialog = null }, onDismiss = { dialog = null })
         "ngrokWarn" -> ConfirmDialog(
@@ -232,6 +271,49 @@ fun SettingsScreen(nav: Nav) {
             Text(LICENSES, style = MaterialTheme.typography.bodySmall)
         }, confirmButton = { TextButton(onClick = { dialog = null }) { Text(str(R.string.common_close)) } })
     }
+}
+
+private fun authLevel(s: com.ouor.mobilegit.core.Settings) = when { !s.authEnabled -> 2; s.anonymousReadOnLan -> 1; else -> 0 }
+
+private fun autoUpdateText(s: com.ouor.mobilegit.core.Settings) = when {
+    !s.autoUpdate -> str(R.string.settings_auto_off)
+    s.updateWifiOnly && s.updateChargingOnly -> str(R.string.settings_auto_wifi_charging)
+    s.updateWifiOnly -> str(R.string.settings_auto_wifi)
+    s.updateChargingOnly -> str(R.string.settings_auto_charging)
+    else -> str(R.string.settings_auto_always)
+}
+
+private fun ngrokStatus(on: Boolean, t: TunnelState, running: Boolean) = when {
+    !on -> str(R.string.settings_ngrok_status_off)
+    running && (t is TunnelState.TokenRejected || t is TunnelState.Retrying) -> str(R.string.settings_ngrok_status_failed)
+    else -> str(R.string.settings_ngrok_status_on)
+}
+
+/** R2-06 AC3: shown next to both settings while the combination is saved. */
+@Composable
+private fun ExposedMark() {
+    Row(Modifier.padding(vertical = Space.xs), verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Outlined.LockOpen, null, Modifier.size(16.dp), tint = tone(Tone.Danger).content); Spacer(Modifier.width(Space.xs))
+        Text(str(R.string.main_exposed_no_password), style = MaterialTheme.typography.labelLarge, color = tone(Tone.Danger).content)
+    }
+}
+
+/**
+ * R2-06: password-less + ngrok. Cancel is the default (filled), the safe alternative is next, "그래도 진행" last and
+ * in the danger color. Only that last button saves the risky combination.
+ */
+@Composable
+private fun RiskDialog(level: Int, safeLabel: String, onDismiss: () -> Unit, onSafe: () -> Unit, onProceed: () -> Unit) {
+    AlertDialog(onDismissRequest = onDismiss, icon = { Icon(Icons.Outlined.LockOpen, null, tint = tone(Tone.Danger).content) },
+        title = { Text(str(R.string.risk_title)) },
+        text = { Text(str(if (level == 2) R.string.risk_body_off else R.string.risk_body_push_only)) },
+        confirmButton = {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Space.xs)) {
+                androidx.compose.material3.Button(onClick = onDismiss, Modifier.fillMaxWidth()) { Text(str(R.string.common_cancel)) }
+                androidx.compose.material3.OutlinedButton(onClick = onSafe, Modifier.fillMaxWidth()) { Text(safeLabel) }
+                TextButton(onClick = onProceed, Modifier.fillMaxWidth()) { Text(str(R.string.risk_proceed), color = tone(Tone.Danger).content) }
+            }
+        })
 }
 
 /** CR-2: turning PR refs off deletes already-fetched ones on the next update, without archiving. */

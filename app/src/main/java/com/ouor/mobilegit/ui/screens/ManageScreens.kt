@@ -1,5 +1,9 @@
 package com.ouor.mobilegit.ui.screens
 
+import com.ouor.mobilegit.ui.Routes
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -101,6 +105,7 @@ fun CredentialsScreen(prefillHost: String?, nav: Nav) {
     var editing by remember { mutableStateOf<RemoteCredential?>(null) }
     var adding by rememberSaveable { mutableStateOf(prefillHost != null) }
     var deleting by remember { mutableStateOf<RemoteCredential?>(null) }
+    var shown by rememberSaveable { mutableStateOf<String?>(null) }
 
     AppScaffold(str(R.string.cred_picker_label), onBack = nav::back, floatingActionButton = {
         ExtendedFloatingActionButton(onClick = { adding = true }, icon = { Icon(Icons.Outlined.Add, null) }, text = { Text(str(R.string.probe_add_token)) }, shape = MaterialTheme.shapes.large)
@@ -121,7 +126,12 @@ fun CredentialsScreen(prefillHost: String?, nav: Nav) {
                             Text("${c.host} · ${c.username ?: str(R.string.cred_default_user, CredentialStore.defaultUser(c.host))}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Row(Modifier.padding(top = Space.xs), horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
                                 Pill("${c.tokenPrefix}••••", Tone.Neutral)
-                                Pill(if (used > 0) str(R.string.cred_used_by, used) else str(R.string.cred_unused), if (used > 0) Tone.Info else Tone.Neutral)
+                                Pill(if (used > 0) str(R.string.cred_used_by, used) else str(R.string.cred_unused), if (used > 0) Tone.Info else Tone.Neutral,
+                                    modifier = if (used > 0) Modifier.clip(RoundedCornerShape(50)).clickable(onClickLabel = str(R.string.cred_show_mirrors)) { shown = if (shown == c.id) null else c.id } else Modifier)
+                            }
+                            if (shown == c.id) repos.filter { it.mirror?.credentialId == c.id }.forEach { r ->
+                                Text(r.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(top = Space.xs).clip(MaterialTheme.shapes.extraSmall).clickable { nav.go(Routes.repo(r.name)) })
                             }
                         }
                         IconButton(onClick = { editing = c }) { Icon(Icons.Outlined.Edit, str(R.string.cred_edit_named, c.host)) }

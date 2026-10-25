@@ -1,5 +1,7 @@
 package com.ouor.mobilegit.ui.screens
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.outlined.Shield
 import com.ouor.mobilegit.ui.components.AdvancedSection
 import androidx.compose.material.icons.outlined.Check
@@ -119,6 +121,7 @@ fun CredentialPicker(creds: List<RemoteCredential>, selected: String?, onSelect:
     val sel = creds.firstOrNull { it.id == selected }
     fun label(c: RemoteCredential) = (c.label.ifBlank { c.host }) + " · ${c.tokenPrefix}••••"
     val auto = if (host != null && creds.any { it.host == host }) str(R.string.cred_auto_first, host) else str(R.string.cred_none_public)
+    Column {
     ExposedDropdownMenuBox(expanded = open, onExpandedChange = { open = it }) {
         OutlinedTextField(
             value = sel?.let(::label) ?: auto, onValueChange = {}, readOnly = true, label = { Text(str(R.string.cred_picker_label)) },
@@ -130,6 +133,8 @@ fun CredentialPicker(creds: List<RemoteCredential>, selected: String?, onSelect:
             creds.forEach { c -> DropdownMenuItem(text = { Text(label(c)) }, onClick = { open = false; onSelect(c.id) }) }
             DropdownMenuItem(text = { Text(str(R.string.cred_add_menu), color = MaterialTheme.colorScheme.primary) }, onClick = { open = false; onAdd() })
         }
+    }
+    Text(str(R.string.cred_storage_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.xs))
     }
 }
 
@@ -251,6 +256,7 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
                             CredentialPicker(creds.filter { it.host == host }, credId, { credId = it }, host) { nav.go(Routes.credentials(host)) }
                         }
                         if (confirmed) ProbeView(probing, probe, pullOn) { nav.go(Routes.credentials(host)) }
+                        Text(str(if (pullOn) R.string.add_scope_with_pull else R.string.add_scope), style = MaterialTheme.typography.bodyMedium)
                         if ((probe as? ProbeResult.Reachable)?.pullRefCount?.let { it > 0 } == true || includePull != null) AdvancedSection {
                             com.ouor.mobilegit.ui.components.RowGroup {
                                 com.ouor.mobilegit.ui.components.SwitchRow(str(R.string.mirror_pull_refs), pullOn, { v -> includePull = if (v == settings.mirrorPullRefs) null else v },
@@ -376,13 +382,14 @@ fun BulkMirrorScreen(nav: Nav) {
             list?.let { l ->
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = Space.sm)) {
+                        Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                         FilterChip(noForks, { noForks = !noForks }, { Text(str(R.string.bulk_hide_forks)) }, leadingIcon = if (noForks) ({ Icon(Icons.Outlined.Check, null, Modifier.size(18.dp)) }) else null)
                         Spacer(Modifier.width(Space.sm))
                         FilterChip(noArchived, { noArchived = !noArchived }, { Text(str(R.string.bulk_hide_archived)) }, leadingIcon = if (noArchived) ({ Icon(Icons.Outlined.Check, null, Modifier.size(18.dp)) }) else null)
-                        Spacer(Modifier.weight(1f))
+                        }
                         val allOn = selectable.isNotEmpty() && selectable.all { it.cloneUrl in selected }
                         TextButton(onClick = { if (allOn) selected.removeAll(selectable.map { it.cloneUrl }) else selectable.forEach { if (it.cloneUrl !in selected) selected += it.cloneUrl } }) {
-                            Text(if (allOn) str(R.string.bulk_select_none) else str(R.string.bulk_select_all))
+                            Text(if (allOn) str(R.string.bulk_select_none) else str(R.string.bulk_select_all), maxLines = 1, softWrap = false)
                         }
                     }
                     Text(str(R.string.bulk_shown_count, l.size, visible.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

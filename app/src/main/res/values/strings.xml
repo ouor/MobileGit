@@ -235,7 +235,7 @@
     <string name="main_search_clear">검색어 지우기</string>
 
     <!-- manage -->
-    <string name="cred_intro">비공개 레포를 미러할 때 쓰는 토큰이에요. Android Keystore로 암호화해 저장하고, 화면에는 앞 4자리만 보여요. 백업에는 넣지 않아요.</string>
+    <string name="cred_intro">비공개 레포를 미러할 때 쓰는 토큰이에요. 토큰은 이 폰 안에만 Android 키스토어로 암호화해 저장해요. 백업에는 넣지 않아요. 화면에는 앞 4자리만 보여요.</string>
     <string name="cred_empty_title">저장된 토큰이 없어요</string>
     <string name="cred_empty_body">공개 레포는 토큰 없이도 미러할 수 있어요.</string>
     <string name="cred_default_user">%1$s (기본)</string>
@@ -457,7 +457,7 @@
     <string name="settings_ngrok_token_note">암호화해 저장하고 내보내기에 넣지 않아요</string>
     <string name="settings_sync">동기화</string>
     <string name="settings_check_interval">변경 확인 주기</string>
-    <string name="settings_check_interval_sub">바뀐 게 있는지만 봐서 데이터가 적게 들어요</string>
+    <string name="settings_check_interval_sub">바뀐 게 있는지만 봐서 데이터가 적게 들어요. 눌러서 주기를 바꿔요</string>
     <string name="settings_hours">%1$s시간</string>
     <string name="settings_auto_update">자동 업데이트</string>
     <string name="settings_auto_update_sub">변경이 있으면 이어서 받아요. 끄면 배지만 붙어요</string>
@@ -567,7 +567,7 @@
     <string name="settings_sec_wifi">와이파이</string>
     <string name="settings_sec_wifi_body">암호화되지 않아요. 같은 와이파이의 다른 기기가 비밀번호를 엿볼 수 있어요</string>
     <string name="settings_sec_ts_body">암호화돼서 안전해요</string>
-    <string name="settings_sec_ngrok_body">암호화되지만 인터넷의 누구나 접속을 시도할 수 있어요</string>
+    <string name="settings_sec_ngrok_body">암호화되지만 인터넷의 누구나 접속을 시도할 수 있어요. 비밀번호 요구를 “읽기·쓰기”로 두세요</string>
     <string name="storage_floor_change">최소 여유 공간 바꾸기</string>
     <string name="storage_floor_body">남은 공간이 이 값보다 적으면 자동 업데이트와 새 미러 받기를 멈춰요.</string>
     <string name="storage_measured_once">레포 용량은 %1$s 기준이에요</string>
@@ -714,4 +714,40 @@
     <string name="archive_committed">커밋 %1$s</string>
     <string name="archive_current">지금 원본 %1$s</string>
     <string name="archive_current_gone">원본에 없음</string>
+    <string name="cred_storage_note">토큰은 이 폰 안에만 Android 키스토어로 암호화해 저장해요. 백업에는 넣지 않아요.</string>
+    <string name="cred_show_mirrors">쓰는 미러 보기</string>
+    <string name="add_scope">모든 브랜치·태그 받기 · PR 브랜치 제외 · Git LFS 파일과 서브모듈은 받지 않아요</string>
+    <string name="add_scope_with_pull">모든 브랜치·태그와 PR 브랜치 받기 · Git LFS 파일과 서브모듈은 받지 않아요</string>
+    <string name="unsupported_line">지원하지 않는 것: SSH, Git LFS 파일, 이슈·PR·위키</string>
+    <string name="settings_lost_title">이 폰을 잃어버렸을 때</string>
+    <string name="settings_lost_storage">레포는 앱 내부 저장소에 있고, 폰 잠금과 기기 암호화로 보호돼요.</string>
+    <string name="settings_lost_no_lock">앱 자체 잠금은 없어요.</string>
+    <string name="settings_lost_tokens">토큰은 키스토어로 암호화돼 있어요.</string>
+    <string name="settings_lost_revoke">폰을 잃어버렸다면 원본 서비스(GitHub 등)에서 토큰을 폐기하세요.</string>
+    <string name="settings_sync_summary">변경 확인: %1$d시간마다 · 자동 업데이트: %2$s</string>
+    <string name="settings_every_hours">%1$d시간마다</string>
+    <string name="settings_auto_update_where">자동 업데이트 조건은 아래 스위치에서 바꿔요.</string>
+    <string name="settings_auto_off">꺼짐</string>
+    <string name="settings_auto_wifi_charging">와이파이·충전 중에만</string>
+    <string name="settings_auto_wifi">와이파이에서만</string>
+    <string name="settings_auto_charging">충전 중에만</string>
+    <string name="settings_auto_always">항상</string>
+    <string name="settings_notify_list_title">이럴 때 알려 드려요</string>
+    <string name="settings_notify_failed">업데이트 실패</string>
+    <string name="settings_notify_origin_gone">원본 없음</string>
+    <string name="settings_notify_token">토큰 확인 필요</string>
+    <string name="settings_notify_history">히스토리 바뀜 (보존 기록 생김)</string>
+    <string name="settings_notify_recovered">실패에서 복구됨</string>
+    <string name="settings_ngrok_status_off">꺼짐</string>
+    <string name="settings_ngrok_status_on">켜짐</string>
+    <string name="settings_ngrok_status_failed">실패</string>
+    <string name="risk_title">비밀번호 없이 외부에 공개할까요?</string>
+    <string name="risk_body_push_only">비밀번호 없이 외부에 공개하면 주소를 아는 인터넷의 누구나 레포를 읽을 수 있어요.</string>
+    <string name="risk_body_off">비밀번호 없이 외부에 공개하면 주소를 아는 인터넷의 누구나 레포를 읽을 수 있어요. 비밀번호가 꺼져 있어 push도 할 수 있어요.</string>
+    <string name="risk_safe_auth_on">비밀번호 요구 켜고 공개</string>
+    <string name="risk_safe_ngrok_off">외부 공개 끄고 바꾸기</string>
+    <string name="risk_proceed">그래도 진행</string>
+    <string name="export_saved_where">%2$s 폴더에 %1$s 파일로 저장했어요. 암호화되지 않은 파일이에요</string>
+    <string name="export_saved_name">%1$s 파일로 저장했어요. 암호화되지 않은 파일이에요</string>
+    <string name="export_shared_done">공유받은 앱으로 그대로 전달했어요. 암호화되지 않은 파일이에요</string>
 </resources>

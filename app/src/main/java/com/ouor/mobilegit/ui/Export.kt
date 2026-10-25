@@ -60,6 +60,7 @@ fun rememberExportRunner(): ExportRunner {
     val snack = LocalSnack.current
     val id0 = rememberSaveable { mutableStateOf<String?>(null) }
     val pending0 = rememberSaveable { mutableStateOf<ArrayList<String>?>(null) }
+    val savedUri = rememberSaveable { mutableStateOf<String?>(null) }
     val runner = remember { ExportRunner(id0, pending0) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         val p = runner.pending; runner.pending = null
@@ -68,6 +69,7 @@ fun rememberExportRunner(): ExportRunner {
     runner.launch = { picker.launch(it) }
     runner.enqueue = { kind, repos, ref, uri ->
         runner.progress = null
+        savedUri.value = uri?.toString()
         runner.workId = MobileGitApp.core(ctx).scheduler.enqueueExport(kind, repos, ref, uri)
         snack(str(R.string.export_started))
     }
@@ -82,7 +84,10 @@ fun rememberExportRunner(): ExportRunner {
                 WorkInfo.State.SUCCEEDED -> {
                     runner.workId = null
                     val file = info.outputData.getString(ExportWorker.K_OUT_FILE)
-                    if (file != null) share(ctx, File(file)) else snack(str(R.string.export_saved))
+                    // R2-10 AC2: say where the (unencrypted) file went
+                    if (file != null) { share(ctx, File(file)); snack(str(R.string.export_shared_done)) }
+                    else snack(savedUri.value?.let { savedText(ctx, Uri.parse(it)) } ?: str(R.string.export_saved))
+                    savedUri.value = null
                 }
                 WorkInfo.State.FAILED -> { runner.workId = null; snack(str(R.string.export_failed, info.outputData.getString(ExportWorker.K_ERROR) ?: str(R.string.export_unknown_error))) }
                 WorkInfo.State.CANCELLED -> { runner.workId = null; snack(str(R.string.export_cancelled)) }
@@ -92,6 +97,16 @@ fun rememberExportRunner(): ExportRunner {
     }
     return runner
 }
+
+/** "파일 이름 · 폴더" for a SAF document. The folder only comes from path-like document ids (e.g. "primary:Download/x"). */
+private fun savedText(ctx: Context, uri: Uri): String? = runCatching {
+    val name = ctx.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+        if (c.moveToFirst()) c.getString(0) else null
+    } ?: return null
+    val path = android.provider.DocumentsContract.getDocumentId(uri).substringAfter(':', "")
+    val folder = path.substringBeforeLast('/', "").takeIf { path.contains('/') && !path.startsWith("msf") }
+    if (folder != null) str(R.string.export_saved_where, name, folder) else str(R.string.export_saved_name, name)
+}.getOrNull()
 
 private fun share(ctx: Context, file: File) {
     val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.files", file)
