@@ -129,6 +129,26 @@ fun breakable(s: String): String = buildString {
     }
 }
 
+/** F-26 WM-06 AC1: a rejected web request's API code (spec 3.1) in words; an unknown code is shown as is. */
+fun rejectReason(code: String): String = when (code) {
+    "EXTERNAL_NOT_ALLOWED" -> str(R.string.reject_external_not_allowed)
+    "CROSS_SITE" -> str(R.string.reject_cross_site)
+    "BAD_REQUEST" -> str(R.string.reject_bad_request)
+    "TOKEN_NOT_ACCEPTED" -> str(R.string.reject_token_not_accepted)
+    "MULTIPLE_URLS" -> str(R.string.reject_multiple_urls)
+    "UNSUPPORTED_URL" -> str(R.string.reject_unsupported_url)
+    "HTTPS_ONLY" -> str(R.string.reject_https_only)
+    "ALREADY_MIRRORED" -> str(R.string.reject_already_mirrored)
+    "INVALID_NAME" -> str(R.string.reject_invalid_name)
+    "NAME_TAKEN" -> str(R.string.reject_name_taken)
+    "STORAGE_LOW" -> str(R.string.reject_storage_low)
+    "BUSY" -> str(R.string.reject_busy)
+    "TOKEN_REQUIRED" -> str(R.string.reject_token_required)
+    "ORIGIN_NOT_FOUND" -> str(R.string.reject_origin_not_found)
+    "PROBE_FAILED" -> str(R.string.reject_probe_failed)
+    else -> code
+}
+
 /** "3일째", "5시간째", "방금부터": how long something has been going on. */
 fun running(since: Long, now: Long = System.currentTimeMillis()): String {
     val h = (now - since).coerceAtLeast(0) / 3_600_000

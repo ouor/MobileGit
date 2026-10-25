@@ -313,6 +313,8 @@ private fun OriginCard(item: RepoListItem, nav: Nav, onSheet: (String) -> Unit) 
     SectionCard(title = str(R.string.mirror_origin), trailing = { if (mir.originStatus != OriginStatus.OK) Pill(statusText, statusTone) }) {
         AddressBar(str(R.string.detail_origin_url), mir.remoteUrl)
         Spacer(Modifier.height(Space.sm))
+        // WM-06 AC2: only the web is worth calling out; app-made mirrors are the normal case
+        if (m.createdBy == CreatedBy.WEB) InfoRow(str(R.string.detail_created_by), str(R.string.detail_created_web) + " · " + dateTime(m.createdAt))
         val sameTime = mir.lastCheckAt != null && mir.lastCheckAt == mir.lastSuccessUpdateAt
         if (sameTime) InfoRow(str(R.string.detail_checked_updated), clock(mir.lastCheckAt!!))
         else {
@@ -400,7 +402,7 @@ private fun LocalInfoCard(m: RepoMeta) {
     var open by remember { mutableStateOf(false) }
     SectionCard(title = str(R.string.detail_tab_info)) {
         InfoRow(str(R.string.detail_last_push), m.lastPushAt?.let { "${clock(it)} · ${m.lastPushIp ?: str(R.string.detail_ip_unknown)}" } ?: str(R.string.detail_not_yet))
-        InfoRow(str(R.string.detail_created_by), when (m.createdBy) { CreatedBy.PUSH -> str(R.string.detail_created_push); CreatedBy.APP_EMPTY -> str(R.string.detail_created_app); CreatedBy.FORK -> str(R.string.detail_created_fork); else -> str(R.string.common_kind_mirror) } + " · ${dateTime(m.createdAt)}")
+        InfoRow(str(R.string.detail_created_by), when (m.createdBy) { CreatedBy.PUSH -> str(R.string.detail_created_push); CreatedBy.APP_EMPTY -> str(R.string.detail_created_app); CreatedBy.FORK -> str(R.string.detail_created_fork); CreatedBy.WEB -> str(R.string.detail_created_web); else -> str(R.string.common_kind_mirror) } + " · ${dateTime(m.createdAt)}")
         m.forkedFromUrl?.let { InfoRow(str(R.string.detail_forked_from), "${it}\n${dateTime(m.forkedAt)}") }
     }
     if (branches.isNotEmpty()) AdvancedSection {

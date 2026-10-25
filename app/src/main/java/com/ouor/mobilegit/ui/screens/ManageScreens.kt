@@ -1,5 +1,6 @@
 package com.ouor.mobilegit.ui.screens
 
+import com.ouor.mobilegit.ui.rejectReason
 import com.ouor.mobilegit.ui.uniqueKeys
 import com.ouor.mobilegit.ui.Routes
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -92,6 +93,7 @@ import com.ouor.mobilegit.ui.style
 import com.ouor.mobilegit.ui.theme.CodeText
 import com.ouor.mobilegit.ui.theme.Space
 import com.ouor.mobilegit.ui.theme.Tone
+import com.ouor.mobilegit.ui.theme.tone
 import com.ouor.mobilegit.ui.time
 
 // ---------------- A-11 원격 자격 증명 ----------------
@@ -287,6 +289,8 @@ private fun AccessRow(e: com.ouor.mobilegit.core.AccessLogEntry) {
                 Pill(al, at)
                 Pill("${e.status}", if (e.status >= 400) Tone.Danger else Tone.Neutral)
             }
+            // WM-06 AC1: why the server said no (web mirror add)
+            e.code?.let { Text(str(R.string.log_rejected, rejectReason(it)), style = MaterialTheme.typography.bodySmall, color = tone(Tone.Danger).content, modifier = Modifier.padding(top = Space.xs)) }
         }
     }
 }
