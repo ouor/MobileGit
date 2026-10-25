@@ -35,7 +35,7 @@ F-01..F-25 코어 로직은 모두 구현됐다. API 목록은 `spec.md` 1절에
 
 Go 테스트(`ngrok-mobile`, `go test`)는 실제 ngrok 서비스가 가짜 토큰을 ERR_NGROK_105로 거부하는 것을 확인했다(`AUTH:` 분류).
 
-### 실기기 instrumented 테스트 (`ANDROID_SERIAL=d418f2d1 ./gradlew :app:connectedDebugAndroidTest`, 3개 통과)
+### 실기기 instrumented 테스트 (사이클 1 초기: `connectedDebugAndroidTest`, 3개 통과. 이 명령은 앱을 제거하므로 지금은 7장의 절차를 쓴다)
 
 기기: Xiaomi M2012K11AG, LineageOS, API 36.
 
@@ -89,7 +89,26 @@ Go 테스트(`ngrok-mobile`, `go test`)는 실제 ngrok 서비스가 가짜 토�
 
 테스트: JVM 47개, 실기기 5개 통과. QA-04는 웹 화면에서 직접 보지 않았다(API 출력만 검증).
 
-## 7. 남은 일 / 위험
+## 7. QA 재검증 처리 (`docs/qa/round1/report.md` 8장)
+
+| ID | 결과 | 커밋 | 검증 |
+|---|---|---|---|
+| QA-14 README SVG 깨짐 | raw가 이미지를 `image/*` + inline으로 보냄. 모든 raw에 CSP sandbox + nosniff. HTML·텍스트 등은 여전히 octet-stream attachment. `download=1` 추가 | `a4fa598` | JVM `rawContentTypes`(SVG/PNG inline·타입, HTML/TXT attachment, download=1). 실기기 브라우저 확인은 QA 재검증 몫(인증 필요) |
+| QA-13 포트 바꾼 뒤 실패 배너 남음 | 포트 설정이 바뀌면 `Failed(PORT_IN_USE)`를 `Stopped`로 정리 | `24f81f7` | 실기기 `busyPortFailsWithoutCrash`에 확인 추가. 테스트 뒤 메인 화면 "서버 꺼짐"만 표시 |
+
+참고: 개발 PC의 AdGuard가 로컬 HTTP 응답의 CSP 헤더를 바꿔 끼운다. 그래서 JVM 테스트는 CSP 전체 문자열이 아니라 `sandbox` 존재와 상수 값을 확인한다.
+
+### 실기기 테스트를 데이터 손실 없이 돌리는 방법
+
+`connectedDebugAndroidTest`는 끝나면 앱을 제거해 폰 데이터(레포)가 지워진다. 이 사이클부터는 아래 절차를 쓴다(QA 레포 15개 유지 확인함).
+
+1. 백업: `adb -s d418f2d1 exec-out run-as com.ouor.mobilegit tar cf - files > backup.tar`. Keystore 키는 앱을 제거하지 않는 한 유지된다.
+2. 설치(제거 없음): `./gradlew :app:installDebug :app:installDebugAndroidTest`
+3. 실행: `adb -s d418f2d1 shell am instrument -w -e class com.ouor.mobilegit.OnDeviceTest#<테스트> com.ouor.mobilegit.test/androidx.test.runner.AndroidJUnitRunner`
+4. 확인: `adb shell run-as com.ouor.mobilegit ls files/repos`. 테스트가 서버를 끄므로 원래 켜져 있었다면 앱에서 다시 켠다.
+- 주의: `OnDeviceTest`의 포트 관련 테스트는 실제 앱 설정(포트, 서버 켜짐)을 바꿨다가 되돌린다. 레포 데이터는 건드리지 않는다.
+
+## 8. 남은 일 / 위험
 
 | 항목 | 메모 |
 |---|---|

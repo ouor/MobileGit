@@ -39,7 +39,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 - `core.server.state: StateFlow<ServerState>`: `Stopped | Starting | Running(port) | Stopping | Failed(portInUse, message, kind, detail)`.
   - `message`는 사용자에게 그대로 보여 줄 한국어 문장이다. `detail`은 원문 기술 정보(예외 메시지)라 "자세히"나 로그에만 쓴다.
   - `kind: ServerFailure`:
-    - `PORT_IN_USE`(= `portInUse == true`): 스위치 꺼짐. 포트 변경 화면으로 안내(AC3/AC4). 포트가 사용 중이어도 앱은 죽지 않는다(QA-01).
+    - `PORT_IN_USE`(= `portInUse == true`): 스위치 꺼짐. 포트 변경 화면으로 안내(AC3/AC4). 포트가 사용 중이어도 앱은 죽지 않는다(QA-01). 포트 설정이 바뀌면 이 실패는 `Stopped`로 정리된다(QA-13). UI 수정은 필요 없다.
     - `BACKGROUND_START_BLOCKED`(QA-02): 앱 업데이트 직후 등 백그라운드에서 Android가 포그라운드 서비스 시작을 거부함(Android 12+). `settings.serverEnabled`는 **켜진 채** 남고, "mobilegit 서버가 꺼져 있어요 / 앱을 열면 서버가 다시 켜져요" 알림이 뜬다. 앱의 어떤 화면이든 열리면(`Activity.onStart`) 코어가 자동으로 다시 켠다(`ServerController.resumeIfBlocked()`). UI는 메인 카드에 "앱을 열면 다시 켜져요" 류의 안내만 보이면 되고, 스위치는 켜짐 의도로 보여도 된다. 재부팅(`BOOT_COMPLETED`)과 프로세스 kill 복구는 기존대로 동작한다.
     - `OTHER`: 그 밖의 시작 실패. `message`는 "서버를 시작하지 못했어요".
   - 기존 `Failed(portInUse, message)` 생성/분해 코드는 그대로 컴파일된다(새 필드는 기본값이 있음).
@@ -273,7 +273,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 | `GET /api/v1/repos/{name}` | `RepoDetailDto` |
 | `GET /api/v1/repos/{name}/tree?ref=&path=` | `TreeDto` |
 | `GET /api/v1/repos/{name}/blob?ref=&path=` | `BlobDto` (텍스트는 1MB까지) |
-| `GET /api/v1/repos/{name}/raw?ref=&path=` | 파일 바이트(`application/octet-stream`, `Content-Disposition: attachment`, 정확한 `Content-Length`, chunked 아님, 압축 안 함) |
+| `GET /api/v1/repos/{name}/raw?ref=&path=[&download=1]` | 파일 바이트. 정확한 `Content-Length`, chunked 아님, 압축 안 함. 이미지(png, jpg/jpeg, gif, webp, avif, bmp, ico, svg)는 해당 `image/*` 타입 + `Content-Disposition: inline`이라 `<img src>`에 바로 쓸 수 있다(QA-14). 그 밖의 파일(HTML, 텍스트 포함)은 `application/octet-stream` + `attachment`. `download=1`이면 이미지도 attachment. 모든 raw 응답에 `X-Content-Type-Options: nosniff`와 `Content-Security-Policy: default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox`가 붙어, SVG를 직접 열어도 안의 스크립트가 실행되지 않는다. 다운로드 버튼은 `download=1`을 붙이거나 `<a download>`를 쓴다 |
 | `GET /api/v1/repos/{name}/readme?ref=&path=` | `ReadmeDto`. path가 디렉터리면 그 안의 README(없으면 404 `README_NOT_FOUND`). path가 `.md`/`.markdown` 파일이면 그 파일을 같은 렌더러로(WR-5). 그 밖의 파일(이진, LFS 포인터 포함)은 400 `NOT_MARKDOWN`, 1MB 초과는 400 `TOO_LARGE` |
 | `GET /api/v1/repos/{name}/commits?ref=&path=&page=1&perPage=50` | `CommitPageDto` |
 
