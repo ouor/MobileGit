@@ -29,7 +29,7 @@ export function rewriteReadme(html: string, repo: string, readmePath: string, re
   tpl.innerHTML = html
   for (const a of tpl.content.querySelectorAll("a[href]")) {
     const href = a.getAttribute("href")!
-    if (href.startsWith("#")) a.removeAttribute("href") // would clash with hash routing
+    if (href.startsWith("#")) a.removeAttribute("href") // commonmark emits no heading ids, so in-page anchors lead nowhere
     else if (external.test(href) || href.startsWith("//")) {
       a.setAttribute("target", "_blank")
       a.setAttribute("rel", "noopener noreferrer")

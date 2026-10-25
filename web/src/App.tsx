@@ -12,12 +12,6 @@ import { RepoTree } from "@/pages/RepoTree"
 
 export default function App() {
   const { segments, query } = useRoute()
-  const pathKey = segments.join("/")
-  useEffect(() => {
-    if (!query.get("L")) window.scrollTo(0, 0)
-    // only on page (path) changes, not on ?L= line jumps
-  }, [pathKey])
-
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex min-h-svh flex-col">
@@ -83,7 +77,7 @@ function AppHeader() {
   return (
     <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
-        <a href="#/" className="flex items-center gap-2 font-semibold">
+        <a href="/" className="flex items-center gap-2 font-semibold">
           <img src="/favicon.svg" alt="" className="size-7" />
           mobilegit
         </a>

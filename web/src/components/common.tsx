@@ -167,7 +167,7 @@ export function ErrorState({ error, children }: { error: ApiError | { code: stri
         <div className="flex flex-wrap justify-center gap-2">
           {children}
           <Button variant="outline" asChild>
-            <a href="#/">레포 목록으로</a>
+            <a href="/">레포 목록으로</a>
           </Button>
         </div>
       </EmptyContent>
