@@ -1,5 +1,7 @@
 package com.ouor.mobilegit.ui.screens
 
+import com.ouor.mobilegit.R
+import com.ouor.mobilegit.ui.str
 import android.app.Activity
 import android.view.WindowManager
 import androidx.compose.foundation.Image
@@ -81,20 +83,20 @@ fun QrScreen(repo: String?, nav: Nav) {
     Column(Modifier.fillMaxSize().background(Color.White).safeDrawingPadding().verticalScroll(rememberScrollState()).padding(horizontal = Space.screen),
         horizontalAlignment = Alignment.CenterHorizontally) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(if (repo == null) "웹 화면 주소" else "$repo clone 주소", color = Color(0xFF191F28), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            IconButton(onClick = nav::back) { Icon(Icons.Outlined.Close, "닫기", tint = Color(0xFF191F28)) }
+            Text(if (repo == null) str(R.string.qr_001) else str(R.string.qr_002, repo), color = Color(0xFF191F28), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            IconButton(onClick = nav::back) { Icon(Icons.Outlined.Close, str(R.string.common_005), tint = Color(0xFF191F28)) }
         }
         if (url == null || qr == null) {
             Spacer(Modifier.height(80.dp))
-            Text("접속 가능한 네트워크가 없어요.\n와이파이·핫스팟·Tailscale 중 하나에 연결하세요.", color = Color(0xFF4E5968), textAlign = TextAlign.Center)
+            Text(str(R.string.qr_003), color = Color(0xFF4E5968), textAlign = TextAlign.Center)
             return@Column
         }
         Spacer(Modifier.height(Space.lg))
-        Image(qr, "QR 코드: $url", Modifier.fillMaxWidth().widthIn(max = 420.dp).aspectRatio(1f), filterQuality = FilterQuality.None)
+        Image(qr, str(R.string.qr_004, url), Modifier.fillMaxWidth().widthIn(max = 420.dp).aspectRatio(1f), filterQuality = FilterQuality.None)
         Spacer(Modifier.height(Space.lg))
         Text(url, color = Color(0xFF191F28), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = when { url.length > 40 -> 16.sp; url.length > 24 -> 20.sp; else -> 26.sp },
             lineHeight = 30.sp, textAlign = TextAlign.Center)
-        if (repo != null) Text("git clone $url", color = Color(0xFF4E5968), fontFamily = Mono, fontSize = 16.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = Space.sm))
+        if (repo != null) Text("git clone ${url}", color = Color(0xFF4E5968), fontFamily = Mono, fontSize = 16.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = Space.sm))
         Spacer(Modifier.height(Space.xl))
         if (addrs.size > 1) Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
             addrs.forEach { a ->
@@ -102,6 +104,6 @@ fun QrScreen(repo: String?, nav: Nav) {
                     colors = FilterChipDefaults.filterChipColors(labelColor = Color(0xFF191F28), selectedContainerColor = Color(0xFFE5ECFF), selectedLabelColor = Color(0xFF0B2A80)))
             }
         }
-        Text("주소에는 계정 정보가 들어가지 않아요", color = Color(0xFF6B7684), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = Space.lg))
+        Text(str(R.string.qr_005), color = Color(0xFF6B7684), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = Space.lg))
     }
 }

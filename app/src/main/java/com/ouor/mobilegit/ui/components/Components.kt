@@ -1,5 +1,7 @@
 package com.ouor.mobilegit.ui.components
 
+import com.ouor.mobilegit.R
+import com.ouor.mobilegit.ui.str
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -94,7 +96,7 @@ fun Context.copyText(label: String, text: String) {
 fun rememberCopy(): (String) -> Unit {
     val ctx = LocalContext.current
     val snack = LocalSnack.current
-    return remember(ctx, snack) { { text: String -> ctx.copyText("mobilegit", text); snack("복사했어요") } }
+    return remember(ctx, snack) { { text: String -> ctx.copyText("mobilegit", text); snack(str(R.string.common_001)) } }
 }
 
 // ---------- Scaffolding ----------
@@ -113,7 +115,7 @@ fun AppScaffold(
         topBar = {
             TopAppBar(
                 title = { Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                navigationIcon = { if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "뒤로") } },
+                navigationIcon = { if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, str(R.string.common_002)) } },
                 actions = actions,
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background, scrolledContainerColor = MaterialTheme.colorScheme.background),
             )
@@ -129,7 +131,7 @@ fun AppScaffold(
 class MenuScope { val items = mutableListOf<Triple<String, Boolean, () -> Unit>>(); fun item(label: String, enabled: Boolean = true, onClick: () -> Unit) { items += Triple(label, enabled, onClick) } }
 
 @Composable
-fun OverflowMenu(description: String = "더 보기", build: MenuScope.() -> Unit) {
+fun OverflowMenu(description: String = str(R.string.common_003), build: MenuScope.() -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { open = true }) { Icon(Icons.Outlined.MoreVert, description) }
@@ -155,7 +157,7 @@ fun BottomAction(label: String, enabled: Boolean = true, loading: Boolean = fals
 @Composable
 fun PrimaryButton(label: String, modifier: Modifier = Modifier, enabled: Boolean = true, loading: Boolean = false, onClick: () -> Unit) {
     Button(onClick = onClick, enabled = enabled, modifier = modifier.fillMaxWidth().height(54.dp), shape = MaterialTheme.shapes.medium) {
-        Text(if (loading) "처리 중…" else label, style = MaterialTheme.typography.labelLarge)
+        Text(if (loading) str(R.string.common_004) else label, style = MaterialTheme.typography.labelLarge)
     }
 }
 
@@ -238,7 +240,7 @@ fun Banner(
                         modifier = Modifier.padding(top = Space.sm).clip(MaterialTheme.shapes.extraSmall).clickable(role = Role.Button, onClick = onAction).padding(vertical = 2.dp))
                 }
             }
-            if (onDismiss != null) IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Close, "닫기", tint = c.content, modifier = Modifier.size(18.dp)) }
+            if (onDismiss != null) IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Close, str(R.string.common_005), tint = c.content, modifier = Modifier.size(18.dp)) }
         }
     }
 }
@@ -256,7 +258,7 @@ fun WarningChip(text: String, icon: ImageVector, tone: Tone = Tone.Warning, onDi
         Text(text, style = MaterialTheme.typography.labelMedium, color = c.content)
         if (onDismiss != null) {
             Spacer(Modifier.width(Space.xs))
-            Icon(Icons.Outlined.Close, "$text 닫기", tint = c.content, modifier = Modifier.size(18.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onDismiss))
+            Icon(Icons.Outlined.Close, str(R.string.common_006, text), tint = c.content, modifier = Modifier.size(18.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onDismiss))
         }
     }
 }
@@ -279,7 +281,7 @@ fun EmptyState(icon: ImageVector, title: String, body: String, modifier: Modifie
 /** Load/operation error with retry. */
 @Composable
 fun ErrorState(message: String, onRetry: (() -> Unit)? = null, modifier: Modifier = Modifier) {
-    Banner(Tone.Danger, Icons.Outlined.Refresh, "문제가 생겼어요", message, modifier, actionLabel = onRetry?.let { "다시 시도" }, onAction = onRetry)
+    Banner(Tone.Danger, Icons.Outlined.Refresh, str(R.string.common_007), message, modifier, actionLabel = onRetry?.let { str(R.string.common_008) }, onAction = onRetry)
 }
 
 @Composable
@@ -298,7 +300,7 @@ fun AddressBar(label: String, url: String, modifier: Modifier = Modifier, large:
     val copy = rememberCopy()
     Row(
         modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).background(MaterialTheme.colorScheme.background)
-            .clickable(onClickLabel = "복사") { copy(url) }.padding(start = Space.md, top = if (large) Space.md else Space.sm, bottom = if (large) Space.md else Space.sm, end = Space.xs),
+            .clickable(onClickLabel = str(R.string.common_009)) { copy(url) }.padding(start = Space.md, top = if (large) Space.md else Space.sm, bottom = if (large) Space.md else Space.sm, end = Space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -307,8 +309,8 @@ fun AddressBar(label: String, url: String, modifier: Modifier = Modifier, large:
             Text(if (large) url.removePrefix("http://") else url, style = if (large) CodeText.large else CodeText.body, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (!large) IconButton(onClick = { copy(url) }) { Icon(Icons.Outlined.ContentCopy, "$label 주소 복사", Modifier.size(20.dp)) }
-        if (onQr != null) IconButton(onClick = onQr) { Icon(Icons.Outlined.QrCode2, "QR 코드 크게 보기", Modifier.size(22.dp)) }
+        if (!large) IconButton(onClick = { copy(url) }) { Icon(Icons.Outlined.ContentCopy, str(R.string.common_010, label), Modifier.size(20.dp)) }
+        if (onQr != null) IconButton(onClick = onQr) { Icon(Icons.Outlined.QrCode2, str(R.string.common_011), Modifier.size(22.dp)) }
     }
 }
 
@@ -318,11 +320,11 @@ fun CommandBlock(command: String, modifier: Modifier = Modifier) {
     val copy = rememberCopy()
     Row(
         modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).background(MaterialTheme.colorScheme.background)
-            .clickable(onClickLabel = "명령 복사") { copy(command) }.padding(start = Space.md, top = Space.xs, bottom = Space.xs),
+            .clickable(onClickLabel = str(R.string.common_012)) { copy(command) }.padding(start = Space.md, top = Space.xs, bottom = Space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(command, style = CodeText.small, modifier = Modifier.weight(1f).padding(vertical = Space.xs))
-        IconButton(onClick = { copy(command) }) { Icon(Icons.Outlined.ContentCopy, "명령 복사", Modifier.size(18.dp)) }
+        IconButton(onClick = { copy(command) }) { Icon(Icons.Outlined.ContentCopy, str(R.string.common_012), Modifier.size(18.dp)) }
     }
 }
 
@@ -389,19 +391,19 @@ fun RepoRow(item: RepoListItem, onClick: () -> Unit, onUpdate: (() -> Unit)?) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
         Box {
             Row(
-                Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { if (onUpdate != null) menu = true }, onLongClickLabel = "메뉴")
+                Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { if (onUpdate != null) menu = true }, onLongClickLabel = str(R.string.common_013))
                     .padding(start = Space.lg, top = Space.md + Space.xxs, bottom = Space.md + Space.xxs, end = Space.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(Modifier.size(40.dp).clip(MaterialTheme.shapes.small).background(if (mirror) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer), contentAlignment = Alignment.Center) {
-                    Icon(if (mirror) Icons.Outlined.SyncAlt else Icons.Outlined.Folder, if (mirror) "미러" else "로컬 레포",
+                    Icon(if (mirror) Icons.Outlined.SyncAlt else Icons.Outlined.Folder, if (mirror) str(R.string.common_014) else str(R.string.common_015),
                         tint = if (mirror) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(20.dp))
                 }
                 Spacer(Modifier.width(Space.md))
                 Column(Modifier.weight(1f)) {
                     Text(m.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    val whenText = if (mirror) m.mirror?.lastSuccessUpdateAt?.let { "업데이트 ${ago(it)}" } ?: "첫 받기 전" else m.lastPushAt?.let { "push ${ago(it)}" } ?: "push 전"
-                    Text("${if (mirror) "미러" else "로컬"} · $whenText · ${bytes(m.sizeBytes)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    val whenText = if (mirror) m.mirror?.lastSuccessUpdateAt?.let { str(R.string.common_016, ago(it)) } ?: str(R.string.common_017) else m.lastPushAt?.let { "push ${ago(it)}" } ?: str(R.string.common_018)
+                    Text("${if (mirror) str(R.string.common_014) else str(R.string.common_019)} · ${whenText} · ${bytes(m.sizeBytes)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                     if (item.badges.isNotEmpty()) BadgeRow(item.badges, Modifier.padding(top = Space.xs + Space.xxs))
                     item.progress?.let { p ->
                         val f = p.progress?.fraction
@@ -412,10 +414,10 @@ fun RepoRow(item: RepoListItem, onClick: () -> Unit, onUpdate: (() -> Unit)?) {
                 }
                 if (onUpdate != null) {
                     Box {
-                        IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, "${m.name} 메뉴", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, str(R.string.common_020, m.name), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                            DropdownMenuItem(text = { Text("지금 업데이트") }, enabled = item.progress == null, onClick = { menu = false; onUpdate() })
-                            DropdownMenuItem(text = { Text("상세 보기") }, onClick = { menu = false; onClick() })
+                            DropdownMenuItem(text = { Text(str(R.string.common_021)) }, enabled = item.progress == null, onClick = { menu = false; onUpdate() })
+                            DropdownMenuItem(text = { Text(str(R.string.common_022)) }, onClick = { menu = false; onClick() })
                         }
                     }
                 } else Spacer(Modifier.width(Space.md))
@@ -440,7 +442,7 @@ fun ConfirmDialog(
                 Text(confirmLabel, color = if (destructive && confirmEnabled) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(str(R.string.common_023)) } },
     )
 }
 

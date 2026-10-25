@@ -21,6 +21,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        com.ouor.mobilegit.ui.Strings.context = applicationContext
         if (savedInstanceState == null) pendingRoute.value = routeFor(intent)
         setContent { MobileGitTheme { AppRoot(pendingRoute) } }
     }

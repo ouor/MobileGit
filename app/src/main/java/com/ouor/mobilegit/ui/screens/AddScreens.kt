@@ -1,5 +1,7 @@
 package com.ouor.mobilegit.ui.screens
 
+import com.ouor.mobilegit.R
+import com.ouor.mobilegit.ui.str
 import android.content.ClipboardManager
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -111,17 +113,17 @@ fun CredentialPicker(creds: List<RemoteCredential>, selected: String?, onSelect:
     var open by remember { mutableStateOf(false) }
     val sel = creds.firstOrNull { it.id == selected }
     fun label(c: RemoteCredential) = (c.label.ifBlank { c.host }) + " · ${c.tokenPrefix}••••"
-    val auto = if (host != null && creds.any { it.host == host }) "자동 ($host 첫 번째 토큰)" else "없음 (공개 레포)"
+    val auto = if (host != null && creds.any { it.host == host }) str(R.string.add_001, host) else str(R.string.add_002)
     ExposedDropdownMenuBox(expanded = open, onExpandedChange = { open = it }) {
         OutlinedTextField(
-            value = sel?.let(::label) ?: auto, onValueChange = {}, readOnly = true, label = { Text("원격 자격 증명") },
+            value = sel?.let(::label) ?: auto, onValueChange = {}, readOnly = true, label = { Text(str(R.string.add_003)) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(open) },
             modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable), shape = MaterialTheme.shapes.medium,
         )
         ExposedDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DropdownMenuItem(text = { Text(auto) }, onClick = { open = false; onSelect(null) })
             creds.forEach { c -> DropdownMenuItem(text = { Text(label(c)) }, onClick = { open = false; onSelect(c.id) }) }
-            DropdownMenuItem(text = { Text("+ 토큰 추가…", color = MaterialTheme.colorScheme.primary) }, onClick = { open = false; onAdd() })
+            DropdownMenuItem(text = { Text(str(R.string.add_004), color = MaterialTheme.colorScheme.primary) }, onClick = { open = false; onAdd() })
         }
     }
 }
@@ -170,7 +172,7 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
         probing = false
     }
 
-    val nameError = if (name.isBlank()) null else RepoNames.validate(name) ?: if (core.repos.exists(name)) "이미 같은 이름의 레포가 있어요" else null
+    val nameError = if (name.isBlank()) null else RepoNames.validate(name) ?: if (core.repos.exists(name)) str(R.string.add_005) else null
     val lowSpace = free != null && free.first < free.second
     val multi = candidates.size > 1
     val canAdd = !busy && !lowSpace && when {
@@ -178,8 +180,8 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
         else -> url != null && preview?.existing == null && name.isNotBlank() && nameError == null
     }
 
-    AppScaffold("미러 추가", onBack = nav::back, bottomBar = {
-        BottomAction(if (multi) "${candidates.size}개 한 번에 추가" else "추가", enabled = canAdd, loading = busy, onClick = {
+    AppScaffold(str(R.string.add_006), onBack = nav::back, bottomBar = {
+        BottomAction(if (multi) str(R.string.add_007, candidates.size) else str(R.string.add_008), enabled = canAdd, loading = busy, onClick = {
             busy = true; error = null
             scope.launch {
                 try {
@@ -195,52 +197,52 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
         })
     }) { padding ->
         ScreenColumn(padding) {
-            Text("보존할 레포 주소를 붙여넣으세요. 등록하면 바로 전체 히스토리를 받기 시작해요.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(str(R.string.add_009), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(
                 text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 120.dp),
-                label = { Text("Git 저장소 주소 (여러 줄 가능)") }, placeholder = { Text("https://github.com/owner/repo") },
+                label = { Text(str(R.string.add_010)) }, placeholder = { Text("https://github.com/owner/repo") },
                 textStyle = CodeText.body, shape = MaterialTheme.shapes.medium,
                 trailingIcon = {
                     if (text.isEmpty()) androidx.compose.material3.IconButton(onClick = {
                         ctx.getSystemService(ClipboardManager::class.java).primaryClip?.getItemAt(0)?.coerceToText(ctx)?.let { text = it.toString() }
-                    }) { Icon(Icons.Outlined.ContentPaste, "붙여넣기") }
+                    }) { Icon(Icons.Outlined.ContentPaste, str(R.string.add_011)) }
                 },
             )
-            if (lowSpace) Banner(Tone.Danger, Icons.Outlined.SdCardAlert, "저장 공간이 부족해서 등록할 수 없어요", "남은 공간 ${bytes(free!!.first)} / 하한 ${bytes(free.second)}")
+            if (lowSpace) Banner(Tone.Danger, Icons.Outlined.SdCardAlert, str(R.string.add_012), str(R.string.add_013, bytes(free!!.first), bytes(free.second)))
             error?.let { ErrorState(it) }
 
             if (multi) {
-                SectionCard(title = "${candidates.size}개 주소") {
+                SectionCard(title = str(R.string.add_014, candidates.size)) {
                     candidates.take(50).forEach { Text(it, style = CodeText.small, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(vertical = 3.dp)) }
-                    if (candidates.size > 50) Text("외 ${candidates.size - 50}개", style = MaterialTheme.typography.bodySmall)
-                    Text("줄마다 하나씩 등록하고 진행 화면에서 결과를 보여 줘요.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
+                    if (candidates.size > 50) Text(str(R.string.add_015, candidates.size - 50), style = MaterialTheme.typography.bodySmall)
+                    Text(str(R.string.add_016), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
                 }
                 CredentialPicker(creds, credId, { credId = it }, null) { nav.go(Routes.CREDENTIALS) }
             } else if (single != null) {
                 val p = preview
                 when {
-                    p == null -> Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(Space.sm)); Text("주소 확인 중…") }
-                    p.error != null -> Banner(Tone.Danger, Icons.Outlined.ErrorOutline, "지원하지 않는 주소예요", p.error)
-                    p.existing != null -> Banner(Tone.Info, Icons.Outlined.Info, "이미 미러로 등록된 레포예요", p.existing!!.name, actionLabel = "열기", onAction = { nav.replace(Routes.repo(p.existing!!.name)) })
+                    p == null -> Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(Space.sm)); Text(str(R.string.add_017)) }
+                    p.error != null -> Banner(Tone.Danger, Icons.Outlined.ErrorOutline, str(R.string.add_018), p.error)
+                    p.existing != null -> Banner(Tone.Info, Icons.Outlined.Info, str(R.string.add_019), p.existing!!.name, actionLabel = str(R.string.add_020), onAction = { nav.replace(Routes.repo(p.existing!!.name)) })
                     else -> {
-                        SectionCard(title = "등록 정보") {
-                            Text("원본", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        SectionCard(title = str(R.string.add_021)) {
+                            Text(str(R.string.add_022), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(p.normalized!!.url, style = CodeText.body)
                             Spacer(Modifier.size(Space.md))
-                            OutlinedTextField(name, { name = it; nameEdited = true }, Modifier.fillMaxWidth(), label = { Text("이 폰에서 쓸 이름") }, singleLine = true,
-                                isError = nameError != null, supportingText = { Text(nameError ?: "주소: <폰 주소>/${name.ifBlank { "이름" }}.git") }, shape = MaterialTheme.shapes.medium,
+                            OutlinedTextField(name, { name = it; nameEdited = true }, Modifier.fillMaxWidth(), label = { Text(str(R.string.add_023)) }, singleLine = true,
+                                isError = nameError != null, supportingText = { Text(nameError ?: str(R.string.add_025, name.ifBlank { str(R.string.add_024) })) }, shape = MaterialTheme.shapes.medium,
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done))
                             CredentialPicker(creds.filter { it.host == host }, credId, { credId = it }, host) { nav.go(Routes.credentials(host)) }
                         }
                         ProbeView(probing, probe, pullOn) { nav.go(Routes.credentials(host)) }
                         if ((probe as? ProbeResult.Reachable)?.pullRefCount?.let { it > 0 } == true || includePull != null) com.ouor.mobilegit.ui.components.RowGroup {
-                            com.ouor.mobilegit.ui.components.SwitchRow("PR ref도 받기", pullOn, { v -> includePull = if (v == settings.mirrorPullRefs) null else v },
-                                subtitle = "refs/pull/* 등 리뷰용 ref. 보존 대상이 아니고 시간·용량을 많이 써요")
+                            com.ouor.mobilegit.ui.components.SwitchRow(str(R.string.add_026), pullOn, { v -> includePull = if (v == settings.mirrorPullRefs) null else v },
+                                subtitle = str(R.string.add_027))
                         }
                     }
                 }
             }
-            free?.let { Text("남은 공간 ${bytes(it.first)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            free?.let { Text(str(R.string.add_028, bytes(it.first)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }
 }
@@ -250,23 +252,23 @@ private fun ProbeView(probing: Boolean, probe: ProbeResult?, includePull: Boolea
     when {
         probing || probe == null -> Row(verticalAlignment = Alignment.CenterVertically) {
             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(Space.sm))
-            Text("원격에 접근할 수 있는지 확인 중…", style = MaterialTheme.typography.bodyMedium)
+            Text(str(R.string.add_029), style = MaterialTheme.typography.bodyMedium)
         }
-        probe is ProbeResult.Reachable -> Banner(Tone.Success, Icons.Outlined.CheckCircle, "접근 가능",
-            (if (!includePull && probe.pullRefCount > 0) "ref ${probe.refCount - probe.pullRefCount}개 받기 · PR ref ${probe.pullRefCount}개 제외" else "ref ${probe.refCount}개") +
-                (probe.defaultBranch?.let { " · 기본 브랜치 $it" } ?: ""))
-        probe is ProbeResult.AuthRequired -> Banner(Tone.Warning, Icons.Outlined.Key, "토큰 필요", "비공개 레포이거나 인증이 필요해요. 원격 자격 증명을 추가하세요.",
-            actionLabel = "토큰 추가", onAction = onAddToken)
-        probe is ProbeResult.NotFound -> Banner(Tone.Danger, Icons.Outlined.CloudOff, "원본을 찾을 수 없어요", "주소를 확인하세요. 비공개 레포라면 토큰을 추가하면 보일 수 있어요.",
-            actionLabel = "토큰 추가", onAction = onAddToken)
-        probe is ProbeResult.Failed -> Banner(Tone.Danger, Icons.Outlined.ErrorOutline, Notifier.categoryText(probe.category), probe.detail.take(300) + "\n그래도 추가하면 나중에 다시 시도할 수 있어요.")
+        probe is ProbeResult.Reachable -> Banner(Tone.Success, Icons.Outlined.CheckCircle, str(R.string.add_030),
+            (if (!includePull && probe.pullRefCount > 0) str(R.string.add_031, probe.refCount - probe.pullRefCount, probe.pullRefCount) else str(R.string.add_032, probe.refCount)) +
+                (probe.defaultBranch?.let { str(R.string.add_033, it) } ?: ""))
+        probe is ProbeResult.AuthRequired -> Banner(Tone.Warning, Icons.Outlined.Key, str(R.string.add_034), str(R.string.add_035),
+            actionLabel = str(R.string.add_036), onAction = onAddToken)
+        probe is ProbeResult.NotFound -> Banner(Tone.Danger, Icons.Outlined.CloudOff, str(R.string.add_037), str(R.string.add_038),
+            actionLabel = str(R.string.add_036), onAction = onAddToken)
+        probe is ProbeResult.Failed -> Banner(Tone.Danger, Icons.Outlined.ErrorOutline, Notifier.categoryText(probe.category), probe.detail.take(300) + str(R.string.add_039))
     }
 }
 
 // ---------------- A-04 일괄 미러 ----------------
 
-private val sourceLabels = listOf(BulkSourceKind.GITHUB_USER to "GitHub 사용자", BulkSourceKind.GITHUB_ORG to "GitHub 조직",
-    BulkSourceKind.GITLAB_USER to "GitLab 사용자", BulkSourceKind.GITLAB_GROUP to "GitLab 그룹")
+private val sourceLabels get() = listOf(BulkSourceKind.GITHUB_USER to str(R.string.add_040), BulkSourceKind.GITHUB_ORG to str(R.string.add_041),
+    BulkSourceKind.GITLAB_USER to str(R.string.add_042), BulkSourceKind.GITLAB_GROUP to str(R.string.add_043))
 
 /** A-04 (F-15 AC1~AC4). */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -309,13 +311,13 @@ fun BulkMirrorScreen(nav: Nav) {
                 mirrored = withContext(Dispatchers.IO) { core.catalog.alreadyMirrored(l, core.repos) }
                 list = l
             } catch (e: CatalogException) {
-                error = when (e.status) { 404 -> "계정이나 조직을 찾을 수 없어요"; 401, 403 -> "토큰이 거부되었거나 권한이 없어요"; else -> e.message ?: "목록을 가져오지 못했어요" }
+                error = when (e.status) { 404 -> str(R.string.add_044); 401, 403 -> str(R.string.add_045); else -> e.message ?: str(R.string.add_046) }
             } catch (e: Exception) { error = e.message ?: e.toString() } finally { loading = false; rateUntil = null }
         }
     }
 
-    AppScaffold("계정·조직 일괄 미러", onBack = nav::back, bottomBar = {
-        if (list != null) BottomAction("${chosen.size}개 등록", enabled = chosen.isNotEmpty(), loading = busy, onClick = {
+    AppScaffold(str(R.string.add_047), onBack = nav::back, bottomBar = {
+        if (list != null) BottomAction(str(R.string.add_048, chosen.size), enabled = chosen.isNotEmpty(), loading = busy, onClick = {
             busy = true
             scope.launch {
                 try {
@@ -326,10 +328,10 @@ fun BulkMirrorScreen(nav: Nav) {
         }) {
             val f = free
             val over = f != null && knownSize > f.first - f.second
-            Text("선택 ${bytes(knownSize)}" + (if (unknown > 0) " (+크기 모름 ${unknown}개)" else "") + (f?.let { " · 남은 공간 ${bytes(it.first)}" } ?: ""),
+            Text(str(R.string.add_049, bytes(knownSize)) + (if (unknown > 0) str(R.string.add_050, unknown) else "") + (f?.let { str(R.string.add_051, bytes(it.first)) } ?: ""),
                 style = MaterialTheme.typography.bodySmall, color = if (over) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = Space.sm))
-            if (over) Text("선택한 크기가 남은 공간(하한 ${bytes(f!!.second)} 제외)보다 커요", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = Space.sm))
+            if (over) Text(str(R.string.add_052, bytes(f!!.second)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = Space.sm))
         }
     }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(horizontal = Space.screen, vertical = Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
@@ -339,35 +341,35 @@ fun BulkMirrorScreen(nav: Nav) {
                         sourceLabels.forEach { (k, l) -> FilterChip(selected = kind == k, onClick = { kind = k; credId = null }, label = { Text(l) }) }
                     }
                     OutlinedTextField(account, { account = it }, Modifier.fillMaxWidth(), singleLine = true, shape = MaterialTheme.shapes.medium,
-                        label = { Text(if (kind == BulkSourceKind.GITHUB_ORG || kind == BulkSourceKind.GITLAB_GROUP) "조직·그룹 이름" else "사용자 이름") })
+                        label = { Text(if (kind == BulkSourceKind.GITHUB_ORG || kind == BulkSourceKind.GITLAB_GROUP) str(R.string.add_053) else str(R.string.add_054)) })
                     if (gitlab) OutlinedTextField(gitlabHost, { gitlabHost = it }, Modifier.fillMaxWidth().padding(top = Space.sm), singleLine = true, shape = MaterialTheme.shapes.medium,
-                        label = { Text("GitLab 주소 (셀프 호스팅)") }, placeholder = { Text("gitlab.com") })
+                        label = { Text(str(R.string.add_055)) }, placeholder = { Text("gitlab.com") })
                     Spacer(Modifier.size(Space.sm))
                     CredentialPicker(hostCreds, credId, { credId = it }, host) { nav.go(Routes.credentials(host)) }
-                    Text("자격 증명을 고르면 비공개 레포도 목록에 나와요.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.xs))
+                    Text(str(R.string.add_056), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.xs))
                     Spacer(Modifier.size(Space.md))
-                    com.ouor.mobilegit.ui.components.SecondaryButton(if (loading) "불러오는 중…" else "목록 불러오기", Modifier.fillMaxWidth(), enabled = account.isNotBlank() && !loading,
+                    com.ouor.mobilegit.ui.components.SecondaryButton(if (loading) str(R.string.add_057) else str(R.string.add_058), Modifier.fillMaxWidth(), enabled = account.isNotBlank() && !loading,
                         icon = Icons.Outlined.Search) { load() }
                 }
             }
-            rateUntil?.let { item { Banner(Tone.Warning, Icons.Outlined.Timer, "API 레이트리밋", "${time(it)}까지 기다렸다가 이어서 불러와요.") } }
+            rateUntil?.let { item { Banner(Tone.Warning, Icons.Outlined.Timer, str(R.string.add_059), str(R.string.add_060, time(it))) } }
             error?.let { item { ErrorState(it, onRetry = ::load) } }
             if (loading && rateUntil == null) item { com.ouor.mobilegit.ui.components.Loading() }
             list?.let { l ->
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = Space.sm)) {
-                        FilterChip(noForks, { noForks = !noForks }, { Text("fork 제외") })
+                        FilterChip(noForks, { noForks = !noForks }, { Text(str(R.string.add_061)) })
                         Spacer(Modifier.width(Space.sm))
-                        FilterChip(noArchived, { noArchived = !noArchived }, { Text("archived 제외") })
+                        FilterChip(noArchived, { noArchived = !noArchived }, { Text(str(R.string.add_062)) })
                         Spacer(Modifier.weight(1f))
                         val allOn = selectable.isNotEmpty() && selectable.all { it.cloneUrl in selected }
                         TextButton(onClick = { if (allOn) selected.removeAll(selectable.map { it.cloneUrl }) else selectable.forEach { if (it.cloneUrl !in selected) selected += it.cloneUrl } }) {
-                            Text(if (allOn) "선택 해제" else "전체 선택")
+                            Text(if (allOn) str(R.string.add_063) else str(R.string.add_064))
                         }
                     }
-                    Text("${l.size}개 중 ${visible.size}개 표시", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(str(R.string.add_065, l.size, visible.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                if (visible.isEmpty()) item { EmptyState(Icons.Outlined.Search, "표시할 레포가 없어요", "필터를 바꾸거나 다른 계정을 입력해 보세요.") }
+                if (visible.isEmpty()) item { EmptyState(Icons.Outlined.Search, str(R.string.add_066), str(R.string.add_067)) }
                 items(visible, key = { it.cloneUrl }) { r ->
                     val done = r.cloneUrl in mirrored
                     val on = r.cloneUrl in selected
@@ -379,11 +381,11 @@ fun BulkMirrorScreen(nav: Nav) {
                                 Text(r.name, style = MaterialTheme.typography.titleSmall)
                                 r.description?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                                 FlowRow(Modifier.padding(top = Space.xs), horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
-                                    if (done) Pill("등록됨", Tone.Success)
+                                    if (done) Pill(str(R.string.add_068), Tone.Success)
                                     r.sizeBytes?.let { Pill(bytes(it), Tone.Neutral) }
                                     if (r.fork) Pill("fork", Tone.Neutral)
                                     if (r.archived) Pill("archived", Tone.Warning)
-                                    if (r.isPrivate) Pill("비공개", Tone.Info)
+                                    if (r.isPrivate) Pill(str(R.string.add_069), Tone.Info)
                                 }
                             }
                         }
@@ -404,31 +406,31 @@ fun BulkProgressScreen(id: String, nav: Nav) {
     val jobs by core.bulkJobs.jobs.collectAsStateWithLifecycle()
     val running by core.coordinator.running.collectAsStateWithLifecycle()
     val job = jobs.firstOrNull { it.id == id }
-    AppScaffold("일괄 등록 진행", onBack = nav::back, bottomBar = { BottomAction("레포 목록으로", onClick = nav::home) }) { padding ->
-        if (job == null) { Box(Modifier.padding(padding)) { EmptyState(Icons.Outlined.Search, "작업을 찾을 수 없어요", "이미 정리된 작업일 수 있어요.") }; return@AppScaffold }
+    AppScaffold(str(R.string.add_070), onBack = nav::back, bottomBar = { BottomAction(str(R.string.add_071), onClick = nav::home) }) { padding ->
+        if (job == null) { Box(Modifier.padding(padding)) { EmptyState(Icons.Outlined.Search, str(R.string.add_072), str(R.string.add_073)) }; return@AppScaffold }
         val total = job.items.size
         val done = job.count(BulkItemStatus.DONE); val failed = job.count(BulkItemStatus.FAILED)
         val waiting = job.count(BulkItemStatus.QUEUED) + job.count(BulkItemStatus.RUNNING)
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(horizontal = Space.screen, vertical = Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
             item {
                 SectionCard {
-                    Text(if (job.source == BulkSourceKind.URL_LIST) "여러 줄 주소" else (sourceLabels.firstOrNull { it.first == job.source }?.second ?: "") + " ${job.account}",
+                    Text(if (job.source == BulkSourceKind.URL_LIST) str(R.string.add_074) else (sourceLabels.firstOrNull { it.first == job.source }?.second ?: "") + " ${job.account}",
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(if (waiting == 0) "완료 $done / 전체 $total" else "${done + failed} / $total 처리", style = MaterialTheme.typography.headlineSmall)
+                    Text(if (waiting == 0) str(R.string.add_075, done, total) else str(R.string.add_076, done + failed, total), style = MaterialTheme.typography.headlineSmall)
                     Spacer(Modifier.size(Space.md))
                     LinearProgressIndicator(progress = { if (total == 0) 1f else (done + failed).toFloat() / total }, Modifier.fillMaxWidth())
                     Spacer(Modifier.size(Space.md))
                     Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-                        Pill("완료 $done", Tone.Success); Pill("실패 $failed", if (failed > 0) Tone.Danger else Tone.Neutral); Pill("대기 $waiting", Tone.Neutral)
+                        Pill(str(R.string.add_077, done), Tone.Success); Pill(str(R.string.add_078, failed), if (failed > 0) Tone.Danger else Tone.Neutral); Pill(str(R.string.add_079, waiting), Tone.Neutral)
                     }
-                    Text("앱을 닫아도 백그라운드에서 계속 진행돼요. 동시에 2개씩 받아요.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.md))
+                    Text(str(R.string.add_080), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.md))
                 }
             }
             job.rateLimitedUntil?.takeIf { it > System.currentTimeMillis() }?.let {
-                item { Banner(Tone.Warning, Icons.Outlined.Timer, "레이트리밋 대기 중", "${time(it)}에 이어서 진행해요.") }
+                item { Banner(Tone.Warning, Icons.Outlined.Timer, str(R.string.add_081), str(R.string.add_082, time(it))) }
             }
             if (failed > 0) item {
-                com.ouor.mobilegit.ui.components.SecondaryButton("실패한 항목 다시 시도 ($failed)", Modifier.fillMaxWidth()) {
+                com.ouor.mobilegit.ui.components.SecondaryButton(str(R.string.add_083, failed), Modifier.fillMaxWidth()) {
                     scope.launch(Dispatchers.IO) { core.mirrors.retryFailed(job.id) }
                 }
             }
@@ -442,8 +444,8 @@ fun BulkProgressScreen(id: String, nav: Nav) {
                                 Text(it.remoteUrl, style = CodeText.small, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             val (l, t) = when (it.status) {
-                                BulkItemStatus.QUEUED -> "대기" to Tone.Neutral; BulkItemStatus.RUNNING -> "받는 중" to Tone.Info
-                                BulkItemStatus.DONE -> "완료" to Tone.Success; BulkItemStatus.FAILED -> "실패" to Tone.Danger
+                                BulkItemStatus.QUEUED -> str(R.string.add_084) to Tone.Neutral; BulkItemStatus.RUNNING -> str(R.string.add_085) to Tone.Info
+                                BulkItemStatus.DONE -> str(R.string.add_086) to Tone.Success; BulkItemStatus.FAILED -> str(R.string.fmt_008) to Tone.Danger
                             }
                             Pill(l, t)
                         }
@@ -470,9 +472,9 @@ fun CreateRepoScreen(nav: Nav) {
     var desc by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    val nameError = if (name.isEmpty()) null else RepoNames.validate(name) ?: if (core.repos.exists(name)) "이미 같은 이름의 레포가 있어요" else null
-    AppScaffold("빈 레포 만들기", onBack = nav::back, bottomBar = {
-        BottomAction("만들기", enabled = name.isNotBlank() && nameError == null, loading = busy, onClick = {
+    val nameError = if (name.isEmpty()) null else RepoNames.validate(name) ?: if (core.repos.exists(name)) str(R.string.add_005) else null
+    AppScaffold(str(R.string.add_087), onBack = nav::back, bottomBar = {
+        BottomAction(str(R.string.add_088), enabled = name.isNotBlank() && nameError == null, loading = busy, onClick = {
             busy = true; error = null
             scope.launch {
                 try {
@@ -483,10 +485,10 @@ fun CreateRepoScreen(nav: Nav) {
         })
     }) { padding ->
         ScreenColumn(padding) {
-            Text("PC에서 push할 빈 로컬 레포를 만들어요. 사실 PC에서 없는 이름으로 push해도 자동으로 만들어져요.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("이름") }, singleLine = true, isError = nameError != null, shape = MaterialTheme.shapes.medium,
-                supportingText = { Text(nameError ?: "영문·숫자로 시작, 영문·숫자·. _ - 만 사용") })
-            OutlinedTextField(desc, { desc = it }, Modifier.fillMaxWidth(), label = { Text("설명 (선택)") }, shape = MaterialTheme.shapes.medium)
+            Text(str(R.string.add_089), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text(str(R.string.add_024)) }, singleLine = true, isError = nameError != null, shape = MaterialTheme.shapes.medium,
+                supportingText = { Text(nameError ?: str(R.string.add_090)) })
+            OutlinedTextField(desc, { desc = it }, Modifier.fillMaxWidth(), label = { Text(str(R.string.add_091)) }, shape = MaterialTheme.shapes.medium)
             error?.let { ErrorState(it) }
         }
     }

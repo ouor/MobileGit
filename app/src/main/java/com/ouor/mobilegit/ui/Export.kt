@@ -1,5 +1,6 @@
 package com.ouor.mobilegit.ui
 
+import com.ouor.mobilegit.R
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -59,7 +60,7 @@ fun rememberExportRunner(): ExportRunner {
     runner.enqueue = { kind, repos, ref, uri ->
         runner.progress = null
         runner.workId = MobileGitApp.core(ctx).scheduler.enqueueExport(kind, repos, ref, uri)
-        snack("내보내기를 시작했어요. 알림에서 진행 상황을 볼 수 있어요")
+        snack(str(R.string.export_001))
     }
     val id = runner.workId
     LaunchedEffect(id) {
@@ -72,10 +73,10 @@ fun rememberExportRunner(): ExportRunner {
                 WorkInfo.State.SUCCEEDED -> {
                     runner.workId = null
                     val file = info.outputData.getString(ExportWorker.K_OUT_FILE)
-                    if (file != null) share(ctx, File(file)) else snack("내보내기를 저장했어요")
+                    if (file != null) share(ctx, File(file)) else snack(str(R.string.export_002))
                 }
-                WorkInfo.State.FAILED -> { runner.workId = null; snack("내보내기 실패: ${info.outputData.getString(ExportWorker.K_ERROR) ?: "알 수 없는 오류"}") }
-                WorkInfo.State.CANCELLED -> { runner.workId = null; snack("내보내기를 취소했어요") }
+                WorkInfo.State.FAILED -> { runner.workId = null; snack(str(R.string.export_004, info.outputData.getString(ExportWorker.K_ERROR) ?: str(R.string.export_003))) }
+                WorkInfo.State.CANCELLED -> { runner.workId = null; snack(str(R.string.export_005)) }
                 else -> Unit
             }
         }

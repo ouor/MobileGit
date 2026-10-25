@@ -1,5 +1,7 @@
 package com.ouor.mobilegit.ui.screens
 
+import com.ouor.mobilegit.R
+import com.ouor.mobilegit.ui.str
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -132,7 +134,7 @@ fun MainScreen(nav: Nav) {
     androidx.compose.material3.Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
-            ExtendedFloatingActionButton(onClick = { addSheet = true }, icon = { Icon(Icons.Outlined.Add, null) }, text = { Text("레포 추가") },
+            ExtendedFloatingActionButton(onClick = { addSheet = true }, icon = { Icon(Icons.Outlined.Add, null) }, text = { Text(str(R.string.main_001)) },
                 shape = MaterialTheme.shapes.large)
         },
     ) { padding ->
@@ -144,24 +146,24 @@ fun MainScreen(nav: Nav) {
             item(key = "top") {
                 Row(Modifier.fillMaxWidth().padding(top = Space.sm, bottom = Space.xs), verticalAlignment = Alignment.CenterVertically) {
                     Text("mobilegit", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-                    IconButton(onClick = { nav.go(Routes.SETTINGS) }) { Icon(Icons.Outlined.Settings, "설정") }
+                    IconButton(onClick = { nav.go(Routes.SETTINGS) }) { Icon(Icons.Outlined.Settings, str(R.string.main_002)) }
                     OverflowMenu {
-                        item("모든 미러 업데이트") { core.mirrors.updateAll(); snack("모든 미러 업데이트를 시작했어요") }
-                        item("모든 미러 변경 확인") { core.mirrors.checkAll(); snack("변경 확인을 시작했어요. 받지는 않아요") }
-                        item("저장 공간") { nav.go(Routes.STORAGE) }
-                        item("전체 백업") { nav.go(Routes.BACKUP) }
-                        item("접속 기록") { nav.go(Routes.ACCESS_LOG) }
-                        item("설정") { nav.go(Routes.SETTINGS) }
+                        item(str(R.string.main_003)) { core.mirrors.updateAll(); snack(str(R.string.main_004)) }
+                        item(str(R.string.main_005)) { core.mirrors.checkAll(); snack(str(R.string.main_006)) }
+                        item(str(R.string.main_007)) { nav.go(Routes.STORAGE) }
+                        item(str(R.string.main_008)) { nav.go(Routes.BACKUP) }
+                        item(str(R.string.main_009)) { nav.go(Routes.ACCESS_LOG) }
+                        item(str(R.string.main_002)) { nav.go(Routes.SETTINGS) }
                     }
                 }
             }
             if (settings.ngrokEnabled) item(key = "ngrok") {
-                Banner(Tone.Danger, Icons.Outlined.Public, "외부 공개 중 (ngrok)", tunnelText(tunnel, server is ServerState.Running),
-                    actionLabel = "외부 공개 끄기", onAction = { core.settings.update { it.copy(ngrokEnabled = false) }; snack("외부 공개를 껐어요") })
+                Banner(Tone.Danger, Icons.Outlined.Public, str(R.string.main_010), tunnelText(tunnel, server is ServerState.Running),
+                    actionLabel = str(R.string.main_011), onAction = { core.settings.update { it.copy(ngrokEnabled = false) }; snack(str(R.string.main_012)) })
             }
             if (lowStorage) item(key = "storage") {
-                Banner(Tone.Danger, Icons.Outlined.SdCardAlert, "저장 공간이 부족해요", "자동 업데이트와 새 미러 받기를 멈췄어요. push는 계속 받아요.",
-                    actionLabel = "저장 공간 보기", onAction = { nav.go(Routes.STORAGE) })
+                Banner(Tone.Danger, Icons.Outlined.SdCardAlert, str(R.string.main_013), str(R.string.main_014),
+                    actionLabel = str(R.string.main_015), onAction = { nav.go(Routes.STORAGE) })
             }
             item(key = "server") {
                 ServerCard(server, addrs, settings.port, settings.effectiveAuthEnabled, settings.effectiveAnonymousRead,
@@ -171,29 +173,29 @@ fun MainScreen(nav: Nav) {
             val chips = !settings.effectiveAuthEnabled || batteryHint || delayed > 0
             if (chips) item(key = "chips") {
                 FlowRow(Modifier.fillMaxWidth().padding(top = Space.xs), horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-                    if (!settings.effectiveAuthEnabled) WarningChip("인증 꺼짐", Icons.Outlined.LockOpen, Tone.Danger) { nav.go(Routes.SETTINGS) }
-                    if (delayed > 0) WarningChip("확인 지연 ${delayed}개", Icons.Outlined.HourglassBottom) { dialog = "delayed" }
-                    if (batteryHint) WarningChip("배터리 최적화 해제 필요", Icons.Outlined.BatteryAlert,
+                    if (!settings.effectiveAuthEnabled) WarningChip(str(R.string.main_016), Icons.Outlined.LockOpen, Tone.Danger) { nav.go(Routes.SETTINGS) }
+                    if (delayed > 0) WarningChip(str(R.string.main_017, delayed), Icons.Outlined.HourglassBottom) { dialog = "delayed" }
+                    if (batteryHint) WarningChip(str(R.string.main_018), Icons.Outlined.BatteryAlert,
                         onDismiss = { core.settings.update { it.copy(batteryHintDismissedAt = System.currentTimeMillis()) } }) { nav.go(Routes.BATTERY) }
                 }
             }
             item(key = "repoHeader") {
                 Column(Modifier.padding(top = Space.lg)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("레포", style = MaterialTheme.typography.titleLarge)
+                        Text(str(R.string.main_019), style = MaterialTheme.typography.titleLarge)
                         Spacer(Modifier.width(Space.sm))
                         Text("${all.size}", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.weight(1f))
                         TextButton(onClick = { sort = if (sort == RepoSort.RECENT) RepoSort.NAME else RepoSort.RECENT }) {
                             Icon(Icons.AutoMirrored.Outlined.Sort, null, Modifier.size(18.dp)); Spacer(Modifier.width(Space.xs))
-                            Text(if (sort == RepoSort.RECENT) "최근 활동순" else "이름순")
+                            Text(if (sort == RepoSort.RECENT) str(R.string.main_020) else str(R.string.main_021))
                         }
                     }
                     if (all.isNotEmpty()) {
                         SearchField(query) { query = it }
                         LazyRow(Modifier.padding(top = Space.sm), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-                            val opts = listOf(RepoFilter.ALL to "전체", RepoFilter.MIRROR to "미러 ${all.count { it.meta.type == RepoType.MIRROR }}",
-                                RepoFilter.LOCAL to "로컬 ${all.count { it.meta.type == RepoType.LOCAL }}", RepoFilter.PROBLEM to "문제 있음 $problems")
+                            val opts = listOf(RepoFilter.ALL to str(R.string.main_022), RepoFilter.MIRROR to str(R.string.main_023, all.count { it.meta.type == RepoType.MIRROR }),
+                                RepoFilter.LOCAL to str(R.string.main_024, all.count { it.meta.type == RepoType.LOCAL }), RepoFilter.PROBLEM to str(R.string.main_025, problems))
                             items(opts) { (f, label) -> FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(label) }) }
                         }
                     }
@@ -202,27 +204,27 @@ fun MainScreen(nav: Nav) {
             when {
                 items == null -> item(key = "loading") { Loading() }
                 all.isEmpty() -> item(key = "empty") {
-                    EmptyState(Icons.Outlined.Inventory2, "아직 레포가 없어요", "원격 레포를 미러로 보존하거나, PC에서 바로 push해 새 레포를 만들 수 있어요.") {
+                    EmptyState(Icons.Outlined.Inventory2, str(R.string.main_026), str(R.string.main_027)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-                            SecondaryButton("미러 추가", icon = Icons.Outlined.SyncAlt) { nav.go(Routes.add()) }
-                            SecondaryButton("빈 레포", icon = Icons.Outlined.CreateNewFolder) { nav.go(Routes.CREATE) }
+                            SecondaryButton(str(R.string.add_006), icon = Icons.Outlined.SyncAlt) { nav.go(Routes.add()) }
+                            SecondaryButton(str(R.string.main_028), icon = Icons.Outlined.CreateNewFolder) { nav.go(Routes.CREATE) }
                         }
                         Spacer(Modifier.height(Space.sm))
-                        SecondaryButton("계정 단위 일괄 미러", icon = Icons.Outlined.Groups) { nav.go(Routes.BULK) }
+                        SecondaryButton(str(R.string.main_029), icon = Icons.Outlined.Groups) { nav.go(Routes.BULK) }
                         Spacer(Modifier.height(Space.lg))
-                        Text("PC에서 push로 만들기", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
+                        Text(str(R.string.main_030), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
                         Spacer(Modifier.height(Space.xs))
-                        CommandBlock("git push ${addrs.firstOrNull()?.baseUrl ?: "http://<폰 주소>:${settings.port}"}/my-project.git main")
+                        CommandBlock("git push ${addrs.firstOrNull()?.baseUrl ?: str(R.string.main_031, settings.port)}/my-project.git main")
                     }
                 }
                 shown.isEmpty() -> item(key = "noMatch") {
-                    EmptyState(Icons.Outlined.Search, "조건에 맞는 레포가 없어요", "검색어나 필터를 바꿔 보세요.") {
-                        TextButton(onClick = { query = ""; filter = RepoFilter.ALL }) { Text("필터 지우기") }
+                    EmptyState(Icons.Outlined.Search, str(R.string.main_032), str(R.string.main_033)) {
+                        TextButton(onClick = { query = ""; filter = RepoFilter.ALL }) { Text(str(R.string.main_034)) }
                     }
                 }
                 else -> items(shown, key = { it.meta.id }) { item ->
                     RepoRow(item, onClick = { nav.go(Routes.repo(item.meta.name)) },
-                        onUpdate = if (item.meta.mirror != null) ({ core.mirrors.updateNow(item.meta.name); snack("${item.meta.name} 업데이트를 시작했어요") }) else null)
+                        onUpdate = if (item.meta.mirror != null) ({ core.mirrors.updateNow(item.meta.name); snack(str(R.string.main_035, item.meta.name)) }) else null)
                 }
             }
         }
@@ -230,42 +232,42 @@ fun MainScreen(nav: Nav) {
 
     if (addSheet) ModalBottomSheet(onDismissRequest = { addSheet = false }, containerColor = MaterialTheme.colorScheme.surfaceContainer) {
         Column(Modifier.padding(horizontal = Space.lg).padding(bottom = Space.xl).navigationBarsPadding()) {
-            Text("레포 추가", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = Space.sm, vertical = Space.sm))
-            AddOption(Icons.Outlined.SyncAlt, "미러 추가", "GitHub·GitLab 등의 주소를 붙여넣어 보존해요. 여러 줄도 돼요.") { addSheet = false; nav.go(Routes.add()) }
-            AddOption(Icons.Outlined.Groups, "계정·조직 일괄 미러", "한 계정의 레포를 골라 한 번에 등록해요.") { addSheet = false; nav.go(Routes.BULK) }
-            AddOption(Icons.Outlined.CreateNewFolder, "빈 레포 만들기", "PC에서 push할 새 로컬 레포를 만들어요.") { addSheet = false; nav.go(Routes.CREATE) }
+            Text(str(R.string.main_001), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = Space.sm, vertical = Space.sm))
+            AddOption(Icons.Outlined.SyncAlt, str(R.string.add_006), str(R.string.main_036)) { addSheet = false; nav.go(Routes.add()) }
+            AddOption(Icons.Outlined.Groups, str(R.string.add_047), str(R.string.main_037)) { addSheet = false; nav.go(Routes.BULK) }
+            AddOption(Icons.Outlined.CreateNewFolder, str(R.string.add_087), str(R.string.main_038)) { addSheet = false; nav.go(Routes.CREATE) }
         }
     }
 
     when (dialog) {
         "delayed" -> AlertDialog(
             onDismissRequest = { dialog = null },
-            title = { Text("확인이 지연되고 있어요") },
-            text = { Text("백그라운드 작업이 제한되어 확인이 지연되었습니다. 배터리 최적화에서 mobilegit을 예외로 두면 나아질 수 있어요.") },
-            confirmButton = { TextButton(onClick = { dialog = null; nav.go(Routes.BATTERY) }) { Text("배터리 안내") } },
-            dismissButton = { TextButton(onClick = { dialog = null; filter = RepoFilter.PROBLEM }) { Text("해당 레포 보기") } },
+            title = { Text(str(R.string.main_039)) },
+            text = { Text(str(R.string.main_040)) },
+            confirmButton = { TextButton(onClick = { dialog = null; nav.go(Routes.BATTERY) }) { Text(str(R.string.main_041)) } },
+            dismissButton = { TextButton(onClick = { dialog = null; filter = RepoFilter.PROBLEM }) { Text(str(R.string.main_042)) } },
         )
         "tailscale" -> AlertDialog(
             onDismissRequest = { dialog = null },
-            title = { Text("밖에서도 접속하려면") },
+            title = { Text(str(R.string.main_043)) },
             text = {
-                Text("Tailscale 앱을 설치하고 연결하면 모바일 데이터에서도 접속할 수 있습니다. mobilegit은 Tailscale IP를 감지해 주소로 보여 줄 뿐 Tailscale을 제어하지 않아요.\n\n" +
-                    "안드로이드는 VPN을 하나만 쓸 수 있어서 다른 VPN과 동시에 쓸 수 없어요.\n\nTailscale을 쓸 수 없는 PC라면 설정에서 외부 접속(ngrok)을 켤 수 있어요.")
+                Text(str(R.string.main_044) +
+                    str(R.string.main_045))
             },
-            confirmButton = { TextButton(onClick = { dialog = null }) { Text("확인") } },
-            dismissButton = { TextButton(onClick = { dialog = null; nav.go(Routes.SETTINGS) }) { Text("ngrok 설정") } },
+            confirmButton = { TextButton(onClick = { dialog = null }) { Text(str(R.string.main_046)) } },
+            dismissButton = { TextButton(onClick = { dialog = null; nav.go(Routes.SETTINGS) }) { Text(str(R.string.main_047)) } },
         )
     }
 }
 
 fun tunnelText(t: TunnelState, serverRunning: Boolean): String = when {
-    !serverRunning -> "서버를 켜면 터널이 열려요. 인증이 강제로 켜져요."
+    !serverRunning -> str(R.string.main_048)
     else -> when (t) {
-        TunnelState.Off -> "터널 준비 중"
-        is TunnelState.Connecting -> "연결 중 (${t.attempt}번째 시도)"
-        is TunnelState.Connected -> "${t.publicUrl} · 인터넷의 누구나 접근을 시도할 수 있어요"
-        is TunnelState.Retrying -> "끊김, ${com.ouor.mobilegit.ui.time(t.atMillis)}에 재연결: ${t.reason}"
-        is TunnelState.TokenRejected -> "토큰 확인 필요: ${t.reason}"
+        TunnelState.Off -> str(R.string.main_049)
+        is TunnelState.Connecting -> str(R.string.main_050, t.attempt)
+        is TunnelState.Connected -> str(R.string.main_051, t.publicUrl)
+        is TunnelState.Retrying -> str(R.string.main_052, com.ouor.mobilegit.ui.time(t.atMillis), t.reason)
+        is TunnelState.TokenRejected -> str(R.string.main_053, t.reason)
     }
 }
 
@@ -277,11 +279,11 @@ private fun ServerCard(
     val running = server is ServerState.Running
     val on = running || server is ServerState.Starting
     val (title, sub, t) = when (server) {
-        is ServerState.Running -> Triple("서버 켜짐", "포트 ${server.port} · " + when { !auth -> "인증 없음"; anon -> "읽기는 익명 허용"; else -> "인증 켜짐" }, Tone.Success)
-        ServerState.Starting -> Triple("켜는 중…", "포트 $port", Tone.Info)
-        ServerState.Stopping -> Triple("끄는 중…", "진행 중인 전송을 마무리하고 있어요", Tone.Neutral)
-        ServerState.Stopped -> Triple("서버 꺼짐", "켜면 PC에서 clone·push할 수 있어요", Tone.Neutral)
-        is ServerState.Failed -> Triple("서버 꺼짐", "켤 수 없었어요", Tone.Danger)
+        is ServerState.Running -> Triple(str(R.string.main_054), str(R.string.main_055, server.port) + when { !auth -> str(R.string.main_056); anon -> str(R.string.main_057); else -> str(R.string.main_058) }, Tone.Success)
+        ServerState.Starting -> Triple(str(R.string.main_059), str(R.string.main_060, port), Tone.Info)
+        ServerState.Stopping -> Triple(str(R.string.main_061), str(R.string.main_062), Tone.Neutral)
+        ServerState.Stopped -> Triple(str(R.string.main_063), str(R.string.main_064), Tone.Neutral)
+        is ServerState.Failed -> Triple(str(R.string.main_063), str(R.string.main_065), Tone.Danger)
     }
     com.ouor.mobilegit.ui.components.SectionCard {
         Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable(role = Role.Switch, enabled = server !is ServerState.Stopping) { onToggle(!on) },
@@ -296,23 +298,23 @@ private fun ServerCard(
         }
         if (server is ServerState.Failed) {
             Spacer(Modifier.height(Space.md))
-            Banner(Tone.Danger, Icons.Outlined.Close, server.message, if (server.portInUse) "다른 앱이 이 포트를 쓰고 있어요. 설정에서 포트를 바꿔 보세요." else null,
-                actionLabel = if (server.portInUse) "포트 바꾸기" else null, onAction = onPort)
+            Banner(Tone.Danger, Icons.Outlined.Close, server.message, if (server.portInUse) str(R.string.main_066) else null,
+                actionLabel = if (server.portInUse) str(R.string.main_067) else null, onAction = onPort)
         }
         Spacer(Modifier.height(Space.md))
         if (addrs.isEmpty()) {
-            Banner(Tone.Warning, Icons.Outlined.WifiOff, "접속 가능한 네트워크 없음", "와이파이에 연결하거나, 핫스팟을 켜거나, Tailscale 앱을 설치해 연결하세요.",
-                actionLabel = "Tailscale 안내", onAction = onTailscale)
+            Banner(Tone.Warning, Icons.Outlined.WifiOff, str(R.string.main_068), str(R.string.main_069),
+                actionLabel = str(R.string.main_070), onAction = onTailscale)
         } else {
             val primary = addrs.first()
-            AddressBar("${primary.kind.label()} 주소", primary.baseUrl, large = true, enabled = running, onQr = onQr)
+            AddressBar(str(R.string.main_071, primary.kind.label()), primary.baseUrl, large = true, enabled = running, onQr = onQr)
             addrs.drop(1).forEach { a -> Spacer(Modifier.height(Space.xs)); AddressBar(a.kind.label(), a.baseUrl, enabled = running) }
             Text(
-                if (running) "탭하면 복사돼요. 브라우저로 열면 웹 화면, git으로는 <주소>/<레포>.git" else "서버를 켜면 이 주소로 접속할 수 있어요",
+                if (running) str(R.string.main_072) else str(R.string.main_073),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm, start = Space.xs),
             )
             if (addrs.none { it.kind == AddressKind.TAILSCALE }) {
-                Text("모바일 데이터에서도 접속하려면? Tailscale 안내", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold,
+                Text(str(R.string.main_074), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(top = Space.xs).clip(MaterialTheme.shapes.extraSmall).clickable(role = Role.Button, onClick = onTailscale).padding(Space.xs))
             }
         }
@@ -323,8 +325,8 @@ private fun ServerCard(
 private fun SearchField(value: String, onChange: (String) -> Unit) {
     TextField(
         value, onChange, Modifier.fillMaxWidth().padding(top = Space.xs), singleLine = true,
-        placeholder = { Text("레포 이름 검색") }, leadingIcon = { Icon(Icons.Outlined.Search, null) },
-        trailingIcon = { if (value.isNotEmpty()) IconButton(onClick = { onChange("") }) { Icon(Icons.Outlined.Close, "검색어 지우기") } },
+        placeholder = { Text(str(R.string.main_075)) }, leadingIcon = { Icon(Icons.Outlined.Search, null) },
+        trailingIcon = { if (value.isNotEmpty()) IconButton(onClick = { onChange("") }) { Icon(Icons.Outlined.Close, str(R.string.main_076)) } },
         shape = MaterialTheme.shapes.medium,
         colors = TextFieldDefaults.colors(
             focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,

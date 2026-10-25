@@ -1,5 +1,7 @@
 package com.ouor.mobilegit.ui.screens
 
+import com.ouor.mobilegit.R
+import com.ouor.mobilegit.ui.str
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -75,32 +77,32 @@ fun StorageScreen(nav: Nav) {
     var tick by remember { mutableIntStateOf(0) }
     val summary by produceState<StorageSummary?>(null, repos, tick) { value = withContext(Dispatchers.IO) { core.storageSummary() } }
 
-    AppScaffold("저장 공간", onBack = nav::back, actions = {
-        IconButton(onClick = { measuring = true; scope.launch { core.refreshSizes(); measuring = false; tick++ } }, enabled = !measuring) { Icon(Icons.Outlined.Refresh, "용량 다시 측정") }
+    AppScaffold(str(R.string.main_007), onBack = nav::back, actions = {
+        IconButton(onClick = { measuring = true; scope.launch { core.refreshSizes(); measuring = false; tick++ } }, enabled = !measuring) { Icon(Icons.Outlined.Refresh, str(R.string.storage_001)) }
     }) { padding ->
         val s = summary
         if (s == null) { Box(Modifier.padding(padding)) { Loading() }; return@AppScaffold }
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(horizontal = Space.screen, vertical = Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
             item {
                 SectionCard {
-                    Text("mobilegit이 쓰는 공간", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(str(R.string.storage_002), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(bytes(s.appUsageBytes), style = MaterialTheme.typography.headlineMedium)
                     Spacer(Modifier.height(Space.md))
                     val used = (s.totalBytes - s.freeBytes).coerceAtLeast(0)
                     LinearProgressIndicator(progress = { if (s.totalBytes > 0) used.toFloat() / s.totalBytes else 0f }, Modifier.fillMaxWidth().height(8.dp),
                         color = if (s.belowFloor) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, drawStopIndicator = {})
                     Spacer(Modifier.height(Space.sm))
-                    InfoRow("기기 남은 공간", "${bytes(s.freeBytes)} / ${bytes(s.totalBytes)}", valueTone = if (s.belowFloor) Tone.Danger else null)
-                    InfoRow("하한", "${bytes(s.floorBytes)} 미만이면 자동 업데이트와 새 미러 받기를 멈춰요")
-                    if (measuring) Text("다시 측정하는 중…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                    InfoRow(str(R.string.storage_003), "${bytes(s.freeBytes)} / ${bytes(s.totalBytes)}", valueTone = if (s.belowFloor) Tone.Danger else null)
+                    InfoRow(str(R.string.storage_004), str(R.string.storage_005, bytes(s.floorBytes)))
+                    if (measuring) Text(str(R.string.storage_006), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 }
             }
             if (s.belowFloor) item {
-                Banner(Tone.Danger, Icons.Outlined.SdCardAlert, "저장 공간이 부족해요", "자동 업데이트와 새 미러 받기를 멈췄어요. push는 받을 데이터보다 공간이 적으면 실패해요. 레포를 정리하거나 기기 공간을 확보하세요.")
+                Banner(Tone.Danger, Icons.Outlined.SdCardAlert, str(R.string.main_013), str(R.string.storage_007))
             }
-            item { SecondaryButton("전체 백업 (zip)", Modifier.fillMaxWidth(), icon = Icons.Outlined.Upload) { nav.go(Routes.BACKUP) } }
-            item { Text("레포별 용량 (큰 순)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.md)) }
-            if (s.reposBySize.isEmpty()) item { EmptyState(Icons.Outlined.Inventory2, "레포가 없어요", "레포를 추가하면 여기에 용량이 표시돼요.") }
+            item { SecondaryButton(str(R.string.storage_008), Modifier.fillMaxWidth(), icon = Icons.Outlined.Upload) { nav.go(Routes.BACKUP) } }
+            item { Text(str(R.string.storage_009), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.md)) }
+            if (s.reposBySize.isEmpty()) item { EmptyState(Icons.Outlined.Inventory2, str(R.string.storage_010), str(R.string.storage_011)) }
             val max = s.reposBySize.firstOrNull()?.sizeBytes?.coerceAtLeast(1) ?: 1
             items(s.reposBySize, key = { it.id }) { m ->
                 Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
@@ -110,7 +112,7 @@ fun StorageScreen(nav: Nav) {
                             Text(bytes(m.sizeBytes), style = MaterialTheme.typography.titleSmall)
                         }
                         LinearProgressIndicator(progress = { m.sizeBytes.toFloat() / max }, Modifier.fillMaxWidth().padding(vertical = Space.xs), drawStopIndicator = {})
-                        Text(m.sizeMeasuredAt?.let { "${ago(it)} 측정" } ?: "측정 전", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(m.sizeMeasuredAt?.let { str(R.string.detail_011, ago(it)) } ?: str(R.string.detail_012), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -132,20 +134,20 @@ fun BackupScreen(nav: Nav) {
     val chosen = repos.filter { it.name in selected }
     val est = chosen.sumOf { it.sizeBytes }
 
-    AppScaffold("전체 백업", onBack = nav::back, bottomBar = {
+    AppScaffold(str(R.string.main_008), onBack = nav::back, bottomBar = {
         Surface(color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = Space.screen, vertical = Space.md)) {
-                Text("${chosen.size}개 · 예상 ${bytes(est)} 이하" + (free?.let { " · 남은 공간 ${bytes(it.first)}" } ?: ""), style = MaterialTheme.typography.bodySmall,
+                Text(str(R.string.storage_012, chosen.size, bytes(est)) + (free?.let { str(R.string.add_051, bytes(it.first)) } ?: ""), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = Space.sm))
                 val p = export.progress
                 if (export.running) {
                     if (p != null) LinearProgressIndicator(progress = { p.first.toFloat() / p.second.coerceAtLeast(1) }, Modifier.fillMaxWidth().padding(bottom = Space.xs))
                     else LinearProgressIndicator(Modifier.fillMaxWidth().padding(bottom = Space.xs))
-                    Text(p?.let { "${it.first} / ${it.second} 레포 처리 중" } ?: "백업 준비 중…", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = Space.sm))
+                    Text(p?.let { str(R.string.storage_013, it.first, it.second) } ?: str(R.string.storage_014), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = Space.sm))
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-                    SecondaryButton("공유하기", Modifier.weight(1f).height(54.dp), enabled = chosen.isNotEmpty() && !export.running) { export.start(ExportKind.FULL_BACKUP, chosen.map { it.name }, toFile = false) }
-                    PrimaryButton(if (export.running) "백업 중…" else "파일로 저장", Modifier.weight(1f), enabled = chosen.isNotEmpty() && !export.running) {
+                    SecondaryButton(str(R.string.detail_090), Modifier.weight(1f).height(54.dp), enabled = chosen.isNotEmpty() && !export.running) { export.start(ExportKind.FULL_BACKUP, chosen.map { it.name }, toFile = false) }
+                    PrimaryButton(if (export.running) str(R.string.storage_015) else str(R.string.detail_091), Modifier.weight(1f), enabled = chosen.isNotEmpty() && !export.running) {
                         export.start(ExportKind.FULL_BACKUP, chosen.map { it.name }, toFile = true)
                     }
                 }
@@ -154,17 +156,17 @@ fun BackupScreen(nav: Nav) {
     }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(horizontal = Space.screen, vertical = Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
             item {
-                Text("선택한 레포를 zip 하나로 만들어요. 레포별 .bundle(보존 ref 포함)과 manifest.json(이름, 원본, refs SHA 등)이 들어가요. 자격 증명과 비밀번호는 넣지 않아요. SD 카드나 클라우드 드라이브에 저장할 수 있어요.",
+                Text(str(R.string.storage_016),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = Space.sm)) {
-                    Text("레포 ${repos.size}개", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    Text(str(R.string.storage_017, repos.size), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                     val all = repos.isNotEmpty() && selected.size == repos.size
-                    TextButton(onClick = { selected.clear(); if (!all) selected.addAll(repos.map { it.name }) }) { Text(if (all) "선택 해제" else "전체 선택") }
+                    TextButton(onClick = { selected.clear(); if (!all) selected.addAll(repos.map { it.name }) }) { Text(if (all) str(R.string.add_063) else str(R.string.add_064)) }
                 }
             }
-            if (repos.isEmpty()) item { EmptyState(Icons.Outlined.Inventory2, "백업할 레포가 없어요", "레포를 추가하면 백업할 수 있어요.") }
+            if (repos.isEmpty()) item { EmptyState(Icons.Outlined.Inventory2, str(R.string.storage_018), str(R.string.storage_019)) }
             items(repos, key = { it.id }) { m ->
                 val on = m.name in selected
                 Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
@@ -177,15 +179,15 @@ fun BackupScreen(nav: Nav) {
                 }
             }
             item(key = "restore") {
-                SectionCard(Modifier.padding(top = Space.md), title = "복원 방법") {
-                    Text("앱 안에서 가져오기는 없어요. zip을 풀고 PC에서:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SectionCard(Modifier.padding(top = Space.md), title = str(R.string.storage_020)) {
+                    Text(str(R.string.storage_021), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(Space.sm))
-                    val base = addrs.firstOrNull()?.baseUrl ?: "http://<폰 주소>:${core.settings.current.port}"
-                    CommandBlock("git clone <이름>.bundle <이름>"); Spacer(Modifier.height(Space.xs))
-                    CommandBlock("cd <이름>"); Spacer(Modifier.height(Space.xs))
-                    CommandBlock("git push $base/<이름>.git --all"); Spacer(Modifier.height(Space.xs))
-                    CommandBlock("git push $base/<이름>.git --tags")
-                    Text("이 폰에 push하면 레포가 새로 만들어져요.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
+                    val base = addrs.firstOrNull()?.baseUrl ?: str(R.string.main_031, core.settings.current.port)
+                    CommandBlock(str(R.string.storage_022)); Spacer(Modifier.height(Space.xs))
+                    CommandBlock(str(R.string.storage_023)); Spacer(Modifier.height(Space.xs))
+                    CommandBlock(str(R.string.storage_024, base)); Spacer(Modifier.height(Space.xs))
+                    CommandBlock(str(R.string.storage_025, base))
+                    Text(str(R.string.storage_026), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
                 }
             }
         }

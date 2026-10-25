@@ -1,5 +1,7 @@
 package com.ouor.mobilegit.ui.screens
 
+import com.ouor.mobilegit.R
+import com.ouor.mobilegit.ui.str
 import android.content.Intent
 import android.provider.Settings as AndroidSettings
 import androidx.compose.foundation.layout.Arrangement
@@ -71,128 +73,128 @@ fun SettingsScreen(nav: Nav) {
     var dialog by remember { mutableStateOf<String?>(null) }
     val running = server is ServerState.Running
 
-    AppScaffold("설정", onBack = nav::back) { padding ->
+    AppScaffold(str(R.string.main_002), onBack = nav::back) { padding ->
         ScreenColumn(padding) {
-            SectionHeader("서버")
+            SectionHeader(str(R.string.settings_001))
             RowGroup {
-                NavRow("포트", { dialog = "port" }, value = "${s.port}")
+                NavRow(str(R.string.settings_002), { dialog = "port" }, value = "${s.port}")
                 Divider()
-                NavRow("사용자 이름", { dialog = "user" }, value = s.username)
+                NavRow(str(R.string.add_054), { dialog = "user" }, value = s.username)
                 Divider()
-                NavRow("비밀번호 재설정", { dialog = "password" }, subtitle = "비밀번호는 보여 주지 않고 새로 정하기만 해요")
+                NavRow(str(R.string.settings_003), { dialog = "password" }, subtitle = str(R.string.settings_004))
                 Divider()
-                SwitchRow("인증 끄기", !s.authEnabled, { off -> if (off) dialog = "authOff" else core.settings.update { it.copy(authEnabled = true) } },
-                    subtitle = if (s.ngrokEnabled) "외부 공개(ngrok) 중에는 인증이 강제돼요" else "끄면 같은 네트워크의 누구나 읽고 push할 수 있어요", enabled = !s.ngrokEnabled)
+                SwitchRow(str(R.string.settings_005), !s.authEnabled, { off -> if (off) dialog = "authOff" else core.settings.update { it.copy(authEnabled = true) } },
+                    subtitle = if (s.ngrokEnabled) str(R.string.settings_006) else str(R.string.settings_007), enabled = !s.ngrokEnabled)
                 Divider()
-                SwitchRow("같은 네트워크에서 읽기는 인증 없이", s.anonymousReadOnLan, { v -> core.settings.update { it.copy(anonymousReadOnLan = v) } },
-                    subtitle = if (s.ngrokEnabled) "외부 공개(ngrok) 중에는 쓸 수 없어요" else "clone·fetch와 웹 화면은 익명 허용, push는 계속 인증. 수업할 때 유용해요",
+                SwitchRow(str(R.string.settings_008), s.anonymousReadOnLan, { v -> core.settings.update { it.copy(anonymousReadOnLan = v) } },
+                    subtitle = if (s.ngrokEnabled) str(R.string.settings_009) else str(R.string.settings_010),
                     enabled = !s.ngrokEnabled && s.authEnabled)
                 Divider()
-                SwitchRow("부팅 후 서버 자동 시작", s.startOnBoot, { v -> core.settings.update { it.copy(startOnBoot = v) } }, subtitle = "재부팅 전에 서버가 켜져 있었다면 다시 켜요")
+                SwitchRow(str(R.string.manage_050), s.startOnBoot, { v -> core.settings.update { it.copy(startOnBoot = v) } }, subtitle = str(R.string.settings_011))
             }
-            Banner(Tone.Neutral, Icons.Outlined.Shield, "연결 경로별 보안",
-                "와이파이·핫스팟: 평문 HTTP라 같은 네트워크의 다른 기기가 접속 계정을 엿볼 수 있어요.\nTailscale: WireGuard로 암호화돼요.\nngrok: 인터넷 구간은 HTTPS예요. 대신 누구나 접근을 시도할 수 있어요.")
+            Banner(Tone.Neutral, Icons.Outlined.Shield, str(R.string.settings_012),
+                str(R.string.settings_013))
 
-            SectionHeader("외부 접속 (ngrok)")
+            SectionHeader(str(R.string.settings_014))
             RowGroup {
-                SwitchRow("외부 접속", s.ngrokEnabled, { on ->
+                SwitchRow(str(R.string.settings_015), s.ngrokEnabled, { on ->
                     when {
                         !on -> core.settings.update { it.copy(ngrokEnabled = false) }
-                        !s.hasNgrokToken -> { snack("먼저 authtoken을 입력하세요"); dialog = "token" }
+                        !s.hasNgrokToken -> { snack(str(R.string.settings_016)); dialog = "token" }
                         s.ngrokWarningAccepted -> core.settings.update { it.copy(ngrokEnabled = true) }
                         else -> dialog = "ngrokWarn"
                     }
-                }, subtitle = if (s.ngrokEnabled) tunnelText(tunnel, running) else "Tailscale을 쓸 수 없는 PC에서 인터넷으로 접속할 때만 켜세요")
+                }, subtitle = if (s.ngrokEnabled) tunnelText(tunnel, running) else str(R.string.settings_017))
                 Divider()
-                NavRow("authtoken", { dialog = "token" }, value = if (s.hasNgrokToken) "설정됨" else "없음", subtitle = "암호화해 저장하고 내보내기에 넣지 않아요")
+                NavRow("authtoken", { dialog = "token" }, value = if (s.hasNgrokToken) str(R.string.settings_018) else str(R.string.fmt_001), subtitle = str(R.string.settings_019))
             }
 
-            SectionHeader("동기화")
+            SectionHeader(str(R.string.settings_020))
             RowGroup {
                 Column(Modifier.padding(horizontal = Space.lg, vertical = Space.md)) {
-                    Text("변경 확인 주기", style = MaterialTheme.typography.bodyLarge)
-                    Text("원격 refs만 조회해 데이터가 적어요", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(str(R.string.settings_021), style = MaterialTheme.typography.bodyLarge)
+                    Text(str(R.string.settings_022), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(Space.sm))
                     val opts = listOf(1, 6, 12, 24)
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                         opts.forEachIndexed { i, h ->
-                            SegmentedButton(s.checkIntervalHours == h, { core.settings.setCheckIntervalHours(h) }, SegmentedButtonDefaults.itemShape(i, opts.size)) { Text("${h}시간") }
+                            SegmentedButton(s.checkIntervalHours == h, { core.settings.setCheckIntervalHours(h) }, SegmentedButtonDefaults.itemShape(i, opts.size)) { Text(str(R.string.settings_023, h)) }
                         }
                     }
                 }
                 Divider()
-                SwitchRow("자동 업데이트", s.autoUpdate, { v -> core.settings.update { it.copy(autoUpdate = v) } }, subtitle = "변경이 있으면 이어서 받아요. 끄면 배지만 붙어요")
+                SwitchRow(str(R.string.settings_024), s.autoUpdate, { v -> core.settings.update { it.copy(autoUpdate = v) } }, subtitle = str(R.string.settings_025))
                 Divider()
-                SwitchRow("와이파이에서만 업데이트", s.updateWifiOnly, { v -> core.settings.update { it.copy(updateWifiOnly = v) } }, enabled = s.autoUpdate)
+                SwitchRow(str(R.string.settings_026), s.updateWifiOnly, { v -> core.settings.update { it.copy(updateWifiOnly = v) } }, enabled = s.autoUpdate)
                 Divider()
-                SwitchRow("충전 중에만 업데이트", s.updateChargingOnly, { v -> core.settings.update { it.copy(updateChargingOnly = v) } }, enabled = s.autoUpdate)
+                SwitchRow(str(R.string.settings_027), s.updateChargingOnly, { v -> core.settings.update { it.copy(updateChargingOnly = v) } }, enabled = s.autoUpdate)
                 Divider()
-                SwitchRow("확인도 와이파이에서만", s.checkWifiOnly, { v -> core.settings.update { it.copy(checkWifiOnly = v) } }, subtitle = "모바일 데이터에서는 확인도 미뤄요")
+                SwitchRow(str(R.string.settings_028), s.checkWifiOnly, { v -> core.settings.update { it.copy(checkWifiOnly = v) } }, subtitle = str(R.string.settings_029))
                 Divider()
-                SwitchRow("PR ref도 미러", s.mirrorPullRefs, { v -> if (v) core.settings.update { it.copy(mirrorPullRefs = true) } else dialog = "pullOff" },
-                    subtitle = "refs/pull/*, refs/merge-requests/*. 끄면 받는 시간과 용량이 크게 줄어요. 레포마다 따로 정할 수 있어요")
+                SwitchRow(str(R.string.settings_030), s.mirrorPullRefs, { v -> if (v) core.settings.update { it.copy(mirrorPullRefs = true) } else dialog = "pullOff" },
+                    subtitle = str(R.string.settings_031))
             }
 
-            SectionHeader("알림")
+            SectionHeader(str(R.string.settings_032))
             RowGroup {
-                SwitchRow("업데이트 완료 알림", s.notifyOnSuccess, { v -> core.settings.update { it.copy(notifyOnSuccess = v) } }, subtitle = "실패·원본 없음·보존 발생 알림은 항상 보내요")
+                SwitchRow(str(R.string.settings_033), s.notifyOnSuccess, { v -> core.settings.update { it.copy(notifyOnSuccess = v) } }, subtitle = str(R.string.settings_034))
                 Divider()
-                NavRow("시스템 알림 설정", {
+                NavRow(str(R.string.settings_035), {
                     ctx.startActivity(Intent(AndroidSettings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(AndroidSettings.EXTRA_APP_PACKAGE, ctx.packageName))
-                }, icon = Icons.Outlined.Notifications, subtitle = "채널별로 끄거나 켤 수 있어요")
+                }, icon = Icons.Outlined.Notifications, subtitle = str(R.string.settings_036))
             }
 
-            SectionHeader("관리")
+            SectionHeader(str(R.string.detail_036))
             RowGroup {
-                NavRow("원격 자격 증명", { nav.go(Routes.CREDENTIALS) }, icon = Icons.Outlined.Key, value = "${creds.size}개")
+                NavRow(str(R.string.add_003), { nav.go(Routes.CREDENTIALS) }, icon = Icons.Outlined.Key, value = str(R.string.settings_037, creds.size))
                 Divider()
-                NavRow("접속 기록", { nav.go(Routes.ACCESS_LOG) }, icon = Icons.Outlined.ListAlt)
+                NavRow(str(R.string.main_009), { nav.go(Routes.ACCESS_LOG) }, icon = Icons.Outlined.ListAlt)
                 Divider()
-                NavRow("저장 공간", { nav.go(Routes.STORAGE) }, icon = Icons.Outlined.Storage)
+                NavRow(str(R.string.main_007), { nav.go(Routes.STORAGE) }, icon = Icons.Outlined.Storage)
                 Divider()
-                NavRow("전체 백업", { nav.go(Routes.BACKUP) }, icon = Icons.Outlined.Upload)
+                NavRow(str(R.string.main_008), { nav.go(Routes.BACKUP) }, icon = Icons.Outlined.Upload)
                 Divider()
-                NavRow("백그라운드 안내", { nav.go(Routes.BATTERY) }, icon = Icons.Outlined.BatteryChargingFull, subtitle = "배터리 최적화, 제조사별 설정, 서랍 폰 팁")
+                NavRow(str(R.string.manage_033), { nav.go(Routes.BATTERY) }, icon = Icons.Outlined.BatteryChargingFull, subtitle = str(R.string.settings_038))
             }
 
-            SectionHeader("정보")
+            SectionHeader(str(R.string.detail_005))
             RowGroup {
-                NavRow("버전", {}, icon = Icons.Outlined.Info, value = BuildConfig.VERSION_NAME, enabled = false)
+                NavRow(str(R.string.settings_039), {}, icon = Icons.Outlined.Info, value = BuildConfig.VERSION_NAME, enabled = false)
                 Divider()
-                NavRow("소개 다시 보기", { nav.go(Routes.ONBOARDING) }, icon = Icons.Outlined.School)
+                NavRow(str(R.string.settings_040), { nav.go(Routes.ONBOARDING) }, icon = Icons.Outlined.School)
                 Divider()
-                NavRow("오픈소스 라이선스", { dialog = "licenses" }, icon = Icons.Outlined.Public)
+                NavRow(str(R.string.settings_041), { dialog = "licenses" }, icon = Icons.Outlined.Public)
             }
         }
     }
 
     when (dialog) {
-        "port" -> InputDialog("포트", "${s.port}", "1024~65535", KeyboardType.Number, note = if (running) "저장하면 서버가 새 포트로 다시 시작해요" else null, onDismiss = { dialog = null }) {
+        "port" -> InputDialog(str(R.string.settings_002), "${s.port}", "1024~65535", KeyboardType.Number, note = if (running) str(R.string.settings_042) else null, onDismiss = { dialog = null }) {
             val p = it.trim().toIntOrNull() ?: 0
-            if (p != s.port) { core.settings.setPort(p); snack(if (running) "포트를 바꿨어요. 서버를 다시 시작해요" else "포트를 바꿨어요") }
+            if (p != s.port) { core.settings.setPort(p); snack(if (running) str(R.string.settings_043) else str(R.string.settings_044)) }
         }
-        "user" -> InputDialog("사용자 이름", s.username, "git", onDismiss = { dialog = null }) { core.settings.setUsername(it); snack("사용자 이름을 바꿨어요") }
+        "user" -> InputDialog(str(R.string.add_054), s.username, "git", onDismiss = { dialog = null }) { core.settings.setUsername(it); snack(str(R.string.settings_045)) }
         "password" -> PasswordDialog(onDismiss = { dialog = null })
-        "token" -> InputDialog("ngrok authtoken", "", "dashboard.ngrok.com에서 복사", password = true, note = "비워 두고 저장하면 토큰을 지워요", onDismiss = { dialog = null }) {
+        "token" -> InputDialog("ngrok authtoken", "", str(R.string.settings_046), password = true, note = str(R.string.settings_047), onDismiss = { dialog = null }) {
             core.settings.setNgrokAuthtoken(it.ifBlank { null })
             if (it.isBlank()) core.settings.update { st -> st.copy(ngrokEnabled = false) }
-            snack(if (it.isBlank()) "토큰을 지웠어요" else "토큰을 저장했어요")
+            snack(if (it.isBlank()) str(R.string.manage_013) else str(R.string.settings_048))
         }
-        "authOff" -> ConfirmDialog("인증을 끌까요?", "같은 네트워크의 누구나 레포를 읽고, push로 레포를 만들거나 덮어쓸 수 있어요. 꺼진 동안 메인 화면에 경고가 보여요.", "인증 끄기",
+        "authOff" -> ConfirmDialog(str(R.string.settings_049), str(R.string.settings_050), str(R.string.settings_005),
             destructive = true, onConfirm = { core.settings.update { it.copy(authEnabled = false) }; dialog = null }, onDismiss = { dialog = null })
         "ngrokWarn" -> ConfirmDialog(
-            "외부 접속을 켤까요?", "인터넷의 누구나 이 주소에 접근을 시도할 수 있습니다. 인증이 강제로 켜집니다. 모바일 데이터 사용량이 늘 수 있습니다.", "확인하고 켜기",
+            str(R.string.settings_051), str(R.string.settings_052), str(R.string.settings_053),
             onConfirm = { core.settings.update { it.copy(ngrokEnabled = true, ngrokWarningAccepted = true) }; dialog = null }, onDismiss = { dialog = null })
-        "pullOff" -> ConfirmDialog("PR ref 미러를 끌까요?", PULL_OFF_WARNING, "끄기", destructive = true,
+        "pullOff" -> ConfirmDialog(str(R.string.settings_054), PULL_OFF_WARNING, str(R.string.settings_055), destructive = true,
             onConfirm = { core.settings.update { it.copy(mirrorPullRefs = false) }; dialog = null }, onDismiss = { dialog = null })
-        "licenses" -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text("오픈소스 라이선스") }, text = {
+        "licenses" -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text(str(R.string.settings_041)) }, text = {
             Text(LICENSES, style = MaterialTheme.typography.bodySmall)
-        }, confirmButton = { TextButton(onClick = { dialog = null }) { Text("닫기") } })
+        }, confirmButton = { TextButton(onClick = { dialog = null }) { Text(str(R.string.common_005)) } })
     }
 }
 
 /** CR-2: turning PR refs off deletes already-fetched ones on the next update, without archiving. */
-const val PULL_OFF_WARNING = "이미 받은 PR ref는 다음 업데이트 때 보존 없이 삭제돼요. 브랜치와 태그, 보존된 기록은 그대로예요."
+val PULL_OFF_WARNING: String get() = str(R.string.settings_056)
 
 private const val LICENSES = """AndroidX, Jetpack Compose, Material 3, Navigation, WorkManager: Apache-2.0
 Kotlin, kotlinx.coroutines, kotlinx.serialization: Apache-2.0
@@ -219,8 +221,8 @@ fun InputDialog(
                 keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else keyboard), supportingText = (err ?: note)?.let { { Text(it) } })
         }
     }, confirmButton = {
-        TextButton(onClick = { try { onSave(v); onDismiss() } catch (e: Exception) { err = e.message } }) { Text("저장") }
-    }, dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } })
+        TextButton(onClick = { try { onSave(v); onDismiss() } catch (e: Exception) { err = e.message } }) { Text(str(R.string.manage_024)) }
+    }, dismissButton = { TextButton(onClick = onDismiss) { Text(str(R.string.common_023)) } })
 }
 
 /** F-03 AC2/AC3: reset only. Generated passwords are shown once with a copy action. */
@@ -231,24 +233,24 @@ private fun PasswordDialog(onDismiss: () -> Unit) {
     var err by remember { mutableStateOf<String?>(null) }
     var done by remember { mutableStateOf<String?>(null) }
     if (done != null) {
-        AlertDialog(onDismissRequest = onDismiss, title = { Text("새 비밀번호") }, text = {
+        AlertDialog(onDismissRequest = onDismiss, title = { Text(str(R.string.settings_057)) }, text = {
             Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-                Text("지금만 보여요. 복사해 두세요. PC의 git 자격 증명 관리자에 저장된 이전 비밀번호도 바꿔야 해요.", style = MaterialTheme.typography.bodyMedium)
+                Text(str(R.string.settings_058), style = MaterialTheme.typography.bodyMedium)
                 CommandBlock(done!!)
             }
-        }, confirmButton = { TextButton(onClick = onDismiss) { Text("확인") } })
+        }, confirmButton = { TextButton(onClick = onDismiss) { Text(str(R.string.main_046)) } })
         return
     }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("비밀번호 재설정") }, text = {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(str(R.string.settings_003)) }, text = {
         Column {
-            OutlinedTextField(v, { v = it; err = null }, singleLine = true, label = { Text("새 비밀번호 (8자 이상)") }, isError = err != null,
+            OutlinedTextField(v, { v = it; err = null }, singleLine = true, label = { Text(str(R.string.settings_059)) }, isError = err != null,
                 visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), supportingText = err?.let { { Text(it) } })
             TextButton(onClick = { val p = SettingsStore.generatePassword(16); runCatching { core.settings.setPassword(p) }.onSuccess { done = p }.onFailure { err = it.message } }) {
-                Text("무작위 16자로 만들기")
+                Text(str(R.string.settings_060))
             }
         }
     }, confirmButton = {
-        TextButton(onClick = { runCatching { core.settings.setPassword(v) }.onSuccess { onDismiss() }.onFailure { err = it.message } }) { Text("저장") }
-    }, dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } })
+        TextButton(onClick = { runCatching { core.settings.setPassword(v) }.onSuccess { onDismiss() }.onFailure { err = it.message } }) { Text(str(R.string.manage_024)) }
+    }, dismissButton = { TextButton(onClick = onDismiss) { Text(str(R.string.common_023)) } })
 }
 
