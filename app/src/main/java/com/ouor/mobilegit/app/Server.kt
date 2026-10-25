@@ -255,7 +255,11 @@ class ServerService : Service() {
                         return@collect
                     }
                     val token = c.settings.ngrokAuthtoken()
-                    if (on && token != null && c.gitServer.ngrokPort > 0) c.tunnel.start(token, c.gitServer.ngrokPort) else c.tunnel.stop()
+                    when {
+                        on && token != null && c.gitServer.ngrokPort > 0 -> c.tunnel.start(token, c.gitServer.ngrokPort)
+                        on && c.settings.current.hasNgrokToken && token == null -> c.tunnel.unusableToken("저장된 authtoken을 읽을 수 없습니다. 설정에서 다시 입력해 주세요.")
+                        else -> c.tunnel.stop()
+                    }
                 }
             }
             launch {

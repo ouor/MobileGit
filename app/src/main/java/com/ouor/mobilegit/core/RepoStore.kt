@@ -59,12 +59,11 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
         StoreCleanup.sweepReposDir(reposDir)
         val damaged = mutableListOf<DamagedRepo>()
         reposDir.listFiles { f -> f.isDirectory && f.name.endsWith(".git") }?.forEach { dir ->
-            StoreCleanup.sweepRepo(dir)
             val mf = metaFile(dir)
             val meta = try { JsonFile.read(mf, RepoMeta.serializer()) } catch (e: CorruptFileException) {
                 damaged += DamagedRepo(dir.name.removeSuffix(".git"), dir.absolutePath, StoreIssue.of(e)); return@forEach
             }
-            if (meta != null) { metas[key(meta.name)] = meta; runCatching { tuneConfig(dir) } }
+            if (meta != null) metas[key(meta.name)] = meta
             else if (File(dir, "HEAD").isFile) {
                 // Crash between `git init` and writing meta (e.g. push-create): adopt it as a local repo.
                 // Only when meta.json is *missing*: an unreadable one is reported in [damaged] instead (ARC-01).
@@ -72,7 +71,6 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
                 if (RepoNames.isValid(name)) {
                     val m = RepoMeta(UUID.randomUUID().toString(), name, RepoType.LOCAL, createdAt = dir.lastModified(), createdBy = CreatedBy.PUSH)
                     JsonFile.write(mf, RepoMeta.serializer(), m); metas[key(name)] = m
-                    runCatching { tuneConfig(dir) }
                 }
             } else if (!mf.exists()) {
                 // ARC-04: neither HEAD nor meta: an interrupted create/delete. Nothing to serve or keep.
@@ -81,6 +79,18 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
         }
         _damaged.value = damaged
         publish()
+    }
+
+    /**
+     * Startup housekeeping, off the main thread (ARC-05): per repo, under its lock, removes leftovers of a killed
+     * process (stale locks, pack temp files; GIT-01/ARC-04) and applies [tuneConfig] as a migration (GIT-06).
+     */
+    suspend fun sweepAll() {
+        for (m in metas.values.toList()) withRepoLock(m.name) {
+            if (!exists(m.name)) return@withRepoLock
+            runCatching { StoreCleanup.sweepRepo(dir(m.name)) }
+            runCatching { tuneConfig(dir(m.name)) }
+        }
     }
 
     private fun publish() { _repos.value = metas.values.sortedBy { it.name.lowercase() } }
@@ -299,7 +309,9 @@ object StoreCleanup {
         fun del(f: File) { if (f.delete()) n++ }
         File(dir, "objects/pack").listFiles()?.forEach { if (it.isFile && (it.name.startsWith("incoming_") || it.name.endsWith("_tmp") || it.name.startsWith("gc_"))) del(it) }
         File(dir, "objects").listFiles()?.forEach { if (it.isFile && it.name.startsWith("noz")) del(it) }
-        File(dir, "mobilegit").listFiles()?.forEach { if (it.isFile && JsonFile.isTmp(it)) del(it) }
+        // history files are also written outside the repo lock (checks): only tmp files older than a minute are stale
+        val old = System.currentTimeMillis() - 60_000
+        File(dir, "mobilegit").listFiles()?.forEach { if (it.isFile && JsonFile.isTmp(it) && it.lastModified() < old) del(it) }
         return n
     }
 

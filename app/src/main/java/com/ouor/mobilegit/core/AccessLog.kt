@@ -9,17 +9,27 @@ import java.util.concurrent.TimeUnit
 
 /** F-23: last 2,000 requests, newest first. Never stores Authorization headers or passwords (AC3). */
 class AccessLogStore(private val file: File?, private val capacity: Int = 2000) {
-    var loadIssue: StoreIssue? = null; private set
-    private val _entries = MutableStateFlow(
-        try { file?.let { JsonFile.readList(it, AccessLogEntry.serializer()) } ?: emptyList() } catch (e: CorruptFileException) { loadIssue = StoreIssue.of(e); emptyList() })
+    @Volatile var loadIssue: StoreIssue? = null; private set
+    private val _entries = MutableStateFlow<List<AccessLogEntry>>(emptyList())
     private val writeLock = Any()
+    private val loaded = java.util.concurrent.CountDownLatch(1)
+    @Volatile private var clearedBeforeLoad = false
     val entries: StateFlow<List<AccessLogEntry>> = _entries.asStateFlow()
     @Volatile private var dirty = false
     private val flusher = file?.let {
         Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "accesslog-flush").apply { isDaemon = true } }.apply {
+            // ARC-05: 2,000 entries are parsed off the main thread; requests logged meanwhile are kept in front
+            execute {
+                val old = try { JsonFile.readList(file, AccessLogEntry.serializer()) ?: emptyList() } catch (e: CorruptFileException) { loadIssue = StoreIssue.of(e); emptyList() }
+                synchronized(this@AccessLogStore) { if (!clearedBeforeLoad) _entries.value = (_entries.value + old).take(capacity) }
+                loaded.countDown()
+            }
             scheduleWithFixedDelay({ flush() }, 5, 5, TimeUnit.SECONDS)
         }
-    }
+    } ?: run { loaded.countDown(); null }
+
+    /** Blocks until the saved log has been read (tests, and [flush] so a write never drops the saved entries). */
+    fun awaitLoaded() { loaded.await(10, TimeUnit.SECONDS) }
 
     @Synchronized
     fun add(e: AccessLogEntry) {
@@ -30,13 +40,14 @@ class AccessLogStore(private val file: File?, private val capacity: Int = 2000) 
     /** ARC-03: flusher thread, stop() and clear() may call this together; writes are serialized and retried on failure. */
     fun flush() {
         val f = file ?: return
+        awaitLoaded()
         synchronized(writeLock) {
             val snapshot = synchronized(this) { if (!dirty) return; dirty = false; _entries.value }
             try { JsonFile.writeList(f, AccessLogEntry.serializer(), snapshot) } catch (e: Exception) { dirty = true }
         }
     }
 
-    fun clear() { synchronized(this) { _entries.value = emptyList(); dirty = true }; flush() }
+    fun clear() { synchronized(this) { _entries.value = emptyList(); dirty = true; if (loaded.count > 0) clearedBeforeLoad = true }; flush() }
 
     companion object {
         fun filter(list: List<AccessLogEntry>, ngrokOnly: Boolean = false, authFailuresOnly: Boolean = false) = list.filter {

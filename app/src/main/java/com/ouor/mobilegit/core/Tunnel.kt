@@ -59,8 +59,10 @@ class TunnelManager(
             while (isActive) {
                 attempt++
                 _state.value = TunnelState.Connecting(attempt)
+                var mine: TunnelSession? = null
                 val reason = try {
                     val s = runInterruptible { backend.connect(authtoken, localPort) }
+                    mine = s
                     session = s
                     _state.value = TunnelState.Connected(s.publicUrl)
                     attempt = 0
@@ -73,7 +75,9 @@ class TunnelManager(
                 } catch (e: Exception) {
                     e.message ?: e.javaClass.simpleName
                 } finally {
-                    session?.let { runCatching { it.close() } }; session = null
+                    // AND-15: close only this attempt's session; after stop()+start() the field may hold a newer one
+                    mine?.let { runCatching { it.close() } }
+                    synchronized(this@TunnelManager) { if (session === mine) session = null }
                 }
                 val wait = backoff(attempt)
                 _state.value = TunnelState.Retrying(clock.now() + wait, reason)
@@ -83,6 +87,10 @@ class TunnelManager(
     }
 
     fun backoff(attempt: Int): Long = minOf(maxDelayMs, baseDelayMs shl minOf(attempt.coerceAtLeast(1) - 1, 20))
+
+    /** AND-13: the switch is on but the stored authtoken cannot be used (e.g. Keystore reset): say so instead of "Off". */
+    @Synchronized
+    fun unusableToken(reason: String) { stop(); _state.value = TunnelState.TokenRejected(reason) }
 
     @Synchronized
     fun stop() {

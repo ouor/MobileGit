@@ -66,13 +66,29 @@ class SettingsStore(private val file: File, private val cipher: SecretCipher) {
         return s
     }
 
+    /**
+     * Applies [transform] and returns at once; the file is written on a background thread (AND-08: callers include
+     * Compose click handlers). Writes are coalesced and keep their order; [flush] waits for the latest one.
+     */
     @Synchronized
     fun update(transform: (Settings) -> Settings): Settings {
         val next = transform(_state.value)
-        JsonFile.write(file, Settings.serializer(), next)
         _state.value = next
+        pending.set(next)
+        writer.execute(::persist)
         return next
     }
+
+    private val pending = java.util.concurrent.atomic.AtomicReference<Settings?>(null)
+    private val writer = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "settings-write").apply { isDaemon = true } }
+
+    private fun persist() {
+        val s = pending.getAndSet(null) ?: return
+        try { JsonFile.write(file, Settings.serializer(), s) } catch (e: Exception) { pending.compareAndSet(null, s) } // retried by the next update
+    }
+
+    /** Waits until every [update] so far is on disk. */
+    fun flush() { writer.submit(::persist).get() }
 
     fun setPort(port: Int) {
         if (port !in 1024..65535) throw SettingsException("포트는 1024~65535 사이여야 합니다")

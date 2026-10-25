@@ -45,7 +45,13 @@ import javax.crypto.spec.GCMParameterSpec
 
 /** F-07 AC2, F-04 AC6: AES-256-GCM key that never leaves the Android Keystore. Output = base64(iv || ciphertext). */
 class KeystoreCipher(private val alias: String = "mobilegit-secrets") : SecretCipher {
-    private fun key(): SecretKey {
+    @Volatile private var cached: SecretKey? = null
+
+    /** AND-13: loaded once; synchronized so two first calls cannot generate (and overwrite) the key twice. */
+    @Synchronized
+    private fun key(): SecretKey = cached ?: loadOrCreate().also { cached = it }
+
+    private fun loadOrCreate(): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (ks.getKey(alias, null) as? SecretKey)?.let { return it }
         return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").apply {

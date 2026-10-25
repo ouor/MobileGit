@@ -91,7 +91,7 @@ class StorageTest {
         val s = SettingsStore(f, FakeCipher)
         assertEquals(9002, s.current.port)
         assertEquals(1, copies(f, "v7").size)
-        s.setPort(9003)
+        s.setPort(9003); s.flush()
         assertTrue(f.readText().contains("\"schemaVersion\":1"))
     }
 
@@ -102,11 +102,11 @@ class StorageTest {
         val dir = File(store.reposDir, "r.git")
         val leftovers = listOf(File(dir, "refs/heads/main.lock"), File(dir, "packed-refs.lock"), File(dir, "config.lock"),
             File(dir, "objects/pack/incoming_123.pack"), File(dir, "mobilegit/.events.json.x.tmp"), File(dir, "mobilegit/meta.json.tmp"))
-        leftovers.forEach { it.parentFile.mkdirs(); it.writeText("x") }
+        leftovers.forEach { it.parentFile.mkdirs(); it.writeText("x"); it.setLastModified(System.currentTimeMillis() - 120_000) }
         File(store.reposDir, ".tmp-1234/objects").mkdirs()
         File(store.reposDir, ".trash-1234/objects").mkdirs()
         File(store.reposDir, "orphan.git/mobilegit").mkdirs() // no HEAD, no meta
-        RepoStore(root)
+        kotlinx.coroutines.runBlocking { RepoStore(root).sweepAll() }
         leftovers.forEach { assertFalse(it.path, it.exists()) }
         assertEquals(setOf("r.git"), store.reposDir.list()!!.toSet())
     }
@@ -131,10 +131,25 @@ class StorageTest {
 
     @Test fun accessLogClearSurvivesConcurrentFlush() {
         val f = File(tempDir(), "accesslog.json")
-        val log = AccessLogStore(f)
+        val log = AccessLogStore(f).apply { awaitLoaded() }
         repeat(50) { log.add(AccessLogEntry(it.toLong(), "1.1.1.1", AccessRoute.WIFI, null, AccessAction.WEB, AuthResult.OK, 200)) }
         val t = thread { repeat(20) { log.flush() } }
         log.clear(); t.join(); log.flush()
-        assertTrue(AccessLogStore(f).entries.value.isEmpty())
+        assertTrue(AccessLogStore(f).apply { awaitLoaded() }.entries.value.isEmpty())
+    }
+
+    @Test fun backgroundLoadAndWriteKeepEverything() {
+        val f = File(tempDir(), "accesslog.json")
+        AccessLogStore(f).apply { awaitLoaded(); add(AccessLogEntry(1, "a", AccessRoute.WIFI, null, AccessAction.WEB, AuthResult.OK, 200)); flush() }
+        val log = AccessLogStore(f)
+        log.add(AccessLogEntry(2, "b", AccessRoute.WIFI, null, AccessAction.WEB, AuthResult.OK, 200)) // maybe before the load finished
+        log.awaitLoaded(); log.flush()
+        assertEquals(listOf(2L, 1L), AccessLogStore(f).apply { awaitLoaded() }.entries.value.map { it.at })
+
+        val sf = File(tempDir(), "settings.json")
+        val s = SettingsStore(sf, FakeCipher)
+        (1025..1060).forEach { s.setPort(it) } // AND-08: returns at once, written in order in the background
+        s.flush()
+        assertEquals(1060, SettingsStore(sf, FakeCipher).current.port)
     }
 }

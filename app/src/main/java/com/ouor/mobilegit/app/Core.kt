@@ -117,7 +117,7 @@ class Core(private val context: Context) {
     suspend fun refreshSizes() = withContext(Dispatchers.IO) { repos.repos.value.forEach { runCatching { repos.refreshDerived(it.name) } } }
 
     fun start() {
-        scope.launch(Dispatchers.IO) { ExportWorker.sweepCache(context) } // AND-12
+        scope.launch(Dispatchers.IO) { ExportWorker.sweepCache(context); repos.sweepAll() } // AND-12, ARC-04, GIT-01
         scheduler.schedulePeriodicCheck()
         scheduler.scheduleMaintenance()
         scope.launch {
