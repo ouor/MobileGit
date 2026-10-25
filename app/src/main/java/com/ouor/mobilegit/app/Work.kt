@@ -70,6 +70,14 @@ class WorkScheduler(private val context: Context, private val settings: () -> Se
         wm.enqueueUniqueWork("check-${name.lowercase()}", ExistingWorkPolicy.KEEP, req)
     }
 
+    override fun enqueueCheckNow(name: String) {
+        val req = OneTimeWorkRequestBuilder<CheckWorker>()
+            .setInputData(workDataOf(SyncWorker.K_NAME to name, SyncWorker.K_TRIGGER to SyncTrigger.MANUAL.name))
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .addTag(TAG_SYNC).build()
+        wm.enqueueUniqueWork("check-${name.lowercase()}", ExistingWorkPolicy.REPLACE, req)
+    }
+
     /** F-19: returns the work id; observe with WorkManager.getWorkInfoByIdFlow(id). Output key [ExportWorker.K_OUT_FILE]. */
     fun enqueueExport(kind: ExportKind, repos: List<String>, ref: String? = null, targetUri: Uri? = null): UUID {
         val req = OneTimeWorkRequestBuilder<ExportWorker>().setInputData(workDataOf(
@@ -114,7 +122,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         val core = MobileGitApp.core(applicationContext)
         val name = inputData.getString(SyncWorker.K_NAME) ?: return Result.failure()
         if (core.repos.get(name)?.mirror == null) return Result.success()
-        val d = core.coordinator.check(name, SyncTrigger.AUTO)
+        val d = core.coordinator.check(name, SyncTrigger.valueOf(inputData.getString(SyncWorker.K_TRIGGER) ?: SyncTrigger.AUTO.name))
         if (d.shouldAutoUpdate) core.scheduler.enqueueUpdate(name, SyncTrigger.AUTO)
         return Result.success()
     }

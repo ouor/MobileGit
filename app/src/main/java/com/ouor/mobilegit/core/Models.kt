@@ -36,6 +36,8 @@ data class MirrorSource(
     val lastError: ErrorCategory? = null,
     /** 첫 받기가 한 번이라도 성공했는가. false면 레포가 비어 있다. */
     val initialFetchDone: Boolean = false,
+    /** CR-2: mirror review refs (refs/pull/..., refs/merge-requests/...). null = follow [Settings.mirrorPullRefs]. */
+    val includePullRefs: Boolean? = null,
 )
 
 @Serializable

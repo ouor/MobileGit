@@ -1,6 +1,12 @@
 package com.ouor.mobilegit.core
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.builtins.ListSerializer
@@ -120,6 +126,7 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
         val meta = require(name)
         synchronized(this) { metas.remove(key(name)); publish() }
         File(reposDir, meta.name + ".git").deleteRecursively()
+        bumpEvents(name)
     }
 
     /** Registers a repo directory that was produced elsewhere (fork copy). */
@@ -129,14 +136,27 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
         publish()
     }
 
-    // ---- F-12 history (latest first, 200 per repo) ----
+    // ---- F-12 history (newest first, 200 per repo) ----
     private val eventsSer = ListSerializer(SyncEvent.serializer())
 
+    /** Per-repo write counter so [eventsFlow] re-reads only when that repo's history changed. */
+    private val eventsVersion = MutableStateFlow<Map<String, Long>>(emptyMap())
+
+    /** Newest first. Reads the disk: call off the main thread (or use [eventsFlow]). */
     fun events(name: String): List<SyncEvent> = JsonFile.read(eventsFile(dir(name)), eventsSer) ?: emptyList()
 
-    fun appendEvent(name: String, event: SyncEvent) = synchronized(this) {
-        val list = (listOf(event) + events(name)).take(MAX_EVENTS)
-        JsonFile.write(eventsFile(dir(name)), eventsSer, list)
+    /** CR-3: history of [name], newest first; emits on subscribe and after every [appendEvent]/delete. Reads on IO. */
+    fun eventsFlow(name: String): Flow<List<SyncEvent>> = eventsVersion.map { it[key(name)] ?: 0L }.distinctUntilChanged()
+        .map { if (exists(name)) events(name) else emptyList() }.flowOn(Dispatchers.IO)
+
+    private fun bumpEvents(name: String) = eventsVersion.update { it + (key(name) to (it[key(name)] ?: 0L) + 1) }
+
+    fun appendEvent(name: String, event: SyncEvent) {
+        synchronized(this) {
+            val list = (listOf(event) + events(name)).take(MAX_EVENTS)
+            JsonFile.write(eventsFile(dir(name)), eventsSer, list)
+        }
+        bumpEvents(name)
     }
 
     /**

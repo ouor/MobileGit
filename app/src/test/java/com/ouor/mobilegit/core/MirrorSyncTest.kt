@@ -1,6 +1,12 @@
 package com.ouor.mobilegit.core
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.lib.Constants
 import org.eclipse.jgit.transport.RefSpec
@@ -39,6 +45,7 @@ class MirrorSyncTest {
     private lateinit var bulk: BulkJobStore
     private val notices = mutableListOf<SyncNotice>()
     private val enqueued = mutableListOf<Pair<String, SyncTrigger>>()
+    private val checksNow = mutableListOf<String>()
     private var now = 1_760_000_000_000L
     private val clock = Clock { now }
     private val env = object : SyncEnvironment {
@@ -65,6 +72,7 @@ class MirrorSyncTest {
         coordinator = SyncCoordinator(store, MirrorEngine(clock), creds, { settings.current }, env, { notices += it }, bulk, clock)
         val scheduler = object : SyncScheduler {
             override fun enqueueUpdate(name: String, trigger: SyncTrigger) { enqueued += name to trigger }
+            override fun enqueueCheckNow(name: String) { checksNow += name }
             override fun cancel(name: String) {}
         }
         mirrors = MirrorController(store, MirrorEngine(clock), creds, coordinator, scheduler, { settings.current }, env, bulk, clock)
@@ -171,7 +179,7 @@ class MirrorSyncTest {
     @Test fun originDeletedKeepsDataAndRecovers() {
         addAndFetch()
         val before = myRefs()
-        runBlocking { RepoOps(upStore, object : SyncScheduler { override fun enqueueUpdate(name: String, trigger: SyncTrigger) {}; override fun cancel(name: String) {} }, { upSettings.current }, env).delete("up") }
+        runBlocking { RepoOps(upStore, object : SyncScheduler { override fun enqueueUpdate(name: String, trigger: SyncTrigger) {}; override fun enqueueCheckNow(name: String) {}; override fun cancel(name: String) {} }, { upSettings.current }, env).delete("up") }
         val ev = runBlocking { coordinator.update("up", SyncTrigger.AUTO) }
         assertEquals(SyncResult.FAILED, ev.result)
         assertEquals(ErrorCategory.ORIGIN_GONE, ev.errorCategory)
@@ -305,5 +313,58 @@ class MirrorSyncTest {
         runBlocking { coordinator.update("up", SyncTrigger.MANUAL) }
         assertEquals("feat", store.require("up").defaultBranch)
         assertNotNull(URIish(upUrl))
+    }
+
+    // CR-2: review refs are skipped by default, can be turned on per repo, and turning them off deletes them without archiving.
+    @Test fun pullRefsFollowSettingAndOverride() {
+        pushUpstream("up", "refs/heads/feat:refs/pull/1/head")
+        val probe = mirrors.probe(upUrl) as ProbeResult.Reachable
+        assertEquals(1, probe.pullRefCount)
+        addAndFetch()
+        assertTrue(myRefs().keys.none { it.startsWith("refs/pull/") })
+        assertEquals(0, runBlocking { coordinator.check("up", SyncTrigger.MANUAL) }.changed)
+
+        mirrors.setIncludePullRefs("up", true)
+        runBlocking { coordinator.update("up", SyncTrigger.MANUAL) }
+        assertEquals(upRefs()["refs/pull/1/head"], myRefs()["refs/pull/1/head"])
+
+        mirrors.setIncludePullRefs("up", null) // back to the global default (off)
+        val ev = runBlocking { coordinator.update("up", SyncTrigger.MANUAL) }
+        assertTrue(myRefs().keys.none { it.startsWith("refs/pull/") })
+        assertEquals(0, ev.archivedRefCount)
+
+        settings.update { it.copy(mirrorPullRefs = true) }
+        runBlocking { coordinator.update("up", SyncTrigger.MANUAL) }
+        assertTrue("refs/pull/1/head" in myRefs())
+    }
+
+    // CR-3: newest first, and the flow re-emits after a new event.
+    @Test fun eventsFlowEmitsNewestFirst() = runBlocking {
+        addAndFetch()
+        val flow = store.eventsFlow("up")
+        val got = async(Dispatchers.Default) { withTimeout(5_000) { flow.take(2).toList() } }
+        delay(300)
+        Commits.commit(work, "c.txt", "three")
+        pushUpstream("up", "+refs/heads/*:refs/heads/*")
+        coordinator.update("up", SyncTrigger.MANUAL)
+        val (before, after) = got.await()
+        assertEquals(before.size + 1, after.size)
+        assertEquals(after.maxOf { it.startedAt }, after.first().startedAt)
+        assertEquals(after, store.events("up"))
+    }
+
+    // CR-4: checkNow only schedules a check; a MANUAL check reports changes but never asks for an update.
+    @Test fun checkNowIsCheckOnly() {
+        addAndFetch()
+        mirrors.checkNow("up")
+        assertEquals(listOf("up"), checksNow)
+        Commits.commit(work, "c.txt", "three")
+        pushUpstream("up", "+refs/heads/*:refs/heads/*")
+        val d = runBlocking { coordinator.check("up", SyncTrigger.MANUAL) }
+        assertEquals(1, d.changed)
+        assertFalse(d.shouldAutoUpdate)
+        assertTrue(Badge.UPDATE_AVAILABLE in Badges.of(store.require("up"), settings.current, System.currentTimeMillis(), null))
+        ops.createEmpty("plain")
+        assertEquals(RepoException.Code.NOT_A_MIRROR, runCatching { mirrors.checkNow("plain") }.exceptionOrNull().let { (it as RepoException).code })
     }
 }

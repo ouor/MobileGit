@@ -25,6 +25,8 @@ data class Settings(
     val updateWifiOnly: Boolean = true,
     val updateChargingOnly: Boolean = false,
     val checkWifiOnly: Boolean = false,
+    /** CR-2 global default for [MirrorSource.includePullRefs]. Off: heads/tags are what F-11 archives; PR refs dominate size/time. */
+    val mirrorPullRefs: Boolean = false,
     val storageFloorBytes: Long = 1L shl 30,
     val notifyOnSuccess: Boolean = false,
     val batteryHintDismissedAt: Long? = null,

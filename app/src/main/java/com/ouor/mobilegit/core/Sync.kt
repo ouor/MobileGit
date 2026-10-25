@@ -23,6 +23,8 @@ interface SyncEnvironment {
 interface SyncScheduler {
     /** Runs [SyncCoordinator.update] for [name] in the background; AUTO honours wifi/charging constraints. */
     fun enqueueUpdate(name: String, trigger: SyncTrigger)
+    /** CR-4: ls-remote check only (never updates), any network, ignores backoff. */
+    fun enqueueCheckNow(name: String)
     fun cancel(name: String)
 }
 
@@ -115,7 +117,7 @@ class SyncCoordinator(
             setRunning(name, RepoProgress(SyncKind.CHECK, trigger))
             try {
                 val cred = credentials.effective(mir)
-                val outcome = withContext(Dispatchers.IO) { store.open(meta.name).use { engine.check(it, mir.remoteUrl, credentials.provider(cred)) } }
+                val outcome = withContext(Dispatchers.IO) { store.open(meta.name).use { engine.check(it, mir.remoteUrl, credentials.provider(cred), mir.includePullRefs ?: settings().mirrorPullRefs) } }
                 val ev = if (outcome.changed > 0) SyncEvent(started, clock.now() - started, trigger, SyncKind.CHECK, SyncResult.SUCCESS) else null
                 ev?.let { store.appendEvent(name, it) }
                 val before = mir
@@ -175,7 +177,8 @@ class SyncCoordinator(
                             store.open(meta.name).use { repo ->
                                 engine.update(repo, mir.remoteUrl, credentials.provider(cred),
                                     onProgress = { p -> setRunning(name, RepoProgress(SyncKind.UPDATE, trigger, p)) },
-                                    isCancelled = { !ctx.isActive })
+                                    isCancelled = { !ctx.isActive },
+                                    includePullRefs = mir.includePullRefs ?: settings().mirrorPullRefs)
                             }
                         }
                         val ev = SyncEvent(started, clock.now() - started, trigger, SyncKind.UPDATE,
@@ -273,11 +276,11 @@ class MirrorController(
     fun storageOk() = env.freeBytes() >= settings().storageFloorBytes
 
     /** Registers and starts the initial full fetch (AC4). Throws [RepoException] (INVALID_NAME, NAME_TAKEN, ALREADY_MIRRORED, STORAGE_LOW). */
-    fun add(url: String, name: String, credentialId: String? = null, createdBy: CreatedBy = CreatedBy.MIRROR_ADD): RepoMeta {
+    fun add(url: String, name: String, credentialId: String? = null, createdBy: CreatedBy = CreatedBy.MIRROR_ADD, includePullRefs: Boolean? = null): RepoMeta {
         val n = RemoteUrls.normalize(url) ?: throw RepoException(RepoException.Code.INVALID_NAME, "지원하지 않는 URL입니다")
         store.findMirrorByUrl(n.url)?.let { throw RepoException(RepoException.Code.ALREADY_MIRRORED, "이미 미러됨: ${it.name}") }
         if (!storageOk()) throw RepoException(RepoException.Code.STORAGE_LOW, "남은 공간이 부족합니다 (하한 ${settings().storageFloorBytes / (1 shl 20)}MB)")
-        val meta = store.create(name, RepoType.MIRROR, createdBy, mirror = MirrorSource(n.url, credentialId))
+        val meta = store.create(name, RepoType.MIRROR, createdBy, mirror = MirrorSource(n.url, credentialId, includePullRefs = includePullRefs))
         scheduler.enqueueUpdate(meta.name, if (createdBy == CreatedBy.BULK) SyncTrigger.BULK else SyncTrigger.INITIAL)
         return meta
     }
@@ -341,8 +344,19 @@ class MirrorController(
     /** F-09 AC4. */
     fun updateAll() = store.repos.value.filter { it.mirror != null }.forEach { scheduler.enqueueUpdate(it.name, SyncTrigger.MANUAL) }
 
+    /** CR-4: "지금 확인" without downloading objects; the result shows up as [MirrorSource.pendingChanges] / UPDATE_AVAILABLE. */
+    fun checkNow(name: String) {
+        if (store.require(name).mirror == null) throw RepoException(RepoException.Code.NOT_A_MIRROR, "미러가 아닙니다")
+        scheduler.enqueueCheckNow(name)
+    }
+
+    fun checkAll() = store.repos.value.filter { it.mirror != null }.forEach { scheduler.enqueueCheckNow(it.name) }
+
     fun setAutoUpdateExcluded(name: String, excluded: Boolean) = store.updateMirror(name) { it.copy(autoUpdateExcluded = excluded) }
     fun setCredential(name: String, credentialId: String?) = store.updateMirror(name) { it.copy(credentialId = credentialId) }
+
+    /** CR-2 per-repo override; null follows [Settings.mirrorPullRefs]. Applies from the next check/update. */
+    fun setIncludePullRefs(name: String, include: Boolean?) = store.updateMirror(name) { it.copy(includePullRefs = include) }
 }
 
 enum class RepoSort { NAME, RECENT }

@@ -39,7 +39,8 @@ data class UpdateOutcome(
 )
 
 sealed interface ProbeResult {
-    data class Reachable(val refCount: Int, val defaultBranch: String?) : ProbeResult
+    /** [pullRefCount]: review refs (refs/pull/..., refs/merge-requests/...) among [refCount] (CR-2, shown as "PR ref N개 제외"). */
+    data class Reachable(val refCount: Int, val defaultBranch: String?, val pullRefCount: Int = 0) : ProbeResult
     data object AuthRequired : ProbeResult
     data object NotFound : ProbeResult
     data class Failed(val category: ErrorCategory, val detail: String) : ProbeResult
@@ -58,7 +59,8 @@ class MirrorEngine(private val clock: Clock = SystemClock, private val timeoutSe
 
     fun probe(url: String, creds: CredentialsProvider?): ProbeResult = try {
         val refs = lsRemote(url, creds)
-        ProbeResult.Reachable(refs.size, refs[Constants.HEAD]?.takeIf { it.isSymbolic }?.target?.name?.removePrefix(Constants.R_HEADS))
+        ProbeResult.Reachable(refs.size, refs[Constants.HEAD]?.takeIf { it.isSymbolic }?.target?.name?.removePrefix(Constants.R_HEADS),
+            refs.keys.count(::isReviewRef))
     } catch (e: Exception) {
         val f = classify(e)
         when (f.category) {
@@ -69,8 +71,8 @@ class MirrorEngine(private val clock: Clock = SystemClock, private val timeoutSe
     }
 
     /** F-10 check: compares remote refs with local mirror refs without downloading objects. */
-    fun check(repo: Repository, url: String, creds: CredentialsProvider?): CheckOutcome = wrap {
-        val remote = mirrorable(lsRemote(url, creds))
+    fun check(repo: Repository, url: String, creds: CredentialsProvider?, includePullRefs: Boolean = true): CheckOutcome = wrap {
+        val remote = mirrorable(lsRemote(url, creds), includePullRefs)
         val local = localMirrorRefs(repo)
         val changed = (remote.keys + local.keys).count { remote[it] != local[it] }
         CheckOutcome(changed, remote.headTarget)
@@ -79,6 +81,8 @@ class MirrorEngine(private val clock: Clock = SystemClock, private val timeoutSe
     fun update(
         repo: Repository, url: String, creds: CredentialsProvider?,
         onProgress: (SyncProgress) -> Unit = {}, isCancelled: () -> Boolean = { false },
+        /** CR-2: false skips review refs; ones already mirrored are then deleted (not archived, see [shouldArchive]). */
+        includePullRefs: Boolean = true,
     ): UpdateOutcome = wrap {
         val monitor = Monitor(onProgress, isCancelled)
         Transport.open(repo, URIish(url)).use { tn ->
@@ -87,7 +91,7 @@ class MirrorEngine(private val clock: Clock = SystemClock, private val timeoutSe
             tn.openFetch().use { conn ->
                 val all = conn.refsMap
                 val remoteHead = all[Constants.HEAD]?.takeIf { it.isSymbolic }?.target?.name
-                val remoteRefs = all.filterKeys { isMirrorable(it) }
+                val remoteRefs = all.filterKeys { isMirrorable(it) && (includePullRefs || !isReviewRef(it)) }
                 val want = remoteRefs.values.filter { r -> r.objectId != null && !repo.objectDatabase.has(r.objectId) }
                 if (want.isNotEmpty()) {
                     val have = repo.refDatabase.refs.mapNotNull { it.objectId }.toSet()
@@ -162,8 +166,8 @@ class MirrorEngine(private val clock: Clock = SystemClock, private val timeoutSe
 
     private class RemoteRefs(map: Map<String, ObjectId>, val headTarget: String?) : Map<String, ObjectId> by map
 
-    private fun mirrorable(refs: Map<String, Ref>) = RemoteRefs(
-        refs.filter { isMirrorable(it.key) && it.value.objectId != null }.mapValues { it.value.objectId },
+    private fun mirrorable(refs: Map<String, Ref>, includePullRefs: Boolean) = RemoteRefs(
+        refs.filter { isMirrorable(it.key) && (includePullRefs || !isReviewRef(it.key)) && it.value.objectId != null }.mapValues { it.value.objectId },
         refs[Constants.HEAD]?.takeIf { it.isSymbolic }?.target?.name,
     )
 
@@ -185,7 +189,9 @@ class MirrorEngine(private val clock: Clock = SystemClock, private val timeoutSe
         fun isMirrorable(name: String) = name.startsWith("refs/") && !name.startsWith(RepoStore.ARCHIVE_PREFIX) && !name.endsWith("^{}")
 
         /** Host-managed review refs move constantly (synthetic merges); they are mirrored but not archived. */
-        fun shouldArchive(name: String) = !name.startsWith("refs/pull/") && !name.startsWith("refs/merge-requests/")
+        fun shouldArchive(name: String) = !isReviewRef(name)
+
+        fun isReviewRef(name: String) = name.startsWith("refs/pull/") || name.startsWith("refs/merge-requests/")
 
         fun archiveStamp(now: Long): String = SimpleDateFormat("yyyyMMdd'T'HHmmss'Z'", Locale.US)
             .apply { timeZone = TimeZone.getTimeZone("UTC") }.format(Date(now))
