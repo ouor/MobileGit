@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react"
+import type { ReactNode } from "react"
 import {
   AlertTriangleIcon,
   ArchiveIcon,
@@ -74,7 +74,7 @@ function TreeBody({ detail, path, refParam }: { detail: RepoDetail; path: string
         <ListSkeleton />
       ) : (
         <>
-          <FileList repo={repo} tree={tree} refParam={refParam} hasLfs={detail.repo.hasLfs} />
+          <FileList repo={repo} tree={tree} refParam={refParam} />
           <ReadmeCard repo={repo} refParam={refParam} path={path} hasReadme={tree.entries.some((e) => /^readme(\.md|\.markdown|\.txt)?$/i.test(e.name))} />
         </>
       )}
@@ -105,12 +105,9 @@ function TreeBody({ detail, path, refParam }: { detail: RepoDetail; path: string
   )
 }
 
-function FileList({ repo, tree, refParam, hasLfs }: { repo: string; tree: Tree; refParam: string | null; hasLfs: boolean }) {
-  // Directories first like Gitea/GitHub; the API returns git tree order.
-  const entries = useMemo(
-    () => [...tree.entries].sort((a, b) => Number(b.type === "dir") - Number(a.type === "dir") || a.name.localeCompare(b.name)),
-    [tree.entries],
-  )
+function FileList({ repo, tree, refParam }: { repo: string; tree: Tree; refParam: string | null }) {
+  // The API already lists directories first, then by name (spec 3, RepoBrowser.tree).
+  const entries = tree.entries
   const parent = tree.path.split("/").slice(0, -1).join("/")
   const c = tree.commit
   return (
@@ -138,20 +135,13 @@ function FileList({ repo, tree, refParam, hasLfs }: { repo: string; tree: Tree; 
           </li>
         )}
         {entries.map((e) => (
-          <EntryRow key={e.path} repo={repo} entry={e} refParam={refParam} lfs={isLfsPointer(e, hasLfs)} />
+          <EntryRow key={e.path} repo={repo} entry={e} refParam={refParam} lfs={e.lfs} />
         ))}
         {entries.length === 0 && <li className="px-4 py-6 text-center text-muted-foreground">빈 폴더예요</li>}
       </ul>
     </div>
   )
 }
-
-/**
- * RV2-09: mark LFS pointer files in the list. Uses the core's flag when it sends one (WR-7);
- * shortcut: until then, guesses from size — a pointer file is always 126–140 bytes — in a repo that uses LFS.
- * A small ordinary file of that size in an LFS repo would be mislabelled; drop the guess once WR-7 ships.
- */
-const isLfsPointer = (e: TreeEntry, hasLfs: boolean) => e.lfs ?? (hasLfs && e.type === "file" && e.size !== null && e.size >= 126 && e.size <= 140)
 
 function EntryRow({ repo, entry: e, refParam, lfs }: { repo: string; entry: TreeEntry; refParam: string | null; lfs: boolean }) {
   const icon =

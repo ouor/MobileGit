@@ -310,7 +310,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
  "entries":[{"name":"lib","path":"src/lib","type":"dir","size":null,"mode":"40000"},
             {"name":"a.kt","path":"src/a.kt","type":"file","size":120,"mode":"100644"}]}
 // 각 항목에 "lfs": true|false (WR-7): 파일이 Git LFS 포인터(첫 줄 `version https://git-lfs.github.com/spec/v1`)면 true. 200바이트 이하 파일만 읽어 판정한다.
-// type: "dir" | "file" | "submodule" | "symlink". 순서는 git 트리 순서(이름순). 디렉터리 우선 정렬은 웹에서 한다.
+// type: "dir" | "file" | "submodule" | "symlink". 순서는 디렉터리 먼저, 그다음 이름순(대소문자 무시). 웹은 받은 순서 그대로 보여 준다.
 
 // GET /api/v1/repos/demo/blob?path=README.md
 {"ref":"main","path":"README.md","size":6,"binary":false,"tooLarge":false,"lfs":null,"text":"hello\n"}

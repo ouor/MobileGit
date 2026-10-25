@@ -86,8 +86,8 @@ export interface TreeEntry {
   type: "dir" | "file" | "submodule" | "symlink"
   size: number | null
   mode: string
-  /** WR-7 (requested): whether the file is a Git LFS pointer. Absent on cores without it. */
-  lfs?: boolean
+  /** WR-7: whether the file is a Git LFS pointer (RV2-09). */
+  lfs: boolean
 }
 
 export interface Tree {
