@@ -38,6 +38,8 @@ export function rewriteReadme(html: string, repo: string, readmePath: string, re
       a.setAttribute("href", href.endsWith("/") || !path ? repoHref.tree(repo, path, ref) : repoHref.blob(repo, path, ref))
     }
   }
+  // <picture> sources are not rewritten; dropping them makes the browser use the inner <img> handled below.
+  for (const source of tpl.content.querySelectorAll("picture source")) source.remove()
   for (const img of tpl.content.querySelectorAll("img[src]")) {
     const src = img.getAttribute("src")!
     if (external.test(src) || src.startsWith("//")) {

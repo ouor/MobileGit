@@ -136,8 +136,9 @@ export function CopyButton({ text, label, className }: { text: string; label: st
 /** A copyable one-line code field (clone URL, commands). */
 export function CodeField({ value, label }: { value: string; label: string }) {
   return (
-    <div className="flex min-w-0 items-center gap-1 rounded-lg border bg-muted/50 pl-2.5">
-      <code className="min-w-0 flex-1 overflow-x-auto py-1.5 font-mono text-xs whitespace-nowrap select-all">{value}</code>
+    // Wraps instead of scrolling: a clipped URL in the narrow sidebar looked complete but was not (QA-11).
+    <div className="flex min-w-0 items-start gap-1 rounded-lg border bg-muted/50 pl-2.5">
+      <code className="min-w-0 flex-1 py-1.5 font-mono text-xs leading-5 break-all select-all">{value}</code>
       <CopyButton text={value} label={label} />
     </div>
   )

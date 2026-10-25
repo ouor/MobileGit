@@ -9,7 +9,7 @@ export function MarkdownBody({ doc, repo, refParam }: { doc: Readme; repo: strin
   return (
     <div
       className={cn(
-        "prose prose-sm max-w-none px-4 py-5 sm:px-8 sm:py-6 dark:prose-invert prose-headings:scroll-mt-20 prose-a:text-primary prose-code:before:content-none prose-code:after:content-none prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:font-normal prose-pre:bg-muted prose-pre:text-foreground prose-img:inline prose-img:my-0",
+        "markdown prose prose-sm max-w-none px-4 py-5 sm:px-8 sm:py-6 dark:prose-invert prose-headings:scroll-mt-20 prose-a:text-primary prose-code:before:content-none prose-code:after:content-none prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:font-normal prose-pre:bg-muted prose-pre:text-foreground prose-img:inline prose-img:my-0",
         doc.format === "text" && "prose-pre:whitespace-pre-wrap",
       )}
       dangerouslySetInnerHTML={{ __html: html }}

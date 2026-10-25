@@ -155,3 +155,48 @@
   /* Line numbers come from data-line via ::before so copying code never picks them up (same trick as Gitea). */
   .code-line-no::before { content: attr(data-line); }
 }
+
+/* Extras for the HTML subset the server keeps in READMEs (QA-04): details, kbd, wide tables, sized images. */
+@layer components {
+  .markdown details {
+    @apply my-3 rounded-lg border px-4 py-2;
+  }
+  .markdown details[open] > summary {
+    @apply mb-2 border-b pb-2;
+  }
+  .markdown summary {
+    @apply cursor-pointer font-medium;
+  }
+  .markdown kbd {
+    @apply rounded border border-b-2 bg-muted px-1.5 py-0.5 font-mono text-xs font-normal text-foreground;
+  }
+  /* GitHub-like: a wide table scrolls by itself instead of stretching the page. */
+  .markdown table {
+    @apply block w-max max-w-full overflow-x-auto;
+  }
+  .markdown th,
+  .markdown td {
+    @apply border px-3 py-1.5;
+    word-break: keep-all; /* Korean otherwise breaks per syllable in squeezed columns */
+  }
+  .markdown th,
+  .markdown td code {
+    @apply whitespace-nowrap;
+  }
+  /* Keep width/height attributes meaningful while staying inside the column. */
+  .markdown img {
+    @apply max-w-full;
+    height: auto;
+  }
+  .markdown [align="center"] {
+    text-align: center;
+  }
+  .markdown [align="right"] {
+    text-align: right;
+  }
+  .markdown h1[align] img,
+  .markdown p[align] img,
+  .markdown div[align] img {
+    @apply inline-block;
+  }
+}
