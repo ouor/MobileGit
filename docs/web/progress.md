@@ -130,7 +130,16 @@ README 링크 처리(`lib/readme.ts`): 상대 링크는 파일 보기로, `/x`�
 - 미리보기 API가 오류(400 `TOO_LARGE`, `NOT_MARKDOWN` 등)를 주면 토글을 숨기고 "미리보기를 만들 수 없어 원문으로 보여요. <사유>" 한 줄과 함께 원문(구문 강조)으로 보인다.
 - 실기기 확인(Chromium·Firefox): `docs/sub/notes.md`에서 `../../assets/logo.png` 이미지가 raw API로 로드(가로 64px), `../guide.md` → 파일 보기, `/src/` → 트리, `../../src/app/Main.kt` → 파일 보기. guide.md의 `../README.md` 링크까지 이어서 이동. 원문 전환·새로 고침 유지·미리보기 복귀 확인. 오류 대체는 Playwright로 readme API에 400을 주입해 확인. 콘솔 오류 0건.
 
-## 9. 남은 문제
+## 9. QA 1차 반영
+
+| ID | 내용 | 처리 |
+|---|---|---|
+| QA-11 | Clone 카드(사이드바 18rem)의 URL이 가로 스크롤 영역 안에서 줄임표 없이 글자 중간에 잘려 보임 | `CodeField`를 가로 스크롤 대신 줄바꿈(`break-all`)으로 바꿔 URL·명령 전체가 항상 보이게 했다. 복사 버튼은 첫 줄에 고정. 1440px 데스크톱, 390px 모바일 팝오버 확인 |
+| QA-04 후속 | 코어가 README의 raw HTML 일부(align, img 크기, picture, details/summary, table, kbd)를 남기게 됨 | `.markdown` 스타일 추가(`index.css`): details 테두리·펼침 구분선, summary 커서, kbd 키캡, `align="center/right"` 정렬과 그 안의 이미지 inline-block, `width/height` 이미지는 열 폭 안에서 비율 유지, 넓은 표는 표 자체가 가로 스크롤(GitHub 방식, 페이지는 넘치지 않음), 표 머리·셀 안 코드는 줄바꿈 안 함, 한글 셀은 음절 단위로 끊기지 않게 `keep-all`. `<picture>`의 `<source srcset>`은 경로를 바꾸지 않으므로 지우고 안쪽 `<img>`(raw API로 바뀜)를 쓰게 했다 |
+
+실기기 확인: 폰 데이터가 초기화되어 앱 설정에서 인증을 켠 채 테스트 비밀번호를 다시 정하고, `webdemo`를 다시 push한 뒤 `docs/html/README.md`(가운데 정렬 제목·이미지, 외부 배지, picture, kbd, details 안 코드 블록·목록, 7열 표, 오른쪽 정렬 div, script·onerror·style 속성)를 넣었다. Chromium·Firefox × 데스크톱 1440 라이트/다크·모바일 390에서 상대 이미지 3개 로드(width 120/48/64 반영), details 펼침, 표 자체 스크롤, 페이지 가로 넘침 없음, script 미실행을 확인했다. 콘솔 오류는 일부러 넣은 깨진 이미지(`src="x"`) 404 하나뿐. 남긴 레포: `webdemo`(확인용, 정상 이름). 다른 레포는 만들지 않았다.
+
+## 10. 남은 문제
 
 | 항목 | 내용 |
 |---|---|
