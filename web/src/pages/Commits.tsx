@@ -1,13 +1,14 @@
 import { useState } from "react"
-import { ChevronLeftIcon, ChevronRightIcon, EllipsisIcon, FolderTreeIcon, GitCommitHorizontalIcon } from "lucide-react"
+import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, FolderTreeIcon, GitCommitHorizontalIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { CopyButton, ErrorState, ListSkeleton, Time } from "@/components/common"
+import { CopyButton, ErrorState, ListSkeleton } from "@/components/common"
 import { PathBar } from "@/components/PathBar"
 import { RepoLayout } from "@/components/RepoLayout"
 import { apiUrl, repoApi, useApi, type Commit, type CommitPage, type RepoDetail } from "@/lib/api"
-import { dayLabel } from "@/lib/format"
+import { absoluteTime, clockTime, dayLabel, relativeTime } from "@/lib/format"
+import { cn } from "@/lib/utils"
 import { repoHref } from "@/lib/router"
 
 const PER_PAGE = 50
@@ -117,17 +118,19 @@ function CommitRow({ repo, commit: c }: { repo: string; commit: Commit }) {
         <div className="flex items-start gap-1">
           <p className="min-w-0 font-medium break-words">{c.summary}</p>
           {hasBody && (
-            <Button variant="ghost" size="icon-xs" className="shrink-0" onClick={() => setOpen(!open)} aria-expanded={open} aria-label="커밋 메시지 전체 보기">
-              <EllipsisIcon />
+            <Button variant="ghost" size="xs" className="shrink-0 text-muted-foreground" onClick={() => setOpen(!open)} aria-expanded={open}>
+              {open ? "접기" : "더 보기"}
+              <ChevronDownIcon className={cn("transition-transform", open && "rotate-180")} />
             </Button>
           )}
         </div>
         {open && <pre className="font-mono text-xs whitespace-pre-wrap text-muted-foreground">{body}</pre>}
-        <p className="text-xs text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           <span className="font-medium text-foreground/80" title={c.authorEmail}>
             {c.authorName}
           </span>{" "}
-          · <Time ms={c.committedAt} />
+          {/* The day is already in the group heading, so show the clock time (round 1 review). */}
+          · <time dateTime={new Date(c.committedAt).toISOString()} title={`${absoluteTime(c.committedAt)} (${relativeTime(c.committedAt)})`}>{clockTime(c.committedAt)}</time>
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
@@ -137,13 +140,14 @@ function CommitRow({ repo, commit: c }: { repo: string; commit: Commit }) {
         <CopyButton text={c.sha} label="전체 SHA 복사" />
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon-sm" asChild>
+            <Button variant="ghost" size="sm" asChild>
               <a href={repoHref.tree(repo, "", c.sha)} aria-label="이 커밋 시점의 파일 보기">
                 <FolderTreeIcon />
+                <span className="hidden sm:inline">파일 보기</span>
               </a>
             </Button>
           </TooltipTrigger>
-          <TooltipContent>이 시점의 파일 보기</TooltipContent>
+          <TooltipContent>이 커밋 시점의 파일 보기</TooltipContent>
         </Tooltip>
       </div>
     </li>

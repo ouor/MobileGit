@@ -22,6 +22,8 @@ export function relativeTime(ms: number | null | undefined, now = Date.now()) {
 
 export const absoluteTime = (ms: number | null | undefined) => (ms ? dtf.format(ms) : "")
 export const dayLabel = (ms: number) => dayFmt.format(ms)
+const clockFmt = new Intl.DateTimeFormat("ko-KR", { hour: "numeric", minute: "2-digit" })
+export const clockTime = (ms: number) => clockFmt.format(ms)
 
 export function formatBytes(n: number | null | undefined) {
   if (n === null || n === undefined) return ""

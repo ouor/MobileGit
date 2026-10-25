@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { DownloadIcon, FileWarningIcon, HistoryIcon, ImageIcon } from "lucide-react"
+import { DownloadIcon, HistoryIcon, ImageIcon, PackageIcon, WrapTextIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -13,6 +13,26 @@ import { formatBytes } from "@/lib/format"
 import { HIGHLIGHT_MAX_BYTES, highlightLines } from "@/lib/highlight"
 import { navigate, repoHref } from "@/lib/router"
 import { cn } from "@/lib/utils"
+
+// Long lines wrap by default (round 1 review: clipped lines looked cut off); the choice is remembered per browser.
+function useWrapSetting() {
+  const [wrap, setWrap] = useState(() => {
+    try {
+      return localStorage.getItem("wrap") !== "off"
+    } catch {
+      return true
+    }
+  })
+  const set = (v: boolean) => {
+    setWrap(v)
+    try {
+      localStorage.setItem("wrap", v ? "on" : "off")
+    } catch {
+      /* not remembered in private mode */
+    }
+  }
+  return [wrap, set] as const
+}
 
 const markdownExt = /\.(md|markdown)$/i
 const imageExt = /\.(png|jpe?g|gif|webp|bmp|ico|avif)$/i
@@ -30,6 +50,7 @@ function FileBody({ detail, path, refParam, line, source }: { detail: RepoDetail
   const repo = detail.repo.name
   const { data: blob, error } = useApi<Blob>(apiUrl(repoApi(repo, "blob"), { ref: refParam, path }))
   const rawUrl = apiUrl(repoApi(repo, "raw"), { ref: refParam, path })
+  const [wrap, setWrap] = useWrapSetting()
   // Markdown files open as a preview (WR-5); a line link (?L=) or ?view=source shows the source.
   const isMd = markdownExt.test(path) && blob?.text != null
   const wantPreview = isMd && !source && !line
@@ -59,7 +80,7 @@ function FileBody({ detail, path, refParam, line, source }: { detail: RepoDetail
           <Button variant="ghost" size="sm" asChild>
             <a href={repoHref.commits(repo, path, refParam)}>
               <HistoryIcon />
-              기록
+              이 파일의 커밋
             </a>
           </Button>
         }
@@ -98,11 +119,17 @@ function FileBody({ detail, path, refParam, line, source }: { detail: RepoDetail
                   <ToggleGroupItem value="source">원문</ToggleGroupItem>
                 </ToggleGroup>
               )}
+              {lines && !preview && (
+                <Button variant="ghost" size="sm" aria-pressed={wrap} onClick={() => setWrap(!wrap)} title="긴 줄을 화면 폭에 맞춰 접어요">
+                  <WrapTextIcon />
+                  줄바꿈 {wrap ? "켜짐" : "꺼짐"}
+                </Button>
+              )}
               {blob.text !== null && <CopyButton text={blob.text} label="내용 복사" />}
               <Button variant="ghost" size="sm" asChild>
                 <a href={rawUrl} download={path.split("/").pop()}>
                   <DownloadIcon />
-                  원본 다운로드
+                  파일 다운로드
                 </a>
               </Button>
             </div>
@@ -121,7 +148,7 @@ function FileBody({ detail, path, refParam, line, source }: { detail: RepoDetail
               </div>
             )
           ) : lines ? (
-            <CodeView repo={repo} path={path} refParam={refParam} text={blob.text!} lines={lines} line={line} />
+            <CodeView repo={repo} path={path} refParam={refParam} text={blob.text!} lines={lines} line={line} wrap={wrap} />
           ) : (
             <NotShown blob={blob} rawUrl={rawUrl} />
           )}
@@ -146,7 +173,7 @@ function NotShown({ blob, rawUrl }: { blob: Blob; rawUrl: string }) {
   return (
     <Empty className="py-12">
       <EmptyHeader>
-        <EmptyMedia variant="icon">{blob.lfs ? <FileWarningIcon /> : <ImageIcon />}</EmptyMedia>
+        <EmptyMedia variant="icon">{blob.lfs ? <PackageIcon /> : <ImageIcon />}</EmptyMedia>
         <EmptyTitle>{title}</EmptyTitle>
         <EmptyDescription>{desc}</EmptyDescription>
       </EmptyHeader>
@@ -154,7 +181,7 @@ function NotShown({ blob, rawUrl }: { blob: Blob; rawUrl: string }) {
         <Button variant="outline" asChild>
           <a href={rawUrl} download={blob.path.split("/").pop()}>
             <DownloadIcon />
-            {blob.lfs ? "포인터 파일 다운로드" : "원본 다운로드"}
+            {blob.lfs ? "포인터 파일 다운로드" : "파일 다운로드"}
           </a>
         </Button>
       </EmptyContent>
@@ -169,6 +196,7 @@ function CodeView({
   text,
   lines,
   line,
+  wrap,
 }: {
   repo: string
   path: string
@@ -176,6 +204,7 @@ function CodeView({
   text: string
   lines: string[]
   line: number | null
+  wrap: boolean
 }) {
   const [html, setHtml] = useState<{ text: string; lines: string[] } | null>(null)
   useEffect(() => {
@@ -187,13 +216,14 @@ function CodeView({
     }
   }, [text, path])
   const hl = html?.text === text ? html.lines : null
+  const codeCell = cn("py-0 pr-4", wrap ? "whitespace-pre-wrap [overflow-wrap:anywhere]" : "whitespace-pre")
 
   useEffect(() => {
     if (line) document.getElementById(`L${line}`)?.scrollIntoView({ block: "center" })
   }, [line, hl])
 
   return (
-    <div className="overflow-x-auto py-2 font-mono text-[13px] leading-5">
+    <div className={cn("py-2 font-mono text-[13px] leading-5", !wrap && "overflow-x-auto")}>
       <table className="w-full border-collapse">
         <tbody>
           {lines.map((l, i) => {
@@ -204,9 +234,9 @@ function CodeView({
                   <a href={repoHref.blob(repo, path, refParam, n, markdownExt.test(path) ? "source" : undefined)} className="code-line-no hover:text-foreground" data-line={n} aria-label={`${n}번째 줄`} />
                 </td>
                 {hl ? (
-                  <td className="py-0 pr-4 whitespace-pre" dangerouslySetInnerHTML={{ __html: hl[i] || "\n" }} />
+                  <td className={codeCell} dangerouslySetInnerHTML={{ __html: hl[i] || "\n" }} />
                 ) : (
-                  <td className="py-0 pr-4 whitespace-pre">{l || "\n"}</td>
+                  <td className={codeCell}>{l || "\n"}</td>
                 )}
               </tr>
             )

@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
-import { CodeField, ErrorState, ListSkeleton, OriginBadge, Time } from "@/components/common"
+import { BreakableText, CodeField, ErrorState, ListSkeleton, OriginBadge, Time } from "@/components/common"
 import { PathBar } from "@/components/PathBar"
 import { ClonePanel, cloneUrlFor, RepoLayout } from "@/components/RepoLayout"
 import { apiUrl, repoApi, useApi, type Readme, type RepoDetail, type Tree, type TreeEntry } from "@/lib/api"
@@ -28,7 +28,7 @@ import { MarkdownBody } from "@/components/Markdown"
 /** W-02 (path = "") and W-02b (sub directory). */
 export function RepoTree({ repo, path, refParam }: { repo: string; path: string; refParam: string | null }) {
   return (
-    <RepoLayout repo={repo} tab="code">
+    <RepoLayout repo={repo} tab="code" cloneInSidebar={!path}>
       {(detail) => (detail.empty ? <EmptyRepo detail={detail} /> : <TreeBody detail={detail} path={path} refParam={refParam} />)}
     </RepoLayout>
   )
@@ -48,12 +48,15 @@ function TreeBody({ detail, path, refParam }: { detail: RepoDetail; path: string
         path={path}
         hrefForRef={(r) => repoHref.tree(repo, path, r)}
         actions={
-          <Button variant="ghost" size="sm" asChild>
-            <a href={repoHref.commits(repo, path, refParam)}>
-              <HistoryIcon />
-              기록
-            </a>
-          </Button>
+          // At the root this would repeat the 커밋 tab.
+          !isRoot && (
+            <Button variant="ghost" size="sm" asChild>
+              <a href={repoHref.commits(repo, path, refParam)}>
+                <HistoryIcon />
+                이 폴더의 커밋
+              </a>
+            </Button>
+          )
         }
       />
       {error ? (
@@ -85,7 +88,7 @@ function TreeBody({ detail, path, refParam }: { detail: RepoDetail; path: string
         <aside className="flex flex-col gap-4">
           <Card size="sm" className="hidden lg:flex">
             <CardHeader>
-              <CardTitle>Clone</CardTitle>
+              <CardTitle>PC에서 clone</CardTitle>
             </CardHeader>
             <CardContent>
               <ClonePanel detail={detail} />
@@ -241,8 +244,8 @@ function ContentAlerts({ detail }: { detail: RepoDetail }) {
             <p>필요하면 앱에서 각각 미러로 추가하세요.</p>
             <ul className="mt-1 flex flex-col gap-0.5">
               {detail.submoduleUrls.map((u) => (
-                <li key={u} className="font-mono text-xs break-all">
-                  {u}
+                <li key={u} className="font-mono text-xs">
+                  <BreakableText text={u} />
                 </li>
               ))}
             </ul>
@@ -259,18 +262,18 @@ function AboutCard({ detail }: { detail: RepoDetail }) {
     ["종류", r.type === "MIRROR" ? "미러 (읽기 전용)" : "로컬 레포"],
   ]
   if (r.type === "MIRROR") {
-    rows.push(["원본 상태", <OriginBadge key="o" status={r.originStatus} />])
+    if (r.originStatus === "GONE" || r.originStatus === "AUTH_REQUIRED") rows.push(["원본 상태", <OriginBadge key="o" status={r.originStatus} />])
     rows.push(["마지막 업데이트", <Time key="u" ms={r.lastUpdateAt} />])
   } else {
     rows.push(["마지막 push", <Time key="p" ms={r.lastPushAt} />])
   }
-  rows.push(["기본 브랜치", <span key="b" className="font-mono text-xs">{detail.head ?? "-"}</span>])
+  rows.push(["기본 브랜치", detail.head ?? "-"])
   rows.push(["브랜치 · 태그", `${detail.branches.length} · ${detail.tags.length}`])
   if (r.sizeBytes > 0) rows.push(["용량", formatBytes(r.sizeBytes)])
   if (r.type === "MIRROR")
     rows.push([
-      "보존 ref",
-      <span key="a" className="inline-flex items-center gap-1" title="원본에서 force-push나 삭제로 사라진 ref를 refs/archive/ 아래에 보존해요">
+      "보존된 기록",
+      <span key="a" className="inline-flex items-center gap-1" title="원본에서 강제 push나 삭제로 사라진 브랜치·태그를 보존해요 (refs/archive/)">
         <ArchiveIcon className="size-3.5" />
         {detail.archivedRefCount}개
       </span>,
@@ -283,8 +286,8 @@ function AboutCard({ detail }: { detail: RepoDetail }) {
       <CardContent className="flex flex-col gap-3 text-sm">
         {r.description && <p>{r.description}</p>}
         {r.originUrl && (
-          <a href={r.originUrl.replace(/\.git$/, "")} target="_blank" rel="noopener noreferrer" className="break-all text-primary hover:underline">
-            {shortUrl(r.originUrl)}
+          <a href={r.originUrl.replace(/\.git$/, "")} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+            <BreakableText text={shortUrl(r.originUrl)} />
           </a>
         )}
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">

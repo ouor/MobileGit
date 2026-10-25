@@ -1,17 +1,14 @@
-import { useEffect, useState, type ReactNode } from "react"
+import { Fragment, useEffect, useState, type ReactNode } from "react"
 import {
   AlertTriangleIcon,
   CheckIcon,
-  CircleHelpIcon,
   CloudOffIcon,
   CopyIcon,
-  FileWarningIcon,
+  ArrowLeftRightIcon,
   FolderIcon,
   KeyRoundIcon,
-  LockIcon,
-  RefreshCwIcon,
+  PackageIcon,
   ServerCrashIcon,
-  ShieldCheckIcon,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -39,30 +36,33 @@ export function ToneBadge({ t, children, title }: { t: keyof typeof tone; childr
   )
 }
 
+/** Icons match the Android app (design-system 5): mirror = SyncAlt (⇄), local = Folder. */
+export const MirrorIcon = ArrowLeftRightIcon
+export const LocalIcon = FolderIcon
+
 export function RepoTypeBadge({ repo }: { repo: RepoSummary }) {
   return repo.type === "MIRROR" ? (
-    <ToneBadge t="info" title="원본을 따라가는 읽기 전용 미러">
-      <RefreshCwIcon />
-      미러
+    <ToneBadge t="info" title="원본을 자동으로 따라가는 사본이에요. clone·pull만 되고 push는 안 돼요">
+      <MirrorIcon />
+      읽기 전용 미러
     </ToneBadge>
   ) : (
-    <ToneBadge t="neutral" title="폰에서 만든 레포 (push 가능)">
-      <FolderIcon />
-      로컬
+    <ToneBadge t="neutral" title="PC에서 push해 만든 레포예요">
+      <LocalIcon />
+      로컬 레포 · push 가능
     </ToneBadge>
   )
 }
 
-const origin: Record<OriginStatus, { t: keyof typeof tone; label: string; icon: ReactNode; title: string }> = {
-  OK: { t: "success", label: "원본 정상", icon: <ShieldCheckIcon />, title: "마지막 확인에서 원본에 접근할 수 있었어요" },
+// Only problems get a badge (design-system principle 7): "OK" and "not checked yet" draw nothing.
+const originProblem: Partial<Record<OriginStatus, { t: keyof typeof tone; label: string; icon: ReactNode; title: string }>> = {
   GONE: { t: "danger", label: "원본 없음", icon: <CloudOffIcon />, title: "원본이 삭제되었거나 비공개로 바뀌었어요. 이 미러가 남은 사본일 수 있어요" },
-  AUTH_REQUIRED: { t: "warning", label: "인증 필요", icon: <KeyRoundIcon />, title: "원본에 접근하려면 앱에서 토큰을 등록해야 해요" },
-  UNKNOWN: { t: "neutral", label: "확인 전", icon: <CircleHelpIcon />, title: "아직 원본 상태를 확인하지 않았어요" },
+  AUTH_REQUIRED: { t: "warning", label: "인증 필요", icon: <KeyRoundIcon />, title: "원본에 접근하려면 앱에서 원본 접속 토큰을 등록해야 해요" },
 }
 
 export function OriginBadge({ status }: { status: OriginStatus | null }) {
-  if (!status) return null
-  const o = origin[status]
+  const o = status && originProblem[status]
+  if (!o) return null
   return (
     <ToneBadge t={o.t} title={o.title}>
       {o.icon}
@@ -74,17 +74,8 @@ export function OriginBadge({ status }: { status: OriginStatus | null }) {
 export function LfsBadge() {
   return (
     <ToneBadge t="neutral" title="이 레포는 Git LFS를 쓰지만 LFS 파일은 저장되지 않아요">
-      <FileWarningIcon />
+      <PackageIcon />
       LFS 누락
-    </ToneBadge>
-  )
-}
-
-export function ReadOnlyBadge() {
-  return (
-    <ToneBadge t="neutral" title="웹과 git 모두 읽기 전용이에요. push하려면 앱에서 로컬 레포로 분리하세요">
-      <LockIcon />
-      읽기 전용
     </ToneBadge>
   )
 }
@@ -133,12 +124,32 @@ export function CopyButton({ text, label, className }: { text: string; label: st
   )
 }
 
-/** A copyable one-line code field (clone URL, commands). */
+/**
+ * Text that may wrap only after "/", ":" or a space, never inside a word like "field-notes"
+ * (round 1 review: people retype these addresses by hand). Each piece is nowrap; <wbr> marks the allowed breaks.
+ */
+export function BreakableText({ text }: { text: string }) {
+  const parts = text.split(/(?<= )|(?<=\/)(?!\/)|(?<=:)(?![\d/])/) // keep "host:port" and "://" together
+  return (
+    <>
+      {parts.map((p, i) => (
+        <Fragment key={i}>
+          {i > 0 && <wbr />}
+          <span className="whitespace-nowrap">{p}</span>
+        </Fragment>
+      ))}
+    </>
+  )
+}
+
+/** A copyable code field (clone address, commands). */
 export function CodeField({ value, label }: { value: string; label: string }) {
   return (
-    // Wraps instead of scrolling: a clipped URL in the narrow sidebar looked complete but was not (QA-11).
     <div className="flex min-w-0 items-start gap-1 rounded-lg border bg-muted/50 pl-2.5">
-      <code className="min-w-0 flex-1 py-1.5 font-mono text-xs leading-5 break-all select-all">{value}</code>
+      {/* overflow-x-auto only matters for a single piece longer than the box. */}
+      <code className="min-w-0 flex-1 overflow-x-auto py-1.5 font-mono text-[13px] leading-5 select-all">
+        <BreakableText text={value} />
+      </code>
       <CopyButton text={value} label={label} />
     </div>
   )

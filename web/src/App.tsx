@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { MonitorIcon, MoonIcon, SunIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { TooltipProvider } from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ErrorState } from "@/components/common"
 import { apiUrl, useApi, type Info } from "@/lib/api"
 import { useRoute } from "@/lib/router"
@@ -65,11 +65,18 @@ function ThemeToggle() {
     return () => mq.removeEventListener("change", apply)
   }, [theme])
   const next: Record<Theme, Theme> = { system: "light", light: "dark", dark: "system" }
-  const label = { system: "시스템 테마", light: "라이트 테마", dark: "다크 테마" }[theme]
+  const label = { system: "시스템 설정 따름", light: "밝게", dark: "어둡게" }[theme]
+  // Icon plus words: the icon alone was not recognised as a theme switch (round 1 review).
   return (
-    <Button variant="ghost" size="icon" onClick={() => setTheme(next[theme])} aria-label={`테마 바꾸기 (현재 ${label})`} title={label}>
-      {theme === "system" ? <MonitorIcon /> : theme === "light" ? <SunIcon /> : <MoonIcon />}
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" onClick={() => setTheme(next[theme])} aria-label={`화면 테마: ${label}. 눌러서 바꾸기`}>
+          {theme === "system" ? <MonitorIcon /> : theme === "light" ? <SunIcon /> : <MoonIcon />}
+          <span className="hidden sm:inline">테마: {label}</span>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>누를 때마다 시스템 설정 따름 → 밝게 → 어둡게</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -81,7 +88,8 @@ function AppHeader() {
           <img src="/favicon.svg" alt="" className="size-7" />
           mobilegit
         </a>
-        <span className="hidden text-sm text-muted-foreground sm:inline">폰 속 git 서버 · 읽기 전용</span>
+        {/* "읽기 전용" alone read as if the whole server refused pushes (round 1 review). */}
+        <span className="hidden text-sm text-muted-foreground md:inline">폰 속 git 서버 · 웹에서는 보기만 할 수 있어요</span>
         <div className="ml-auto">
           <ThemeToggle />
         </div>
@@ -94,8 +102,8 @@ function AppFooter() {
   const { data: info } = useApi<Info>(apiUrl("info"))
   return (
     <footer className="border-t py-4 text-center text-xs text-muted-foreground">
-      mobilegit{info ? ` ${info.version}` : ""} · 웹 화면은 읽기 전용이에요. 업데이트·삭제는 폰 앱에서 하세요.
-      {info && !info.authRequired && " · 인증 꺼짐"}
+      mobilegit{info ? ` ${info.version}` : ""} · 웹에서는 보기만 할 수 있어요. 미러 업데이트와 레포 관리는 폰 앱에서, push는 PC의 git으로 해요.
+      {info && !info.authRequired && " · 비밀번호 요구 꺼짐"}
       {info?.anonymousRead && " · 익명 읽기 허용"}
     </footer>
   )

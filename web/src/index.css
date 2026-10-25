@@ -34,6 +34,7 @@
     --color-secondary: var(--secondary);
     --color-primary-foreground: var(--primary-foreground);
     --color-primary: var(--primary);
+    --color-brand: var(--brand);
     --color-popover-foreground: var(--popover-foreground);
     --color-popover: var(--popover);
     --color-card-foreground: var(--card-foreground);
@@ -57,11 +58,13 @@
     --popover: #ffffff;
     --popover-foreground: #191f28;
     --primary: #3366ff;
+    /* Solid fill for buttons and selected chips; white text on it is 4.7:1 in both themes (round 1 review). */
+    --brand: #3366ff;
     --primary-foreground: #ffffff;
     --secondary: #eef0f3;
     --secondary-foreground: oklch(0.205 0 0);
     --muted: #eef0f3;
-    --muted-foreground: #5f6b7a;
+    --muted-foreground: #4e5968;
     --accent: #eef0f3;
     --accent-foreground: oklch(0.205 0 0);
     --destructive: oklch(0.577 0.245 27.325);
@@ -92,11 +95,12 @@
     --popover: #1f2126;
     --popover-foreground: #e9ecf0;
     --primary: #7c9cff;
+    --brand: #3366ff;
     --primary-foreground: #0b1020;
     --secondary: #2c2f36;
     --secondary-foreground: oklch(0.985 0 0);
     --muted: #25282e;
-    --muted-foreground: #9ea6b0;
+    --muted-foreground: #aab3bd;
     --accent: #2c2f36;
     --accent-foreground: oklch(0.985 0 0);
     --destructive: oklch(0.704 0.191 22.216);
