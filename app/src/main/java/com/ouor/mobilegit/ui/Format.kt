@@ -143,3 +143,30 @@ fun com.ouor.mobilegit.core.RepoIssue.text(intervalHours: Int, now: Long = Syste
 }
 
 val com.ouor.mobilegit.core.RepoIssue.tone get() = if (badge == Badge.ORIGIN_GONE || badge == Badge.FAILED) Tone.Danger else Tone.Warning
+
+/** "15:20" (today) or "10.26 15:20". */
+fun clock(t: Long, now: Long = System.currentTimeMillis()): String {
+    val day = SimpleDateFormat("yyyyMMdd", Locale.KOREA)
+    return SimpleDateFormat(if (day.format(Date(t)) == day.format(Date(now))) "HH:mm" else "M.d HH:mm", Locale.KOREA).format(Date(t))
+}
+
+/** R2-04 / R2-03: what happened to a ref. null (older archives) = "강제 push 또는 삭제". */
+fun com.ouor.mobilegit.core.RefChangeKind?.label(): String = when (this) {
+    com.ouor.mobilegit.core.RefChangeKind.FAST_FORWARD -> str(R.string.change_fast_forward)
+    com.ouor.mobilegit.core.RefChangeKind.FORCED -> str(R.string.change_forced)
+    com.ouor.mobilegit.core.RefChangeKind.CREATED -> str(R.string.change_created)
+    com.ouor.mobilegit.core.RefChangeKind.DELETED -> str(R.string.change_deleted)
+    com.ouor.mobilegit.core.RefChangeKind.TAG_MOVED -> str(R.string.change_tag_moved)
+    com.ouor.mobilegit.core.RefChangeKind.TAG_DELETED -> str(R.string.change_tag_deleted)
+    null -> str(R.string.change_unknown)
+}
+
+val com.ouor.mobilegit.core.RefChangeKind?.tone: Tone get() = when (this) {
+    com.ouor.mobilegit.core.RefChangeKind.FAST_FORWARD -> Tone.Neutral
+    com.ouor.mobilegit.core.RefChangeKind.CREATED -> Tone.Success
+    com.ouor.mobilegit.core.RefChangeKind.DELETED, com.ouor.mobilegit.core.RefChangeKind.TAG_DELETED -> Tone.Danger
+    else -> Tone.Warning
+}
+
+/** "refs/archive/<group>/heads/main" → "<group>" (R2-03 AC6). */
+fun archiveGroupOf(archivedAs: String?): String? = archivedAs?.removePrefix("refs/archive/")?.substringBefore('/')?.takeIf { archivedAs.startsWith("refs/archive/") }

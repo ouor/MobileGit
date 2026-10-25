@@ -287,7 +287,7 @@ fun MainScreen(nav: Nav) {
     }
 
     if (addSheet) ModalBottomSheet(onDismissRequest = { addSheet = false; addStep = 0; guideName = DEFAULT_NAME },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = addStep == 1), containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surfaceContainer) {
         // R2-12: back from the guide returns to the three choices; the typed name stays until the sheet closes
         BackHandler(enabled = addStep == 1) { addStep = 0 }
         if (addStep == 0) Column(Modifier.padding(horizontal = Space.lg).padding(bottom = Space.xl).navigationBarsPadding()) {

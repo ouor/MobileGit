@@ -1,5 +1,6 @@
 package com.ouor.mobilegit.ui
 
+import com.ouor.mobilegit.ui.screens.ArchiveScreen
 import android.net.Uri
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -59,10 +60,12 @@ object Routes {
     const val BATTERY = "battery"                // A-12
     const val ACCESS_LOG = "access-log"          // A-13
     const val BACKUP = "backup"                  // A-14
+    const val ARCHIVES = "archives/{name}?group={group}" // A-15
 
     fun add(text: String? = null) = if (text == null) "add" else "add?text=${Uri.encode(text)}"
     fun bulkProgress(id: String) = "bulk/${Uri.encode(id)}"
     fun repo(name: String) = "repo/${Uri.encode(name)}"
+    fun archives(name: String, group: String? = null) = "archives/${Uri.encode(name)}" + (group?.let { "?group=${Uri.encode(it)}" } ?: "")
     fun qr(repo: String?) = if (repo == null) "qr" else "qr?repo=${Uri.encode(repo)}"
     fun credentials(host: String?) = if (host == null) CREDENTIALS else "credentials?host=${Uri.encode(host)}"
 }
@@ -106,6 +109,9 @@ fun AppRoot(pendingRoute: MutableStateFlow<String?>) {
                 composable(Routes.BULK_PROGRESS) { BulkProgressScreen(it.arguments?.getString("id").orEmpty(), nav) }
                 composable(Routes.CREATE) { CreateRepoScreen(nav) }
                 composable(Routes.REPO) { RepoDetailScreen(it.arguments?.getString("name").orEmpty(), nav) }
+                composable(Routes.ARCHIVES, arguments = listOf(navArgument("group") { type = NavType.StringType; nullable = true })) {
+                    ArchiveScreen(it.arguments?.getString("name").orEmpty(), it.arguments?.getString("group"), nav)
+                }
                 composable(Routes.QR, arguments = listOf(navArgument("repo") { type = NavType.StringType; nullable = true })) {
                     QrScreen(it.arguments?.getString("repo"), nav)
                 }
