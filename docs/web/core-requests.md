@@ -46,3 +46,12 @@
   2. 또는 `GET /api/v1/repos/{name}/render?ref=&path=<파일>` → `ReadmeDto`와 같은 형식 `{"ref","path","format":"markdown","raw","html"}`. Markdown이 아니면 400 `NOT_MARKDOWN`, 1MB 초과면 400 `TOO_LARGE`.
 - **웹 쪽 준비**: 반영되면 파일 보기에 "미리보기 / 원문" 전환을 넣는다 (`FileView.tsx`, README 카드와 같은 `rewriteReadme` 재사용). 그 전까지는 원문 + 구문 강조로 보인다.
 - **코어 처리 결과**: 완료(`24bc04c`). 방식 1을 택했다(README 경로와 일관). `GET /api/v1/repos/{name}/readme?ref=&path=<파일>`: `.md`/`.markdown` 파일이면 README와 같은 렌더러(원시 HTML 이스케이프, 위험 URL 제거)로 `ReadmeDto {ref, path, format:"markdown", raw, html}`를 돌려준다. 디렉터리면 지금과 같다. 그 밖의 파일(이진, LFS 포인터 포함)은 400 `NOT_MARKDOWN`, 1MB 초과는 400 `TOO_LARGE`, 없는 파일은 404 `PATH_NOT_FOUND`. 상대 이미지와 링크는 README처럼 원문 그대로라 `rewriteReadme`에 응답 `path`를 넘기면 된다.
+
+## 코어 알림: 1차 코드 리뷰 반영 (요청 아님)
+
+웹 API 변경. 자세한 형식은 `docs/core/spec.md` 3절.
+
+- `commits`: `CommitPageDto`에 `truncated: boolean` 추가. 한 요청은 커밋을 20만 개까지만 훑는다. `truncated: true`면 더 오래된 커밋이 있지만 이 경로로는 볼 수 없다는 뜻(`hasMore`는 false). page는 1000까지, 넘으면 400 `PAGE_TOO_DEEP`. perPage는 1~100.
+- tree/blob/readme/commits가 동시에 몰리면 503 `BUSY`. 잠시 뒤 다시 시도하는 안내를 보여 주면 된다.
+- 500 `INTERNAL`의 message는 "서버 오류가 발생했습니다 (오류 ID xxxxxxxx)"로 고정.
+- 루프백(127.0.0.1)과 사설망이 아닌 경로는 익명 읽기 설정이어도 401. `/api/v1/info`의 `anonymousRead`는 설정값이라, 401이 오면 그대로 브라우저 인증 프롬프트를 따르면 된다.

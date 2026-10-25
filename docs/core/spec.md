@@ -254,7 +254,8 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 | `SettingsException` | (메시지) | 포트 범위, 사용자명, 비밀번호 길이, 주기 범위 |
 | `CatalogException.status` | HTTP 상태 | 일괄 목록 조회 |
 | `ErrorCategory` | 위 F-12 | 동기화 실패 분류 |
-| `TunnelState.TokenRejected` | - | ngrok 토큰 거부 |
+| `TunnelState.TokenRejected` | - | ngrok 토큰 거부. 저장된 토큰을 복호화하지 못해도 이 상태(AND-13) |
+| `StoreIssue` | - | 저장 파일 손상(7절) |
 | `BrowseException(status, code)` | 3절 | 웹 API |
 
 ## 3. 웹 JSON API (읽기 전용)
@@ -267,11 +268,14 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 | 상태 | 코드 |
 |---|---|
 | 404 | `REPO_NOT_FOUND`, `REF_NOT_FOUND`, `EMPTY_REPO`, `PATH_NOT_FOUND`, `README_NOT_FOUND`, `NOT_FOUND` |
-| 400 | `BAD_PATH`, `NOT_A_DIRECTORY`, `NOT_A_FILE`, `NOT_MARKDOWN`, `TOO_LARGE` |
+| 400 | `BAD_PATH`, `NOT_A_DIRECTORY`, `NOT_A_FILE`, `NOT_MARKDOWN`, `TOO_LARGE`, `PAGE_TOO_DEEP`(commits page > 1000) |
+| 403 | 전역 IPv6 주소로 들어온 요청(본문 텍스트, SEC-04) |
 | 401 | 인증 필요(본문 없음, `WWW-Authenticate`) |
 | 429 | 인증 실패 과다 |
-| 500 | `INTERNAL` |
+| 503 | `BUSY`: tree/blob/readme/commits는 동시에 2개까지 처리하고 10초 안에 자리가 안 나면 이 응답(GIT-09). 잠시 뒤 다시 시도 |
+| 500 | `INTERNAL`. message는 `서버 오류가 발생했습니다 (오류 ID xxxxxxxx)`뿐이고 상세는 앱 로그에만(SEC-10) |
 
+- 익명 읽기(`anonymousRead`)는 설정값이다. 실제로는 사설망·링크로컬·ULA·Tailscale에서, Host가 IP·`localhost`·점 없는 이름·`.local`·`.ts.net`인 요청만 익명으로 통과한다. 루프백·ngrok·그 밖의 Host는 익명 설정이어도 401(SEC-03)
 - 쿼리: `ref`는 브랜치, 태그, 커밋 SHA. 생략하면 기본 브랜치. `path`는 `/`로 구분하며 `..`은 거부한다.
 
 | 메서드/경로 | 응답 |
@@ -283,7 +287,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 | `GET /api/v1/repos/{name}/blob?ref=&path=` | `BlobDto` (텍스트는 1MB까지) |
 | `GET /api/v1/repos/{name}/raw?ref=&path=[&download=1]` | 파일 바이트. 정확한 `Content-Length`, chunked 아님, 압축 안 함. 이미지(png, jpg/jpeg, gif, webp, avif, bmp, ico, svg)는 해당 `image/*` 타입 + `Content-Disposition: inline`이라 `<img src>`에 바로 쓸 수 있다(QA-14). 그 밖의 파일(HTML, 텍스트 포함)은 `application/octet-stream` + `attachment`. `download=1`이면 이미지도 attachment. 모든 raw 응답에 `X-Content-Type-Options: nosniff`와 `Content-Security-Policy: default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox`가 붙어, SVG를 직접 열어도 안의 스크립트가 실행되지 않는다. 다운로드 버튼은 `download=1`을 붙이거나 `<a download>`를 쓴다 |
 | `GET /api/v1/repos/{name}/readme?ref=&path=` | `ReadmeDto`. path가 디렉터리면 그 안의 README(없으면 404 `README_NOT_FOUND`). path가 `.md`/`.markdown` 파일이면 그 파일을 같은 렌더러로(WR-5). 그 밖의 파일(이진, LFS 포인터 포함)은 400 `NOT_MARKDOWN`, 1MB 초과는 400 `TOO_LARGE` |
-| `GET /api/v1/repos/{name}/commits?ref=&path=&page=1&perPage=50` | `CommitPageDto` |
+| `GET /api/v1/repos/{name}/commits?ref=&path=&page=1&perPage=50` | `CommitPageDto`. perPage는 1~100으로 맞춰짐. page는 1000까지(넘으면 400 `PAGE_TOO_DEEP`). 한 요청은 커밋을 20만 개까지만 훑는다. 그 안에서 페이지를 다 못 채우고 멈추면 `truncated: true`, `hasMore: false`(GIT-09, SEC-11) |
 
 응답 예시(실기기에서 받은 형태):
 
@@ -317,7 +321,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 // class는 code의 language-* 만 허용. 상대 경로 링크는 그대로 둔다.
 
 // GET /api/v1/repos/demo/commits?page=1&perPage=2
-{"ref":"main","path":"","page":1,"perPage":2,"hasMore":true,"commits":[
+{"ref":"main","path":"","page":1,"perPage":2,"hasMore":true,"truncated":false,"commits":[
   {"sha":"3f94903d…","shortSha":"3f94903","summary":"init","message":"init\n","authorName":"T","authorEmail":"t@e",
    "authoredAt":1792886900000,"committedAt":1792886900000,"parents":[]}]}
 ```
@@ -376,3 +380,51 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 4. **웹 API 형식과 README 렌더링 위치**
    - REST + JSON(`/api/v1/`, 3절)이다.
    - README는 **서버에서** commonmark-java로 HTML 렌더링하고 jsoup 허용 목록으로 정화한다(QA-04). `raw`도 같이 준다. 웹 쪽에 마크다운 라이브러리가 필요 없고 XSS 정화를 한 곳에서 관리할 수 있다.
+
+## 7. 1차 코드 리뷰로 바뀐 동작 (UI/웹이 알아야 할 것)
+
+근거와 항목별 결과: `progress.md` 10절. UI 요청: `docs/ui/core-requests.md` CR-8.
+
+### 저장 파일 손상
+
+- 앱 상태 파일(`files/state/*.json`, 레포의 `mobilegit/meta.json`)은 읽기 실패 시 **초기화하지 않는다**. 원본은 `<이름>.corrupt-<ms>`로 복사해 둔다.
+- `core.storageIssues(): List<StoreIssue>`: 시작할 때 문제가 있었던 파일. `StoreIssue(file, preservedAs, message)`. 비어 있으면 정상.
+  - 설정 파일이 깨지면 첫 실행처럼 시작한다(서버 꺼짐, 온보딩에 새 비밀번호). 자격 증명이 깨지면 토큰이 비어 보인다.
+  - 개별 저장소: `settings.loadIssue`, `credentials.loadIssue`, `accessLog.loadIssue`, `bulkJobs.loadIssue`.
+- `core.repos.damaged: StateFlow<List<DamagedRepo>>`: meta.json을 못 읽는 레포. `DamagedRepo(name, path, issue)`. 이 레포는 `repos`에 없고 git으로도 보이지 않는다. 같은 이름으로 만들면 `NAME_TAKEN`. 디렉터리는 그대로 둔다(복구는 사람이).
+- 목록 파일에서 일부 항목만 깨지면 나머지는 쓰고, 원본은 `<이름>.partial-<ms>`로 남는다(issue 없음).
+- 파일 형식: 모든 파일에 `"schemaVersion":1`. 목록 파일은 `{"schemaVersion":1,"items":[…]}`. 모르는 필드는 무시, 모르는 enum 값은 기본값.
+
+### 설정 쓰기
+
+- `SettingsStore`의 setter는 `state`를 바로 바꾸고 디스크 쓰기는 백그라운드에서 순서대로 한다(AND-08). 메인 스레드에서 불러도 된다. 디스크까지 기다려야 하면 `settings.flush()`(IO에서).
+
+### 서버·네트워크
+
+- `ServerController.start/stop`은 겹쳐 불러도 마지막 명령대로 끝난다(AND-02).
+- 포그라운드 서비스를 못 얻으면(백그라운드 시작 제한) 서버를 띄우지 않는다. 이전처럼 "앱을 열면 다시 시작" 알림(AND-01).
+- 루프백(127.0.0.1, adb forward)도 이제 인증이 필요하다. 익명 읽기 조건은 3절(SEC-03).
+- 전역 IPv6 주소로 들어온 요청은 403(SEC-04). 주소 목록에는 원래 나오지 않는다.
+- ngrok 경로: 인증 실패가 분당 30회를 넘으면 ngrok 경로 전체가 1분간 429. 이미 인증된 브라우저·git은 계속 된다(SEC-01).
+
+### git
+
+- `refs/archive/*`는 push로 만들거나 바꾸거나 지울 수 없다. git 클라이언트에는 해당 ref만 `refs/archive/ is read-only (mobilegit keeps preserved history there)`로 거부된다(GIT-07). `git push --mirror`는 다른 ref는 들어가고 archive ref만 거부된다.
+- push 받은 레포의 HEAD가 없는 브랜치를 가리키면 받은 브랜치로 맞춘다(GIT-10).
+- 오래된 레포의 0으로 시작하는 파일 모드, 이상한 작성자 정보도 push된다(GIT-06).
+- 하루 1회(충전 중 + 유휴) 필요한 레포만 repack(GIT-03). 도달 불가 객체·아카이브는 지우지 않는다.
+
+### 미러
+
+- `SyncEvent.newCommitCount`: 커밋 수는 10000에서 멈춘다. 10000이면 "10000+"로 보여 달라(GIT-02).
+- `MirrorSource.waitingForForeground: Boolean`: 첫 받기가 백그라운드에서 포그라운드 작업을 못 얻어 미뤄진 상태. 앱을 열면 자동으로 시작된다(GIT-08).
+- 받는 중 여유 공간이 하한(수동 업데이트는 64MB) 밑으로 가면 `STORAGE_FULL`로 멈춘다.
+- 취소·WorkManager 중단은 실패로 기록되지 않는다(AND-04).
+- 토큰은 https 또는 사설망/루프백 http URL에만 붙는다. 공개 호스트의 `http://` 미러는 토큰 없이 받는다(SEC-05). 리다이렉트로 다른 호스트로 가면 토큰을 주지 않는다(SEC-09).
+- 저장된 토큰을 복호화하지 못하면 `AUTH_REQUIRED`("토큰을 다시 입력해 주세요").
+
+### 내보내기
+
+- "파일로 저장"(SAF Uri)은 문서에 바로 쓴다. 실패하면 그 문서를 지운다. `K_OUT_FILE`은 null.
+- "공유"(Uri 없음)는 캐시 파일을 만들고 24시간 뒤 지운다. 남는 공간이 하한보다 작아지면 `저장 공간이 부족해 공유용 파일을 만들 수 없습니다…`로 실패한다(ARC-07).
+- 선택한 레포가 많아도 된다(목록은 파일로 넘김, AND-10).

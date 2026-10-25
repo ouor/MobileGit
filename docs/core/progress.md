@@ -132,3 +132,102 @@ Go 테스트(`ngrok-mobile`, `go test`)는 실제 ngrok 서비스가 가짜 토�
 | PR ref 미러 | CR-2로 해결. 기본 꺼짐, 설정·레포별로 켬 |
 | 임시 화면 | 정식 Compose UI로 교체 대상 |
 | AAR 다시 빌드 | `ngrok-mobile/build.sh`. Go 1.26.10 이상, Android NDK 필요 |
+
+## 10. 1차 코드 리뷰 반영 (`docs/code-review/round1/`)
+
+담당: AND-01~08, AND-10~16, GIT-01~16, SEC-01~12, ARC-01~05, ARC-07, ARC-15, ARC-18 (51개). 결과: 수정 42, 일부 수정 8, 해당 없음 1.
+
+커밋: 저장 `aee0cfe`, 서비스 `3c87e3d`, 동기화·내보내기 `3d8fb78`, GC `fc4fb07`, 서버·보안 `d889841`, 시작·Keystore·터널 `518ecd8`, 기기 테스트 `0fea9b4`.
+JVM 테스트 78개 통과(신규 `StorageTest` 12개 포함). 실기기 `OnDeviceTest` 6개 통과(7절 보존 절차, 레포 15개 유지).
+
+### 저장 계층 (ARC-01/02/03/15/18, AND-03, GIT-15)
+
+| ID | 결과 | 내용 |
+|---|---|---|
+| ARC-01, AND-03 | 수정 | `JsonFile.read`: 파일 없음 = null, 읽기/파싱 실패 = `CorruptFileException`이며 원본을 `<이름>.corrupt-<ms>`로 복사해 둔다(같은 내용이면 다시 복사하지 않음). 각 저장소는 `loadIssue: StoreIssue?`로 알린다. 설정이 깨지면 첫 실행처럼 시작(서버 꺼짐, 온보딩에 새 비밀번호)하고 원본은 남는다 |
+| GIT-15 | 수정 | meta.json을 못 읽는 레포는 로컬로 바꾸지 않고 `RepoStore.damaged`에 넣는다. meta는 건드리지 않고, 같은 이름 생성은 `NAME_TAKEN`. meta가 없고 HEAD만 있으면 예전처럼 로컬로 채택 |
+| ARC-02 | 수정 | `schemaVersion: 1`을 모든 파일에 쓴다. 목록 파일은 `{"schemaVersion":1,"items":[…]}`, 예전 맨 배열도 읽는다. `coerceInputValues`로 모르는 enum은 기본값. 목록은 항목별로 디코드하고 버린 항목이 있으면 `<이름>.partial-<ms>` 복사. 더 새 버전 파일은 `<이름>.v<N>-<ms>`로 복사한 뒤 읽을 수 있는 만큼 읽는다 |
+| ARC-03 | 수정 | 자격 증명·일괄 작업·접속 기록의 read-modify-write를 `@Synchronized mutate`/쓰기 락 안으로. 설정 쓰기는 단일 스레드에서 순서대로 |
+| ARC-15 | 수정 | 임시 파일 이름을 `.<이름>.<uuid>.tmp`로(동시 쓰기 충돌 없음), rename 뒤 디렉터리 fsync |
+| ARC-18 | 수정 | `StorageTest` 12개: 손상 보존, 모르는 필드/enum, meta 손상, 옛 형식, 새 스키마, 시작 정리, 삭제 레포 이력, 동시 변경, 접속 기록 clear/flush 경합, 비동기 로드 |
+
+### 서비스·안드로이드 (AND-01~08, 10~16)
+
+| ID | 결과 | 내용 |
+|---|---|---|
+| AND-01 | 수정 | `startForeground` 실패면 서버를 띄우지 않고 서비스를 끝낸다. 알림(id 2)은 기존 "백그라운드에서 시작 못함" 흐름 |
+| AND-02 | 수정 | `ServerController`에 lifecycle Mutex와 `desiredUp`. bringUp/bringDown 직렬화, 서비스의 락 획득·관찰자는 멱등. 실기기 `startStopCommandsAreSerialized` 통과 |
+| AND-04 | 수정 | `CancellationException`은 실패로 기록하지 않고 다시 던진다. 진행 상태도 정리 |
+| AND-05 | 수정 | 슬롯과 레포 락을 얻은 뒤에 `setForeground`(`onStart` 콜백) |
+| AND-06 | 일부 수정 | 화면이 꺼져 있으면 인터페이스 열거를 60초에 한 번. PARTIAL wake lock은 유지(서버가 화면 꺼짐에도 응답해야 함, PRD F-22) |
+| AND-07 | 수정 | `onDestroy`는 `core.scope`(IO)에서 서버를 내린다 |
+| AND-08 | 일부 수정 | 설정 쓰기 비동기(`flush()` 제공), 접속 기록 로드 비동기, Keystore 키 캐시. UI 호출 위치(자격 증명 추가가 메인 스레드)는 UI 몫 → `docs/ui/core-requests.md` CR-8 |
+| AND-10 | 수정 | 선택이 4000자를 넘으면 레포 목록을 `files/state/export-<uuid>.txt`로 넘기고 작업 뒤 삭제 |
+| AND-11 | 수정 | `update()`가 `SyncFailure` 아닌 예외도 분류해 기록, 진행 상태가 남지 않음 |
+| AND-12 | 수정 | 공유용 내보내기 파일은 24시간 뒤, `.part`는 다음 시작 때 삭제 |
+| AND-13 | 수정 | 키 1회 로드 + `@Synchronized` 생성. ngrok 토큰 복호화 실패는 `TunnelState.TokenRejected`로 보인다 |
+| AND-14 | 수정 | SDK 34+에서는 Wi-Fi lock을 잡지 않는다(실기기 SDK 36에서 없음 확인) |
+| AND-15 | 수정 | 터널 Job의 finally는 자기가 만든 세션만 닫는다 |
+| AND-16 | 해당 없음(판단 다름) | `usesCleartextTraffic`는 유지: LAN의 http 미러(사내 Gitea 등)를 지원한다. 대신 토큰은 https 또는 사설망/루프백 http에만 붙인다(SEC-05). `largeHeap`도 유지(JGit pack 처리) |
+
+### git 서버·미러 (GIT-01~16)
+
+| ID | 결과 | 내용 |
+|---|---|---|
+| GIT-01 | 수정 | 시작 시 레포마다 락 안에서 남은 `*.lock`, pack 임시 파일 정리(`sweepAll`, IO). push/업데이트 직전에도 그 레포의 락 정리(레포 락을 잡고 있으므로 남은 것은 모두 고아). Gitaly도 housekeeping에서 오래된 ref 락을 지운다 |
+| GIT-02 | 수정 | 커밋 수 세기는 본문 없이, 10000개에서 멈춤(`MAX_COUNTED_COMMITS`, UI는 "10000+") |
+| GIT-03 | 수정 | `RepoOps.gcIfNeeded`: pack 20개 초과, loose 2000개 초과, loose ref 500개 초과면 JGit GC. 충전 + 유휴일 때 하루 1회(`MaintenanceWorker`). 200만 객체 넘는 레포는 건너뜀. 도달 불가 객체는 지우지 않음(`expire = EPOCH`, 아카이브 보존). 옛 pack은 JGit 기본값대로 1시간 뒤 삭제 |
+| GIT-04 | 수정 | `RepositoryCache` 사용(10분 미사용 시 닫음). 삭제 전 캐시에서 빼고 닫는다 |
+| GIT-05 | 수정 | 삭제는 먼저 `.trash-<uuid>`로 rename. 시작 정리가 남은 `.trash-*`, `.tmp-*`를 지운다 |
+| GIT-06 | 수정 | `fsck.allowLeadingZeroFileMode`, `allowInvalidPersonIdent`(git 기본 허용과 같은 범위). 기존 레포는 시작 시 마이그레이션 |
+| GIT-07 | 일부 수정 | `refs/archive/*`는 push로 바꿀 수 없다(pre-receive hook에서 거부). reflog는 켜지 않음: 보호로 충분하고 레포가 계속 커짐 |
+| GIT-08 | 수정 | 첫 받기 중 여유 공간이 하한(수동은 64MB) 밑으로 가면 `STORAGE_FULL`로 멈춤. 백그라운드에서 FGS를 못 얻으면 첫 받기를 `waitingForForeground`로 미루고 앱을 열 때 재개 |
+| GIT-09 | 수정 | 커밋 API: page 1000 초과는 400 `PAGE_TOO_DEEP`, 한 요청당 20만 커밋까지 보고 `truncated`. tree/blob/readme/commits는 동시 2개, 10초 기다려도 안 되면 503 `BUSY` |
+| GIT-10 | 수정 | HEAD가 없는 브랜치를 가리키면 push 뒤 받은 브랜치로 맞춘다(생성 때만이 아님) |
+| GIT-11 | 수정 | push는 레포 락 안에서 미러 여부를 다시 확인(403). fork COPY는 대상 이름도 락으로 잡고 다시 확인 |
+| GIT-12 | 수정 | 같은 초의 아카이브 이름에 `-2`, `-3`. 아카이브 적용 구간은 `NonCancellable` |
+| GIT-13 | 수정 | 전체 백업은 ref 스냅샷 하나로 bundle을 쓰고, 이미 압축된 bundle은 zip에서 다시 압축하지 않음. 파일 쓰기는 fsync + ATOMIC_MOVE |
+| GIT-14 | 수정 | raw는 blob을 한 번만 해석(길이와 본문 일치) |
+| GIT-16 | 수정 | 분리 중 대기 업데이트는 NPE 없이 끝남. 확인이 실행 중이어도 수동 업데이트는 예약됨(`isUpdating`) |
+
+### 보안 (SEC-01~12)
+
+| ID | 결과 | 내용 |
+|---|---|---|
+| SEC-01 | 수정 | ngrok 문서: X-Forwarded-For에는 ngrok이 본 주소를 **뒤에 덧붙이므로 마지막 값**을 쓴다. 그에 맞춰 마지막 값 사용. 추가로 ngrok 경로 전체 실패 한도(분당 30회 → 1분 차단, 이미 인증된 헤더는 계속 통과) |
+| SEC-02 | 수정 | PBKDF2는 IO 스레드에서, 동시 2개. 3초 안에 못 들어가면 429 |
+| SEC-03 | 수정 | 익명 읽기는 사설망/링크로컬/ULA/Tailscale에서, Host가 IP·`localhost`·점 없는 이름·`.local`·`.ts.net`일 때만(DNS 리바인딩 차단). 루프백(adb forward 포함)도 이제 인증 필요 |
+| SEC-04 | 수정 | 실측: `ss -ltn`에 `*:8080`, `/proc/net/tcp6`에 `::` 수신(듀얼 스택). 측정 시 기기에 전역 IPv6는 없었다. 전역 IPv6 로컬 주소로 들어온 요청은 403 |
+| SEC-05 | 일부 수정 | 토큰은 https 또는 사설망/루프백 http에만. 외부 인텐트로 받은 URL을 자동 probe하기 전 확인은 UI 몫 → CR-8 |
+| SEC-06 | 일부 수정 | upload/receive-pack 120초 무응답 시 끊음, upload-pack 요청 본문 64MB 상한. 인증 전 연결 수 제한은 나중(Ktor/CIO에 연결 단위 한도 API가 없음, 인증 실패 한도로 대부분 막힘) |
+| SEC-07 | 수정 | IPv6는 /64 단위로 세고, 추적 4096개를 넘으면 오래된 것부터 정리 |
+| SEC-08 | 일부 수정 | `refs/archive/*` 보호(GIT-07). 로컬 레포 강제 push 자동 아카이브는 제품 결정이 필요해 나중 |
+| SEC-09 | 수정 | 토큰은 자기 호스트에만 주는 `HostBoundProvider`. 일괄 목록 next 링크는 같은 origin일 때만 따라감 |
+| SEC-10 | 수정 | 500은 "서버 오류 (오류 ID xxxxxxxx)"만, 상세는 로그에 |
+| SEC-11 | 수정 | GIT-09와 같음 |
+| SEC-12 | 일부 수정(판단 다름) | fetch fsck는 켜지 않음: 미러는 원본을 그대로 보존해야 하고 오래된 레포에 흔한 경고로 받기가 실패한다(GIT-06과 같은 이유). 대신 소스 zip은 위험한 경로(절대, `..`, 역슬래시)를 건너뛰고 항목 100만 개, 8GB 상한 |
+
+### 구조 (ARC-04/05/07)
+
+| ID | 결과 | 내용 |
+|---|---|---|
+| ARC-04 | 수정 | 시작 정리(`.tmp-*`, `.trash-*`, HEAD·meta 없는 디렉터리, 상태 폴더 tmp). 지워진 레포의 이력 쓰기는 디렉터리를 되살리지 않음. 남은 점: 저장 공간 화면 합계에 손상 레포 크기는 들어가지 않음(작음, 나중) |
+| ARC-05 | 일부 수정 | 정리·설정 마이그레이션·접속 기록 로드·내보내기 캐시 정리는 IO로. 설정·자격 증명·레포 meta 읽기는 작은 파일이고 UI가 첫 화면에 바로 써야 해서 시작 시 동기 유지 |
+| ARC-07 | 수정 | "파일로 저장"은 SAF 문서에 바로 스트리밍(실패하면 문서 삭제). "공유"만 캐시 파일을 만들며, 예상 크기 뒤 남는 공간이 하한보다 작으면 거부 |
+
+### 리뷰어 판단과 다른 결정
+
+- AND-16: cleartext 유지(http LAN 미러 지원). 토큰 전송 범위로 대신 막음.
+- SEC-12: fetch fsck 안 함(보존 우선). zip 경로·크기 상한으로 대신.
+- ARC-02의 "새 스키마면 읽기 전용": 읽기 전용 모드는 만들지 않음. 원본 복사본을 남기고 관대하게 읽어 계속 쓴다(다운그레이드 후에도 앱이 동작).
+- SEC-03: 리뷰는 "같은 네트워크만"이었고, 루프백도 익명에서 뺐다(adb forward·다른 앱이 폰 안에서 접근하는 경로).
+- AND-02 재현: 옛 빌드에서 kill -9 1회로는 wake lock 중복이 재현되지 않았다(경합 창은 코드상 존재). 새 빌드: kill -9 뒤 약 1초 만에 START_STICKY 재시작, 8080 수신, wake lock 1개, Wi-Fi lock 없음 확인.
+
+### 기기 확인 중 발견
+
+- 설정 쓰기가 비동기가 되면서, `am instrument`가 테스트 직후 프로세스를 죽이면 마지막 `setPort(복원)`가 디스크에 안 남았다(폰 설정이 8089/꺼짐으로 남음, 직접 되돌림). 테스트에 `flush()`를 넣었다. 실사용에서 같은 일은 설정 변경 후 수 ms 안에 프로세스가 죽을 때만 생긴다.
+
+### 미검증
+
+- SEC-01은 ngrok 문서로만 확인(유효 토큰 없음). SEC-04는 전역 IPv6가 있는 망(셀룰러 IPv6)에서 403 실측 필요.
+- GC를 실제 큰 레포에 돌린 시간·배터리, 첫 받기 `waitingForForeground` 재개는 JVM 테스트로만.
