@@ -139,3 +139,30 @@
 - CR-6: 설정의 "부팅 후 서버 자동 시작" 설명은 기본값 true와 맞아서 그대로 뒀다. 서랍 폰 팁(manage_048)만 "켜 두세요. 새로 설치하면 켜져 있어요"로 고쳤다. 리뷰 폰은 저장값(false)을 유지한다.
 - CR-7: 로컬 레포 상세에 "push 이력 N" 탭을 넣어 미러("동기화 이력")와 같은 두 탭 구조로 맞췄다. 같은 push(같은 `at`)는 한 카드, ref마다 "새로 만듦"(초록)·"삭제"(빨강)·"강제 push"(주황) 배지와 sha, 경로 배지, 시각·IP. 빈 상태 문구 추가.
 - 실기기 확인: 인증을 잠시 끄고 adb forward로 확인용 레포 `push-check`에 생성 → main 갱신 + feat·v1 생성 → 강제 push → feat 삭제를 push해 4개 카드가 의도대로 나왔다. 리뷰용 레포는 건드리지 않았고, `push-check`는 앱에서 지웠으며 비밀번호 요구는 "읽기·쓰기"로 되돌렸다(레포 15개).
+
+## 8. 1차 코드 리뷰 반영 (`docs/code-review/round1/README.md` UI 담당, CR-8, 앱 아이콘)
+
+| 항목 | 결정 | 내용 |
+|---|---|---|
+| AND-09 내보내기 상태 유실 | 반영 | `workId`(문자열)와 SAF 대기 요청(`[kind, ref, repos…]`)을 `rememberSaveable`에 보관. 회전·프로세스 종료 뒤에도 결과 공유·스낵바, 고른 위치로 내보내기가 이어진다 |
+| AND-17 생명주기·메인 스레드 | 반영 | 저장 공간 폴링은 `repeatOnLifecycle(STARTED)` 안에서만, QR 768px 인코딩은 `produceState` + `Dispatchers.Default`(계산 중엔 같은 크기 빈 칸) |
+| AND-18 문자열·알림 | 부분 반영 | 알림 채널 이름, 알림 본문, 서버·워커 상태 문구를 strings.xml로(`notif_*`, `server_*`, `work_*`, `error_*`). 이벤트 알림은 tag `event`로 ID 공간을 나누고, 진행 알림 ID와 이벤트 requestCode는 bit 16을 켜서 1·2와 겹치지 않게. `Strings.context`는 그대로 두었다: 이제 UI 밖(`app/`)은 `context.getString`만 쓰고 `str()`은 UI만 쓴다. 앱별 언어(LocaleManager)는 API 33+에서 애플리케이션 컨텍스트에도 반영되므로 별도 처리 안 함 |
+| AND-19 공유 텍스트 크기 | 반영 | `MainActivity`에서 앞 64KB만 `extractCandidates`로 주소만 뽑고 최대 200줄로 route에 넣는다 |
+| ARC-13 문자열 키 | 반영 | 번호 키 499개를 `영역_의미`로 일괄 변경(`docs/ui/tools/rename_string_keys.py`, 대응표 `string-keys-arc13.txt`). 문구는 그대로. 규칙은 design-system 8장 |
+
+AND-18의 알림·서버·워커 파일(`app/Notifications.kt`, `app/Server.kt`, `app/Work.kt`)은 코어 계층이지만 리뷰 배분에서 UI 담당으로 지정되어, 문자열을 리소스로 바꾸고 알림 ID·아이콘 참조만 고쳤다. 동작 로직은 건드리지 않았다.
+
+CR-8:
+1. 저장 파일 손상: `storageIssues()`가 비어 있지 않으면 메인에 위험 배너("일부 앱 데이터를 읽지 못했어요" → 저장 공간). 저장 공간 화면에 "읽지 못한 데이터" 카드(설정이면 처음처럼 다시 설정, 토큰이면 다시 넣기, 보관한 원본 경로).
+2. 손상된 레포: 같은 카드에 이름·경로와 "같은 이름으로 만들 수 없어요". 미러 추가·빈 레포·복제 이름 검사에도 넣었다.
+3. `waitingForForeground`: 상세 원본 카드 "대기: 앱을 열면 받기를 시작해요", 목록 행 "앱을 열면 받기 시작".
+4. 공유 인텐트 URL: "다른 앱에서 받은 주소예요" 배너의 "연결 확인"을 눌러야 probe하고 추가 버튼이 켜진다. `http://`면 "암호화되지 않은 주소" 경고(직접 입력에도).
+5. 토큰 추가·수정은 `Dispatchers.IO`.
+6. 새 커밋 10000이면 "10000+개".
+7. 보존 기록 카드에 "보존 기록(refs/archive)은 push로 만들거나 바꿀 수 없어요".
+8. "push만" 설명: "같은 와이파이·Tailscale에서는 비밀번호 없이, push와 ngrok, 폰 안(127.0.0.1)은 계속 비밀번호".
+9. 복호화 못 한 토큰은 기존 `TokenRejected` 표시 그대로("토큰 확인 필요" + 원문 자세히).
+
+앱 아이콘(A1-color1): 적응형 아이콘 background `#3366FF` 단색, foreground 흰 원 + 파란 곡선 포크(1024 시안을 108dp 레이어의 보이는 72dp에 맞춤, 흰 원 반지름 22.5dp로 안전 영역 33dp 안), monochrome은 브랜치만. 알림 작은 아이콘도 브랜치만(`ic_notification`), 온보딩 첫 페이지에 전체 로고(`ic_logo`). minSdk 26이라 템플릿 webp mipmap은 지웠다. 런처 확인 스크린샷: `docs/ui/icon-launcher.png`. 테마 아이콘(monochrome)은 시스템 설정을 바꿔야 해서 기기에서는 확인하지 않았다. 웹 favicon은 웹 담당.
+
+검증: `assembleDebug`, `testDebugUnitTest`, `installDebug` 통과. 실기기에서 공유 인텐트(http 주소) → 확인 전 probe 없음, 연결 확인 후 probe, QR 화면, 앱 서랍 아이콘, 온보딩 로고 확인. 확인 뒤 서버 켜짐·포트 8080·레포 15개. 커밋 `feed554`(리뷰·CR-8), `1247a00`(ARC-13), `04f76df`(아이콘).
