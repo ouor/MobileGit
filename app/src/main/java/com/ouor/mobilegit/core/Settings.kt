@@ -16,7 +16,8 @@ data class Settings(
     val username: String = "git",
     val passwordHash: String = "",
     val anonymousReadOnLan: Boolean = false,
-    val startOnBoot: Boolean = false,
+    /** CR-6: default on for new installs (user review round 1). Saved settings keep their stored value. */
+    val startOnBoot: Boolean = true,
     val ngrokEnabled: Boolean = false,
     val ngrokAuthtokenEnc: String? = null,
     val ngrokWarningAccepted: Boolean = false,
