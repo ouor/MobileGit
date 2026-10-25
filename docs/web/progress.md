@@ -15,7 +15,7 @@
 | 라이트/다크, 좁은 화면 | 완료 (시스템 따름 + 수동 전환) |
 | CSP | 위반 0건 (실기기 응답 헤더 그대로에서 Chromium 콘솔 확인) |
 | 실기기 | `d418f2d1`에 설치, `adb forward tcp:8080`으로 PC Chromium과 Firefox(Playwright)에서 데스크톱·다크·모바일 390px 확인 |
-| 코어 요청 | WR-1 ~ WR-4 코어 반영 완료(`b35e68f`) 후 웹 적용. WR-5(README 아닌 .md 렌더링) 요청 중 |
+| 코어 요청 | WR-1 ~ WR-5 모두 코어 반영(`b35e68f`, `24bc04c`) 후 웹 적용 완료. 남은 요청 없음 |
 | `./gradlew :app:assembleDebug`, `./gradlew test` | 통과 |
 
 ## 2. 기술 선택과 이유
@@ -75,7 +75,7 @@ cd .. && ./gradlew :app:assembleDebug
 | W-01 | 이름, 종류(아이콘+글자), 설명, 마지막 업데이트(미러)/push(로컬) 상대 시각(마우스를 올리면 절대 시각), 원본 상태 배지, LFS 누락 배지, 이름 필터 | 설명도 검색, 종류 필터(전체/미러/로컬/문제 N), 최근순/이름순, 원본 주소, 기본 브랜치, 용량, 행 전체 클릭, 레포가 없을 때 push 명령 예시 |
 | W-02 | clone URL(접속한 호스트 기준 `location.origin`) + 복사, `git clone` 명령 복사, 브랜치/태그 선택(검색, 기본 표시, 보존 ref 제외), 최신 커밋(작성자, 메시지, 짧은 SHA, 시각), 루트 트리(폴더 먼저), README 렌더링, 미러면 원본 URL·"읽기 전용" 배지 | 원본 없음/인증 필요 배너, LFS·서브모듈 안내(F-24, URL 목록), 정보 카드(종류, 원본 상태, 마지막 업데이트/push, 기본 브랜치, 브랜치·태그 수, 용량, 보존 ref 수), 보존 ref 받기 명령(F-11 AC5), 분리 원본 표시, 모든 레포 화면 상단 Clone 팝오버 |
 | W-02b | 하위 경로 트리, `..` 행, 하위 폴더 README | "기록" 버튼(이 경로의 커밋) |
-| W-03 | 경로, 크기, 줄 번호, 1MB 초과·바이너리·LFS 포인터 안내(크기, OID), 원본 다운로드 | 구문 강조, 줄 번호 클릭 → `?L=` 강조·이동(번호는 `::before`라 복사에 섞이지 않음), 내용 복사, 이미지 파일 미리보기, README 안의 폴더 링크가 blob으로 오면 트리로 이동 |
+| W-03 | 경로, 크기, 줄 번호, Markdown 미리보기/원문 전환(WR-5), 1MB 초과·바이너리·LFS 포인터 안내(크기, OID), 원본 다운로드 | 구문 강조, 줄 번호 클릭 → `?L=` 강조·이동(번호는 `::before`라 복사에 섞이지 않음), 내용 복사, 이미지 파일 미리보기, README 안의 폴더 링크가 blob으로 오면 트리로 이동 |
 | W-04 | 짧은 SHA, 메시지 첫 줄, 작성자, 시각, 50개씩 이전/다음, 경로별 이력 | 날짜별 묶음, 메시지 본문 펼치기, 전체 SHA 복사, "이 시점의 파일 보기"(ref=SHA로 트리) |
 | W-E | 없는 레포/경로/브랜치 → 이유 + "레포 처음으로"/"레포 목록으로", 빈 레포 → "아직 커밋이 없어요" + `git remote add`/`git push` 명령 | 401(새로 고침 안내), 429(5분 차단), 네트워크 오류 문구 |
 
@@ -121,13 +121,19 @@ README 링크 처리(`lib/readme.ts`): 상대 링크는 파일 보기로, `/x`�
 | 캐시·gzip (실기기 `curl -H "Accept-Encoding: gzip"`) | `/assets/index-*.js`: `Cache-Control: public, max-age=31536000, immutable` + `Content-Encoding: gzip`. `/r/...`(index.html): `no-cache`. `/api/v1/...` JSON: gzip. `/theme.js`(305B): 캐시 헤더·압축 없음(1KB 미만, 사양대로) |
 | raw | `Content-Length`만, chunked 없음. Vite 개발 프록시 502 해결 |
 | Firefox | Playwright Firefox 157로 15개 화면 × 3모드 스크린샷과 상호작용 시나리오 통과, 콘솔 오류·CSP 경고 0건. 클립보드 읽기 확인만 Chromium 전용(Firefox는 권한 API 차이로 생략) |
-| README가 아닌 `.md` 렌더링 | 코어 API가 디렉터리 README만 렌더링해 WR-5로 요청. 지금은 원문 + 구문 강조 |
+| README가 아닌 `.md` 렌더링 | WR-5 반영 후 구현(아래 8절) |
 
-## 8. 남은 문제
+## 8. 3차 반영: Markdown 미리보기 (WR-5, `6f98ae1`)
+
+- `.md`/`.markdown` 파일은 파일 보기에서 미리보기가 기본이다. 머리줄의 "미리보기 / 원문" 토글(shadcn ToggleGroup)로 바꾼다. 원문은 `?view=source`라 새로 고침·링크 공유에도 유지되고, 줄 링크(`?L=`)는 항상 원문으로 연다.
+- 데이터는 `readme?path=<파일>`(코어가 렌더링·정화). README 카드와 같은 `MarkdownBody` 컴포넌트(`components/Markdown.tsx`)와 `rewriteReadme`를 응답의 `path` 기준으로 써서 하위 폴더 파일의 상대 이미지·링크가 맞게 풀린다.
+- 미리보기 API가 오류(400 `TOO_LARGE`, `NOT_MARKDOWN` 등)를 주면 토글을 숨기고 "미리보기를 만들 수 없어 원문으로 보여요. <사유>" 한 줄과 함께 원문(구문 강조)으로 보인다.
+- 실기기 확인(Chromium·Firefox): `docs/sub/notes.md`에서 `../../assets/logo.png` 이미지가 raw API로 로드(가로 64px), `../guide.md` → 파일 보기, `/src/` → 트리, `../../src/app/Main.kt` → 파일 보기. guide.md의 `../README.md` 링크까지 이어서 이동. 원문 전환·새로 고침 유지·미리보기 복귀 확인. 오류 대체는 Playwright로 readme API에 400을 주입해 확인. 콘솔 오류 0건.
+
+## 9. 남은 문제
 
 | 항목 | 내용 |
 |---|---|
-| `.md` 파일 미리보기 | WR-5 대기. 반영되면 파일 보기에 "미리보기/원문" 전환 추가 |
 | 확인하지 못한 브라우저 | Safari(WebKit) 미확인. Chromium·Firefox만 확인 |
 | 서브모듈 항목 | 트리에서 이름과 "서브모듈" 표시만, 원본 링크는 없음(트리 API가 URL을 주지 않음. 레포 홈 안내에 URL 목록은 있음) |
 | 아주 큰 텍스트 파일 | 1MB 근처(약 2만 줄)는 줄마다 행을 그려 첫 표시가 느릴 수 있다. 필요하면 가상 스크롤 |
