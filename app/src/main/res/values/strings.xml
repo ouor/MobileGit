@@ -761,4 +761,5 @@
     <string name="archive_load_failed">보존된 기록을 읽지 못했어요. 잠시 뒤 다시 열어 보세요.</string>
     <string name="common_open">열기</string>
     <string name="main_summary_show_problems">주의 필요만 보기</string>
+    <string name="settings_cred_row">원본 접속 토큰</string>
 </resources>

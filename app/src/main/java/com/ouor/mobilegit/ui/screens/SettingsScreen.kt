@@ -135,8 +135,15 @@ fun SettingsScreen(nav: Nav) {
                             else -> dialog = "authOff"
                         }
                     }
-                    // RV2-10: three segments cannot hold "push할 때만" at large font sizes, so they become a radio list
-                    if (androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f) Column(Modifier.selectableGroup()) {
+                    // RV2-10 / v0.2.0 S25: when a segment cannot hold its whole label ("push할 때만") at this width and font size,
+                    // the choice becomes a radio list. Measured, not guessed from fontScale; the text is never shrunk.
+                    val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+                    val labelStyle = MaterialTheme.typography.labelLarge
+                    val density = androidx.compose.ui.platform.LocalDensity.current
+                    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    // per segment: 12dp padding each side, 18dp check icon + 8dp gap on the selected one, 1dp borders, a little slack
+                    val need = with(density) { opts.maxOf { measurer.measure(it, labelStyle, maxLines = 1).size.width }.toDp() } + 24.dp + 26.dp + 2.dp + 4.dp
+                    if (need * opts.size > maxWidth) Column(Modifier.selectableGroup()) {
                         opts.forEachIndexed { i, label ->
                             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(level == i, role = Role.RadioButton) { pick(i) }, verticalAlignment = Alignment.CenterVertically) {
                                 androidx.compose.material3.RadioButton(level == i, onClick = null)
@@ -147,6 +154,7 @@ fun SettingsScreen(nav: Nav) {
                         opts.forEachIndexed { i, label ->
                             SegmentedButton(level == i, { pick(i) }, SegmentedButtonDefaults.itemShape(i, opts.size)) { Text(label, maxLines = 1) }
                         }
+                    }
                     }
                 }
                 Divider()
@@ -229,7 +237,7 @@ fun SettingsScreen(nav: Nav) {
 
             SectionHeader(str(R.string.detail_manage))
             RowGroup {
-                NavRow(str(R.string.cred_picker_label), { nav.go(Routes.CREDENTIALS) }, icon = Icons.Outlined.Key, value = str(R.string.settings_count, creds.size))
+                NavRow(str(R.string.settings_cred_row), { nav.go(Routes.CREDENTIALS) }, icon = Icons.Outlined.Key, value = str(R.string.settings_count, creds.size))
                 Divider()
                 NavRow(str(R.string.main_access_log), { nav.go(Routes.ACCESS_LOG) }, icon = Icons.Outlined.ListAlt)
                 Divider()

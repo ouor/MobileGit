@@ -1,5 +1,6 @@
 package com.ouor.mobilegit.ui.screens
 
+import com.ouor.mobilegit.ui.uniqueKeys
 import com.ouor.mobilegit.ui.Routes
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
@@ -260,7 +261,9 @@ fun AccessLogScreen(nav: Nav) {
                     modifier = Modifier.padding(bottom = Space.sm))
             }
             if (shown.isEmpty()) item { EmptyState(Icons.Outlined.ListAlt, if (entries.isEmpty()) str(R.string.log_empty_title) else str(R.string.log_no_match), str(R.string.log_empty_body)) }
-            items(shown, key = { "${it.at}-${it.clientIp}-${it.status}-${it.repoName}-${it.action}" }) { e -> AccessRow(e) }
+            // v0.2.0 crash: several entries can share all these fields (one page load = several requests in the same ms)
+            val keys = uniqueKeys(shown) { "${it.at}-${it.clientIp}-${it.status}-${it.repoName}-${it.action}" }
+            items(shown.size, key = { keys[it] }) { i -> AccessRow(shown[i]) }
         }
     }
     if (confirm) ConfirmDialog(str(R.string.log_clear_title), str(R.string.log_clear_confirm_title), str(R.string.log_clear_confirm), destructive = true, onConfirm = { core.accessLog.clear(); confirm = false }, onDismiss = { confirm = false })

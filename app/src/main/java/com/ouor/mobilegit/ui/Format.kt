@@ -175,3 +175,12 @@ val com.ouor.mobilegit.core.RefChangeKind?.tone: Tone get() = when (this) {
 
 /** "refs/archive/<group>/heads/main" → "<group>" (R2-03 AC6). */
 fun archiveGroupOf(archivedAs: String?): String? = archivedAs?.removePrefix("refs/archive/")?.substringBefore('/')?.takeIf { archivedAs.startsWith("refs/archive/") }
+
+/**
+ * Lazy-list keys that are always unique: [base] plus "#n" for the n-th repeat. Log rows have no id, and a browser
+ * opening the web page sends several requests from one IP in the same millisecond (v0.2.0 crash).
+ */
+fun <T> uniqueKeys(list: List<T>, base: (T) -> String): List<String> {
+    val seen = HashMap<String, Int>()
+    return list.map { val b = base(it); val n = seen.merge(b, 1, Int::plus)!!; if (n == 1) b else "$b#$n" }
+}

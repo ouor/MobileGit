@@ -7,6 +7,7 @@ import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import com.ouor.mobilegit.ui.uniqueKeys
 import com.ouor.mobilegit.ui.archiveGroupOf
 import com.ouor.mobilegit.ui.tone
 import com.ouor.mobilegit.core.PushEvent
@@ -182,10 +183,11 @@ fun RepoDetailScreen(name: String, nav: Nav) {
                     } else {
                         if (!isMirror) {
                             if (pushGroups.isEmpty()) item { EmptyState(Icons.Outlined.History, str(R.string.detail_history_empty_title), str(R.string.detail_push_empty)) }
-                            items(pushGroups, key = { it.first().at }) { PushRow(it) }
+                            items(pushGroups, key = { it.first().at }) { PushRow(it) } // unique: groups come from groupBy { at }
                         } else {
                             if (events.isEmpty()) item { EmptyState(Icons.Outlined.History, str(R.string.detail_history_empty_title), str(R.string.detail_history_empty_body)) }
-                            items(events, key = { it.startedAt.toString() + it.kind }) { EventRow(it) { g -> nav.go(Routes.archives(meta.name, g)) } }
+                            val keys = uniqueKeys(events) { it.startedAt.toString() + it.kind }
+                            items(events.size, key = { keys[it] }) { i -> EventRow(events[i]) { g -> nav.go(Routes.archives(meta.name, g)) } }
                         }
                     }
                 }
