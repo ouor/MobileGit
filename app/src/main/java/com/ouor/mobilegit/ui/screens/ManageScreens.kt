@@ -102,30 +102,30 @@ fun CredentialsScreen(prefillHost: String?, nav: Nav) {
     var adding by rememberSaveable { mutableStateOf(prefillHost != null) }
     var deleting by remember { mutableStateOf<RemoteCredential?>(null) }
 
-    AppScaffold(str(R.string.add_003), onBack = nav::back, floatingActionButton = {
-        ExtendedFloatingActionButton(onClick = { adding = true }, icon = { Icon(Icons.Outlined.Add, null) }, text = { Text(str(R.string.add_036)) }, shape = MaterialTheme.shapes.large)
+    AppScaffold(str(R.string.cred_picker_label), onBack = nav::back, floatingActionButton = {
+        ExtendedFloatingActionButton(onClick = { adding = true }, icon = { Icon(Icons.Outlined.Add, null) }, text = { Text(str(R.string.probe_add_token)) }, shape = MaterialTheme.shapes.large)
     }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(start = Space.screen, end = Space.screen, top = Space.sm, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(Space.sm)) {
             item {
-                Text(str(R.string.manage_001),
+                Text(str(R.string.cred_intro),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (items.isEmpty()) item { EmptyState(Icons.Outlined.Key, str(R.string.manage_002), str(R.string.manage_003)) }
+            if (items.isEmpty()) item { EmptyState(Icons.Outlined.Key, str(R.string.cred_empty_title), str(R.string.cred_empty_body)) }
             items(items, key = { it.id }) { c ->
                 val used = core.credentials.usageCount(c.id, repos)
                 Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(start = Space.lg, top = Space.md, bottom = Space.md, end = Space.xs), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(c.label.ifBlank { c.host }, style = MaterialTheme.typography.titleSmall)
-                            Text("${c.host} · ${c.username ?: str(R.string.manage_004, CredentialStore.defaultUser(c.host))}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${c.host} · ${c.username ?: str(R.string.cred_default_user, CredentialStore.defaultUser(c.host))}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Row(Modifier.padding(top = Space.xs), horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
                                 Pill("${c.tokenPrefix}••••", Tone.Neutral)
-                                Pill(if (used > 0) str(R.string.manage_005, used) else str(R.string.manage_006), if (used > 0) Tone.Info else Tone.Neutral)
+                                Pill(if (used > 0) str(R.string.cred_used_by, used) else str(R.string.cred_unused), if (used > 0) Tone.Info else Tone.Neutral)
                             }
                         }
-                        IconButton(onClick = { editing = c }) { Icon(Icons.Outlined.Edit, str(R.string.manage_007, c.host)) }
-                        IconButton(onClick = { deleting = c }) { Icon(Icons.Outlined.DeleteOutline, str(R.string.manage_008, c.host)) }
+                        IconButton(onClick = { editing = c }) { Icon(Icons.Outlined.Edit, str(R.string.cred_edit_named, c.host)) }
+                        IconButton(onClick = { deleting = c }) { Icon(Icons.Outlined.DeleteOutline, str(R.string.cred_delete_named, c.host)) }
                     }
                 }
             }
@@ -134,8 +134,8 @@ fun CredentialsScreen(prefillHost: String?, nav: Nav) {
     if (adding || editing != null) CredentialDialog(editing, prefillHost.takeIf { editing == null }, onDismiss = { adding = false; editing = null })
     deleting?.let { c ->
         val used = core.credentials.usageCount(c.id, repos)
-        ConfirmDialog(str(R.string.manage_009), if (used > 0) str(R.string.manage_010, used) else str(R.string.manage_011), str(R.string.manage_012), destructive = true,
-            onConfirm = { core.credentials.delete(c.id); deleting = null; snack(str(R.string.manage_013)) }, onDismiss = { deleting = null })
+        ConfirmDialog(str(R.string.cred_delete), if (used > 0) str(R.string.cred_delete_in_use, used) else str(R.string.cred_delete_title), str(R.string.common_delete), destructive = true,
+            onConfirm = { core.credentials.delete(c.id); deleting = null; snack(str(R.string.cred_deleted)) }, onDismiss = { deleting = null })
     }
 }
 
@@ -150,15 +150,15 @@ private fun CredentialDialog(existing: RemoteCredential?, host0: String?, onDism
     var token by remember { mutableStateOf("") }
     var err by remember { mutableStateOf<String?>(null) }
     val ok = host.isNotBlank() && (existing != null || token.isNotBlank())
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (existing == null) str(R.string.add_036) else str(R.string.manage_014)) }, text = {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (existing == null) str(R.string.probe_add_token) else str(R.string.cred_edit)) }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(Space.xs)) {
-            OutlinedTextField(host, { host = it }, singleLine = true, label = { Text(str(R.string.manage_015)) }, placeholder = { Text("github.com") }, enabled = existing == null)
-            OutlinedTextField(token, { token = it; err = null }, singleLine = true, label = { Text(if (existing == null) str(R.string.manage_016) else str(R.string.manage_017)) },
+            OutlinedTextField(host, { host = it }, singleLine = true, label = { Text(str(R.string.cred_host)) }, placeholder = { Text("github.com") }, enabled = existing == null)
+            OutlinedTextField(token, { token = it; err = null }, singleLine = true, label = { Text(if (existing == null) str(R.string.cred_token) else str(R.string.cred_token_new)) },
                 visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
-            OutlinedTextField(user, { user = it }, singleLine = true, label = { Text(str(R.string.manage_018)) },
-                placeholder = { Text(if (host.isBlank()) str(R.string.manage_019) else CredentialStore.defaultUser(CredentialStore.normalizeHost(host))) })
-            OutlinedTextField(label, { label = it }, singleLine = true, label = { Text(str(R.string.manage_020)) }, placeholder = { Text(str(R.string.manage_021)) })
-            Text(str(R.string.manage_022), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(user, { user = it }, singleLine = true, label = { Text(str(R.string.cred_username)) },
+                placeholder = { Text(if (host.isBlank()) str(R.string.cred_username_hint) else CredentialStore.defaultUser(CredentialStore.normalizeHost(host))) })
+            OutlinedTextField(label, { label = it }, singleLine = true, label = { Text(str(R.string.cred_label)) }, placeholder = { Text(str(R.string.cred_label_hint)) })
+            Text(str(R.string.cred_read_only_tip), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             err?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         }
     }, confirmButton = {
@@ -169,19 +169,19 @@ private fun CredentialDialog(existing: RemoteCredential?, host0: String?, onDism
                         if (existing == null) core.credentials.add(host, token, user, label.trim())
                         else core.credentials.update(existing.id, token.ifBlank { null }, user, label.trim())
                     }
-                }.onSuccess { snack(str(R.string.manage_023)); onDismiss() }.onFailure { err = it.message }
+                }.onSuccess { snack(str(R.string.common_saved)); onDismiss() }.onFailure { err = it.message }
             }
-        }) { Text(str(R.string.manage_024)) }
-    }, dismissButton = { TextButton(onClick = onDismiss) { Text(str(R.string.common_023)) } })
+        }) { Text(str(R.string.common_save)) }
+    }, dismissButton = { TextButton(onClick = onDismiss) { Text(str(R.string.common_cancel)) } })
 }
 
 // ---------------- A-12 백그라운드 안내 ----------------
 
 private val makerGuides get() = listOf(
-    BatteryHelper.Maker.SAMSUNG to (str(R.string.manage_025) to str(R.string.manage_026)),
-    BatteryHelper.Maker.XIAOMI to (str(R.string.manage_027) to str(R.string.manage_028)),
-    BatteryHelper.Maker.ONEPLUS to (str(R.string.manage_029) to str(R.string.manage_030)),
-    BatteryHelper.Maker.GOOGLE to (str(R.string.manage_031) to str(R.string.manage_032)),
+    BatteryHelper.Maker.SAMSUNG to (str(R.string.battery_samsung) to str(R.string.battery_samsung_steps)),
+    BatteryHelper.Maker.XIAOMI to (str(R.string.battery_xiaomi) to str(R.string.battery_xiaomi_steps)),
+    BatteryHelper.Maker.ONEPLUS to (str(R.string.battery_oneplus) to str(R.string.battery_oneplus_steps)),
+    BatteryHelper.Maker.GOOGLE to (str(R.string.battery_pixel) to str(R.string.battery_pixel_steps)),
 )
 
 /** A-12 (F-22 AC3). */
@@ -196,34 +196,34 @@ fun BatteryScreen(nav: Nav) {
     val maker = remember { BatteryHelper.maker() }
     val ordered = makerGuides.sortedByDescending { it.first == maker }
 
-    AppScaffold(str(R.string.manage_033), onBack = nav::back) { padding ->
+    AppScaffold(str(R.string.battery_title), onBack = nav::back) { padding ->
         ScreenColumn(padding) {
-            if (ignoring) Banner(Tone.Success, Icons.Outlined.CheckCircle, str(R.string.manage_034), str(R.string.manage_035))
-            else Banner(Tone.Warning, Icons.Outlined.BatteryAlert, str(R.string.manage_036), str(R.string.manage_037))
-            if (!ignoring) PrimaryButton(str(R.string.manage_038)) { runCatching { ctx.startActivity(BatteryHelper.requestIntent(ctx)) }.onFailure { ctx.startActivity(BatteryHelper.settingsIntent()) } }
+            if (ignoring) Banner(Tone.Success, Icons.Outlined.CheckCircle, str(R.string.battery_exempt_title), str(R.string.battery_exempt_body))
+            else Banner(Tone.Warning, Icons.Outlined.BatteryAlert, str(R.string.battery_optimized_title), str(R.string.battery_optimized_body))
+            if (!ignoring) PrimaryButton(str(R.string.battery_request_exempt)) { runCatching { ctx.startActivity(BatteryHelper.requestIntent(ctx)) }.onFailure { ctx.startActivity(BatteryHelper.settingsIntent()) } }
             Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-                SecondaryButton(str(R.string.manage_039), Modifier.weight(1f)) { ctx.startActivity(BatteryHelper.settingsIntent()) }
-                SecondaryButton(str(R.string.manage_040), Modifier.weight(1f)) { ctx.startActivity(BatteryHelper.appDetailsIntent(ctx)) }
+                SecondaryButton(str(R.string.battery_open_list), Modifier.weight(1f)) { ctx.startActivity(BatteryHelper.settingsIntent()) }
+                SecondaryButton(str(R.string.battery_app_info), Modifier.weight(1f)) { ctx.startActivity(BatteryHelper.appDetailsIntent(ctx)) }
             }
 
-            SectionHeader(str(R.string.manage_041))
+            SectionHeader(str(R.string.battery_vendor_title))
             ordered.forEach { (m, g) ->
-                SectionCard(title = g.first + if (m == maker) str(R.string.manage_042) else "") { Text(g.second, style = MaterialTheme.typography.bodyMedium) }
+                SectionCard(title = g.first + if (m == maker) str(R.string.battery_this_device_suffix) else "") { Text(g.second, style = MaterialTheme.typography.bodyMedium) }
             }
-            if (maker == BatteryHelper.Maker.OTHER) SectionCard(title = str(R.string.manage_043)) {
-                Text(str(R.string.manage_044), style = MaterialTheme.typography.bodyMedium)
+            if (maker == BatteryHelper.Maker.OTHER) SectionCard(title = str(R.string.battery_other_devices)) {
+                Text(str(R.string.battery_dontkillmyapp), style = MaterialTheme.typography.bodyMedium)
             }
 
-            SectionHeader(str(R.string.manage_045))
+            SectionHeader(str(R.string.battery_tips_title))
             SectionCard {
                 listOf(
-                    str(R.string.manage_046),
-                    str(R.string.manage_047),
-                    str(R.string.manage_048),
-                    str(R.string.manage_049),
+                    str(R.string.battery_tip_charger),
+                    str(R.string.battery_tip_charge_limit),
+                    str(R.string.battery_tip_boot),
+                    str(R.string.battery_tip_ap_isolation),
                 ).forEach { Text("• ${it}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = Space.xs)) }
             }
-            RowGroup { SwitchRow(str(R.string.manage_050), s.startOnBoot, { v -> core.settings.update { it.copy(startOnBoot = v) } }) }
+            RowGroup { SwitchRow(str(R.string.settings_start_on_boot), s.startOnBoot, { v -> core.settings.update { it.copy(startOnBoot = v) } }) }
             Spacer(Modifier.height(Space.lg))
         }
     }
@@ -240,20 +240,20 @@ fun AccessLogScreen(nav: Nav) {
     var confirm by remember { mutableStateOf(false) }
     val shown = remember(entries, filter) { AccessLogStore.filter(entries, ngrokOnly = filter == 1, authFailuresOnly = filter == 2).sortedByDescending { it.at } }
 
-    AppScaffold(str(R.string.main_009), onBack = nav::back, actions = { OverflowMenu { item(str(R.string.manage_051), enabled = entries.isNotEmpty()) { confirm = true } } }) { padding ->
+    AppScaffold(str(R.string.main_access_log), onBack = nav::back, actions = { OverflowMenu { item(str(R.string.log_clear), enabled = entries.isNotEmpty()) { confirm = true } } }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(horizontal = Space.screen, vertical = Space.sm), verticalArrangement = Arrangement.spacedBy(Space.xs)) {
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(Space.sm), modifier = Modifier.padding(bottom = Space.sm)) {
-                    items(listOf(str(R.string.manage_052, entries.size), str(R.string.manage_053), str(R.string.fmt_019)).withIndex().toList()) { (i, l) -> FilterChip(filter == i, { filter = i }, { Text(l) }) }
+                    items(listOf(str(R.string.log_filter_all, entries.size), str(R.string.log_filter_ngrok), str(R.string.auth_result_failed)).withIndex().toList()) { (i, l) -> FilterChip(filter == i, { filter = i }, { Text(l) }) }
                 }
-                Text(str(R.string.manage_054), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Text(str(R.string.log_retention_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = Space.sm))
             }
-            if (shown.isEmpty()) item { EmptyState(Icons.Outlined.ListAlt, if (entries.isEmpty()) str(R.string.manage_055) else str(R.string.manage_056), str(R.string.manage_057)) }
+            if (shown.isEmpty()) item { EmptyState(Icons.Outlined.ListAlt, if (entries.isEmpty()) str(R.string.log_empty_title) else str(R.string.log_no_match), str(R.string.log_empty_body)) }
             items(shown, key = { "${it.at}-${it.clientIp}-${it.status}-${it.repoName}-${it.action}" }) { e -> AccessRow(e) }
         }
     }
-    if (confirm) ConfirmDialog(str(R.string.manage_058), str(R.string.manage_059), str(R.string.manage_060), destructive = true, onConfirm = { core.accessLog.clear(); confirm = false }, onDismiss = { confirm = false })
+    if (confirm) ConfirmDialog(str(R.string.log_clear_title), str(R.string.log_clear_confirm_title), str(R.string.log_clear_confirm), destructive = true, onConfirm = { core.accessLog.clear(); confirm = false }, onDismiss = { confirm = false })
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -263,7 +263,7 @@ private fun AccessRow(e: com.ouor.mobilegit.core.AccessLogEntry) {
     Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(horizontal = Space.md, vertical = Space.sm + Space.xxs)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(when (e.action) { AccessAction.READ -> "clone·fetch"; AccessAction.PUSH -> "push"; AccessAction.WEB -> str(R.string.manage_061) } + (e.repoName?.let { " · ${it}" } ?: ""),
+                Text(when (e.action) { AccessAction.READ -> "clone·fetch"; AccessAction.PUSH -> "push"; AccessAction.WEB -> str(R.string.log_filter_web) } + (e.repoName?.let { " · ${it}" } ?: ""),
                     style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 1)
                 Text("${ago(e.at)} ${time(e.at)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

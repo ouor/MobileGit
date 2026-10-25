@@ -85,46 +85,46 @@ fun OnboardingScreen(nav: Nav) {
                 repeat(4) { i -> Box(Modifier.size(if (i == pager.currentPage) 20.dp else 6.dp, 6.dp).clip(CircleShape)
                     .background(if (i == pager.currentPage) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)) }
             }
-            TextButton(onClick = ::finish) { Text(if (replay) str(R.string.common_005) else str(R.string.onboarding_001)) }
+            TextButton(onClick = ::finish) { Text(if (replay) str(R.string.common_close) else str(R.string.onboarding_skip)) }
         }
         HorizontalPager(pager, Modifier.weight(1f)) { page ->
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Space.screen, vertical = Space.lg), verticalArrangement = Arrangement.spacedBy(Space.md)) {
                 when (page) {
-                    0 -> Page(Icons.Outlined.Inventory2, str(R.string.onboarding_002), str(R.string.onboarding_003)) {
-                        Banner(Tone.Info, Icons.Outlined.CheckCircle, str(R.string.onboarding_004), str(R.string.onboarding_005))
+                    0 -> Page(Icons.Outlined.Inventory2, str(R.string.onboarding_intro_title), str(R.string.onboarding_intro_body)) {
+                        Banner(Tone.Info, Icons.Outlined.CheckCircle, str(R.string.onboarding_extra_copy_title), str(R.string.onboarding_extra_copy_body))
                     }
-                    1 -> Page(Icons.Outlined.PhonelinkLock, str(R.string.onboarding_006), str(R.string.onboarding_007)) {
-                        Banner(Tone.Danger, Icons.Outlined.Warning, str(R.string.onboarding_008), str(R.string.onboarding_009))
+                    1 -> Page(Icons.Outlined.PhonelinkLock, str(R.string.onboarding_on_device_title), str(R.string.onboarding_on_device_body)) {
+                        Banner(Tone.Danger, Icons.Outlined.Warning, str(R.string.onboarding_uninstall_title), str(R.string.onboarding_uninstall_body))
                     }
-                    2 -> Page(Icons.Outlined.Key, str(R.string.onboarding_010), str(R.string.onboarding_011)) {
+                    2 -> Page(Icons.Outlined.Key, str(R.string.onboarding_account_title), str(R.string.onboarding_account_body)) {
                         SectionCard {
-                            AddressBar(str(R.string.add_054), username)
+                            AddressBar(str(R.string.bulk_user_label), username)
                             Spacer(Modifier.height(Space.xs))
-                            if (password != null) AddressBar(str(R.string.onboarding_012), password)
-                            else Text(str(R.string.onboarding_013), style = MaterialTheme.typography.bodyMedium)
+                            if (password != null) AddressBar(str(R.string.onboarding_password), password)
+                            else Text(str(R.string.onboarding_password_once), style = MaterialTheme.typography.bodyMedium)
                         }
-                        if (password != null) Banner(Tone.Warning, Icons.Outlined.Warning, str(R.string.onboarding_014), str(R.string.onboarding_015))
+                        if (password != null) Banner(Tone.Warning, Icons.Outlined.Warning, str(R.string.onboarding_copy_now_title), str(R.string.onboarding_copy_now_body))
                     }
-                    else -> Page(Icons.Outlined.BatteryChargingFull, str(R.string.onboarding_016), str(R.string.onboarding_017)) {
+                    else -> Page(Icons.Outlined.BatteryChargingFull, str(R.string.onboarding_keep_alive_title), str(R.string.onboarding_keep_alive_body)) {
                         SectionCard {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Outlined.Notifications, null); Spacer(Modifier.size(Space.md))
                                 Column(Modifier.weight(1f)) {
-                                    Text(str(R.string.onboarding_018), style = MaterialTheme.typography.titleSmall)
-                                    Text(if (notifOk) str(R.string.onboarding_019) else str(R.string.onboarding_020), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(str(R.string.onboarding_notif_permission), style = MaterialTheme.typography.titleSmall)
+                                    Text(if (notifOk) str(R.string.onboarding_granted) else str(R.string.onboarding_notif_permission_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                if (!notifOk && Build.VERSION.SDK_INT >= 33) SecondaryButton(str(R.string.onboarding_021)) { perm.launch(Manifest.permission.POST_NOTIFICATIONS) }
-                                else Icon(Icons.Outlined.CheckCircle, str(R.string.onboarding_019), tint = MaterialTheme.colorScheme.tertiary)
+                                if (!notifOk && Build.VERSION.SDK_INT >= 33) SecondaryButton(str(R.string.onboarding_allow)) { perm.launch(Manifest.permission.POST_NOTIFICATIONS) }
+                                else Icon(Icons.Outlined.CheckCircle, str(R.string.onboarding_granted), tint = MaterialTheme.colorScheme.tertiary)
                             }
                             Spacer(Modifier.height(Space.md))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Outlined.BatteryChargingFull, null); Spacer(Modifier.size(Space.md))
                                 Column(Modifier.weight(1f)) {
-                                    Text(str(R.string.onboarding_022), style = MaterialTheme.typography.titleSmall)
-                                    Text(if (batteryOk) str(R.string.add_068) else str(R.string.onboarding_023), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(str(R.string.onboarding_battery_exempt), style = MaterialTheme.typography.titleSmall)
+                                    Text(if (batteryOk) str(R.string.bulk_registered) else str(R.string.onboarding_battery_exempt_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                if (!batteryOk) SecondaryButton(str(R.string.onboarding_024)) { nav.go(Routes.BATTERY) }
-                                else Icon(Icons.Outlined.CheckCircle, str(R.string.add_068), tint = MaterialTheme.colorScheme.tertiary)
+                                if (!batteryOk) SecondaryButton(str(R.string.onboarding_view_guide)) { nav.go(Routes.BATTERY) }
+                                else Icon(Icons.Outlined.CheckCircle, str(R.string.bulk_registered), tint = MaterialTheme.colorScheme.tertiary)
                             }
                         }
                     }
@@ -133,7 +133,7 @@ fun OnboardingScreen(nav: Nav) {
         }
         Box(Modifier.padding(horizontal = Space.screen, vertical = Space.md)) {
             val last = pager.currentPage == 3
-            PrimaryButton(if (last) (if (replay) str(R.string.common_005) else str(R.string.onboarding_025)) else str(R.string.onboarding_026)) { if (last) finish() else scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } }
+            PrimaryButton(if (last) (if (replay) str(R.string.common_close) else str(R.string.onboarding_start)) else str(R.string.onboarding_next)) { if (last) finish() else scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } }
         }
     }
 }

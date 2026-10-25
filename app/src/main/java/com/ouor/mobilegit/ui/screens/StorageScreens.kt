@@ -86,8 +86,8 @@ fun StorageScreen(nav: Nav) {
     val damaged by core.repos.damaged.collectAsStateWithLifecycle()
     val issues = remember(damaged) { core.storageIssues() }
 
-    AppScaffold(str(R.string.main_007), onBack = nav::back, actions = {
-        IconButton(onClick = { measuring = true; scope.launch { core.refreshSizes(); measuring = false; tick++ } }, enabled = !measuring) { Icon(Icons.Outlined.Refresh, str(R.string.storage_001)) }
+    AppScaffold(str(R.string.main_storage), onBack = nav::back, actions = {
+        IconButton(onClick = { measuring = true; scope.launch { core.refreshSizes(); measuring = false; tick++ } }, enabled = !measuring) { Icon(Icons.Outlined.Refresh, str(R.string.storage_remeasure)) }
     }) { padding ->
         val s = summary
         if (s == null) { Box(Modifier.padding(padding)) { Loading() }; return@AppScaffold }
@@ -114,38 +114,38 @@ fun StorageScreen(nav: Nav) {
             }
             item {
                 SectionCard {
-                    Text(str(R.string.storage_002), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(str(R.string.storage_app_usage), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(bytes(s.appUsageBytes), style = MaterialTheme.typography.headlineMedium)
                     Spacer(Modifier.height(Space.md))
                     val used = (s.totalBytes - s.freeBytes).coerceAtLeast(0)
                     LinearProgressIndicator(progress = { if (s.totalBytes > 0) used.toFloat() / s.totalBytes else 0f }, Modifier.fillMaxWidth().height(8.dp),
                         color = if (s.belowFloor) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, drawStopIndicator = {})
                     Spacer(Modifier.height(Space.sm))
-                    InfoRow(str(R.string.storage_003), "${bytes(s.freeBytes)} / ${bytes(s.totalBytes)}", valueTone = if (s.belowFloor) Tone.Danger else null)
+                    InfoRow(str(R.string.storage_device_free), "${bytes(s.freeBytes)} / ${bytes(s.totalBytes)}", valueTone = if (s.belowFloor) Tone.Danger else null)
                     Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable(onClickLabel = str(R.string.storage_floor_change)) { floorDialog = true }, verticalAlignment = Alignment.CenterVertically) {
-                        InfoRow(str(R.string.storage_004), bytes(s.floorBytes), Modifier.weight(1f))
+                        InfoRow(str(R.string.storage_floor), bytes(s.floorBytes), Modifier.weight(1f))
                         Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.outline)
                     }
-                    Text(str(R.string.storage_005, bytes(s.floorBytes)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(str(R.string.storage_floor_value, bytes(s.floorBytes)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     s.reposBySize.mapNotNull { it.sizeMeasuredAt }.minOrNull()?.let {
                         Text(str(R.string.storage_measured_once, ago(it)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.xs))
                     }
-                    if (measuring) Text(str(R.string.storage_006), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                    if (measuring) Text(str(R.string.storage_remeasuring), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 }
             }
             if (s.belowFloor) item {
-                Banner(Tone.Danger, Icons.Outlined.SdCardAlert, str(R.string.main_013), str(R.string.storage_007))
+                Banner(Tone.Danger, Icons.Outlined.SdCardAlert, str(R.string.main_low_storage_title), str(R.string.storage_paused_body))
             }
-            item { SecondaryButton(str(R.string.storage_008), Modifier.fillMaxWidth(), icon = Icons.Outlined.Upload) { nav.go(Routes.BACKUP) } }
-            item { Text(str(R.string.storage_009), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.md)) }
-            if (s.reposBySize.isEmpty()) item { EmptyState(Icons.Outlined.Inventory2, str(R.string.storage_010), str(R.string.storage_011)) }
+            item { SecondaryButton(str(R.string.storage_full_backup), Modifier.fillMaxWidth(), icon = Icons.Outlined.Upload) { nav.go(Routes.BACKUP) } }
+            item { Text(str(R.string.storage_by_repo), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.md)) }
+            if (s.reposBySize.isEmpty()) item { EmptyState(Icons.Outlined.Inventory2, str(R.string.storage_empty_title), str(R.string.storage_empty_body)) }
             val max = s.reposBySize.firstOrNull()?.sizeBytes?.coerceAtLeast(1) ?: 1
             items(s.reposBySize, key = { it.id }) { m ->
                 Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.clickable { nav.go(Routes.repo(m.name)) }.padding(Space.md)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(m.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                            Text(if (m.sizeMeasuredAt != null) bytes(m.sizeBytes) else str(R.string.detail_012), style = MaterialTheme.typography.titleSmall)
+                            Text(if (m.sizeMeasuredAt != null) bytes(m.sizeBytes) else str(R.string.detail_size_unmeasured), style = MaterialTheme.typography.titleSmall)
                             Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.outline)
                         }
                         LinearProgressIndicator(progress = { m.sizeBytes.toFloat() / max }, Modifier.fillMaxWidth().padding(top = Space.xs), drawStopIndicator = {})
@@ -169,7 +169,7 @@ fun StorageScreen(nav: Nav) {
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { floorDialog = false }) { Text(str(R.string.common_005)) } },
+        confirmButton = { TextButton(onClick = { floorDialog = false }) { Text(str(R.string.common_close)) } },
     )
 }
 
@@ -187,20 +187,20 @@ fun BackupScreen(nav: Nav) {
     val chosen = repos.filter { it.name in selected }
     val est = chosen.sumOf { it.sizeBytes }
 
-    AppScaffold(str(R.string.main_008), onBack = nav::back, bottomBar = {
+    AppScaffold(str(R.string.main_full_backup), onBack = nav::back, bottomBar = {
         Surface(color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = Space.screen, vertical = Space.md)) {
-                Text(str(R.string.storage_012, chosen.size, bytes(est)) + (free?.let { str(R.string.add_051, bytes(it.first)) } ?: ""), style = MaterialTheme.typography.bodySmall,
+                Text(str(R.string.backup_selected_estimate, chosen.size, bytes(est)) + (free?.let { str(R.string.bulk_free_suffix, bytes(it.first)) } ?: ""), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = Space.sm))
                 val p = export.progress
                 if (export.running) {
                     if (p != null) LinearProgressIndicator(progress = { p.first.toFloat() / p.second.coerceAtLeast(1) }, Modifier.fillMaxWidth().padding(bottom = Space.xs))
                     else LinearProgressIndicator(Modifier.fillMaxWidth().padding(bottom = Space.xs))
-                    Text(p?.let { str(R.string.storage_013, it.first, it.second) } ?: str(R.string.storage_014), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = Space.sm))
+                    Text(p?.let { str(R.string.backup_progress, it.first, it.second) } ?: str(R.string.backup_preparing), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = Space.sm))
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-                    SecondaryButton(str(R.string.detail_090), Modifier.weight(1f).height(54.dp), enabled = chosen.isNotEmpty() && !export.running) { export.start(ExportKind.FULL_BACKUP, chosen.map { it.name }, toFile = false) }
-                    PrimaryButton(if (export.running) str(R.string.storage_015) else str(R.string.detail_091), Modifier.weight(1f), enabled = chosen.isNotEmpty() && !export.running) {
+                    SecondaryButton(str(R.string.export_share), Modifier.weight(1f).height(54.dp), enabled = chosen.isNotEmpty() && !export.running) { export.start(ExportKind.FULL_BACKUP, chosen.map { it.name }, toFile = false) }
+                    PrimaryButton(if (export.running) str(R.string.backup_running) else str(R.string.export_save_file), Modifier.weight(1f), enabled = chosen.isNotEmpty() && !export.running) {
                         export.start(ExportKind.FULL_BACKUP, chosen.map { it.name }, toFile = true)
                     }
                 }
@@ -209,17 +209,17 @@ fun BackupScreen(nav: Nav) {
     }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(horizontal = Space.screen, vertical = Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
             item {
-                Text(str(R.string.storage_016),
+                Text(str(R.string.backup_intro),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = Space.sm)) {
-                    Text(str(R.string.storage_017, repos.size), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    Text(str(R.string.backup_repo_count, repos.size), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                     val all = repos.isNotEmpty() && selected.size == repos.size
-                    TextButton(onClick = { selected.clear(); if (!all) selected.addAll(repos.map { it.name }) }) { Text(if (all) str(R.string.add_063) else str(R.string.add_064)) }
+                    TextButton(onClick = { selected.clear(); if (!all) selected.addAll(repos.map { it.name }) }) { Text(if (all) str(R.string.bulk_select_none) else str(R.string.bulk_select_all)) }
                 }
             }
-            if (repos.isEmpty()) item { EmptyState(Icons.Outlined.Inventory2, str(R.string.storage_018), str(R.string.storage_019)) }
+            if (repos.isEmpty()) item { EmptyState(Icons.Outlined.Inventory2, str(R.string.backup_empty_title), str(R.string.backup_empty_body)) }
             items(repos, key = { it.id }) { m ->
                 val on = m.name in selected
                 Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
@@ -232,15 +232,15 @@ fun BackupScreen(nav: Nav) {
                 }
             }
             item(key = "restore") {
-                SectionCard(Modifier.padding(top = Space.md), title = str(R.string.storage_020)) {
-                    Text(str(R.string.storage_021), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SectionCard(Modifier.padding(top = Space.md), title = str(R.string.backup_restore_title)) {
+                    Text(str(R.string.backup_restore_intro), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(Space.sm))
-                    val base = addrs.firstOrNull()?.baseUrl ?: str(R.string.main_031, core.settings.current.port)
-                    CommandBlock(str(R.string.storage_022)); Spacer(Modifier.height(Space.xs))
-                    CommandBlock(str(R.string.storage_023)); Spacer(Modifier.height(Space.xs))
-                    CommandBlock(str(R.string.storage_024, base)); Spacer(Modifier.height(Space.xs))
-                    CommandBlock(str(R.string.storage_025, base))
-                    Text(str(R.string.storage_026), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
+                    val base = addrs.firstOrNull()?.baseUrl ?: str(R.string.main_address_placeholder, core.settings.current.port)
+                    CommandBlock(str(R.string.backup_restore_clone)); Spacer(Modifier.height(Space.xs))
+                    CommandBlock(str(R.string.backup_restore_cd)); Spacer(Modifier.height(Space.xs))
+                    CommandBlock(str(R.string.backup_restore_push_all, base)); Spacer(Modifier.height(Space.xs))
+                    CommandBlock(str(R.string.backup_restore_push_tags, base))
+                    Text(str(R.string.backup_restore_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
                 }
             }
         }

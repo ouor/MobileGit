@@ -86,20 +86,20 @@ fun SettingsScreen(nav: Nav) {
     var dialog by remember { mutableStateOf<String?>(null) }
     val running = server is ServerState.Running
 
-    AppScaffold(str(R.string.main_002), onBack = nav::back) { padding ->
+    AppScaffold(str(R.string.main_settings), onBack = nav::back) { padding ->
         ScreenColumn(padding) {
-            SectionHeader(str(R.string.settings_001))
+            SectionHeader(str(R.string.settings_server))
             RowGroup {
-                NavRow(str(R.string.settings_002), { dialog = "port" }, value = "${s.port}")
+                NavRow(str(R.string.settings_port), { dialog = "port" }, value = "${s.port}")
                 Divider()
-                NavRow(str(R.string.add_054), { dialog = "user" }, value = s.username)
+                NavRow(str(R.string.bulk_user_label), { dialog = "user" }, value = s.username)
                 Divider()
-                NavRow(str(R.string.settings_003), { dialog = "password" }, subtitle = str(R.string.settings_004))
+                NavRow(str(R.string.settings_reset_password), { dialog = "password" }, subtitle = str(R.string.settings_reset_password_sub))
                 Divider()
                 Column(Modifier.padding(horizontal = Space.lg, vertical = Space.md)) {
-                    Text(str(R.string.settings_005), style = MaterialTheme.typography.bodyLarge)
+                    Text(str(R.string.settings_auth), style = MaterialTheme.typography.bodyLarge)
                     val level = when { s.ngrokEnabled -> 0; !s.authEnabled -> 2; s.anonymousReadOnLan -> 1; else -> 0 }
-                    Text(if (s.ngrokEnabled) str(R.string.settings_006) else listOf(str(R.string.settings_auth_all_sub), str(R.string.settings_010), str(R.string.settings_007))[level],
+                    Text(if (s.ngrokEnabled) str(R.string.settings_auth_forced_ngrok) else listOf(str(R.string.settings_auth_all_sub), str(R.string.settings_auth_push_sub), str(R.string.settings_auth_off_sub))[level],
                         style = MaterialTheme.typography.bodySmall, color = if (level == 2) tone(Tone.Danger).content else MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(Space.sm))
                     val opts = listOf(str(R.string.settings_auth_all), str(R.string.settings_auth_push), str(R.string.settings_auth_off))
@@ -116,9 +116,9 @@ fun SettingsScreen(nav: Nav) {
                     }
                 }
                 Divider()
-                SwitchRow(str(R.string.manage_050), s.startOnBoot, { v -> core.settings.update { it.copy(startOnBoot = v) } }, subtitle = str(R.string.settings_011))
+                SwitchRow(str(R.string.settings_start_on_boot), s.startOnBoot, { v -> core.settings.update { it.copy(startOnBoot = v) } }, subtitle = str(R.string.settings_start_on_boot_sub))
             }
-            SectionCard(title = str(R.string.settings_012)) {
+            SectionCard(title = str(R.string.settings_security_title)) {
                 listOf(
                     Triple(Tone.Warning, str(R.string.settings_sec_wifi), str(R.string.settings_sec_wifi_body)),
                     Triple(Tone.Success, "Tailscale", str(R.string.settings_sec_ts_body)),
@@ -133,109 +133,109 @@ fun SettingsScreen(nav: Nav) {
                 }
             }
 
-            SectionHeader(str(R.string.settings_014))
+            SectionHeader(str(R.string.settings_ngrok_title))
             RowGroup {
-                SwitchRow(str(R.string.settings_015), s.ngrokEnabled, { on ->
+                SwitchRow(str(R.string.settings_ngrok_switch), s.ngrokEnabled, { on ->
                     when {
                         !on -> core.settings.update { it.copy(ngrokEnabled = false) }
-                        !s.hasNgrokToken -> { snack(str(R.string.settings_016)); dialog = "token" }
+                        !s.hasNgrokToken -> { snack(str(R.string.settings_ngrok_need_token)); dialog = "token" }
                         s.ngrokWarningAccepted -> core.settings.update { it.copy(ngrokEnabled = true) }
                         else -> dialog = "ngrokWarn"
                     }
-                }, subtitle = if (s.ngrokEnabled) tunnelText(tunnel, running) else str(R.string.settings_017))
+                }, subtitle = if (s.ngrokEnabled) tunnelText(tunnel, running) else str(R.string.settings_ngrok_sub))
                 Divider()
-                NavRow("authtoken", { dialog = "token" }, value = if (s.hasNgrokToken) str(R.string.settings_018) else str(R.string.fmt_001), subtitle = str(R.string.settings_019))
+                NavRow("authtoken", { dialog = "token" }, value = if (s.hasNgrokToken) str(R.string.settings_ngrok_token_set) else str(R.string.fmt_none), subtitle = str(R.string.settings_ngrok_token_note))
             }
 
-            SectionHeader(str(R.string.settings_020))
+            SectionHeader(str(R.string.settings_sync))
             RowGroup {
                 Column(Modifier.padding(horizontal = Space.lg, vertical = Space.md)) {
-                    Text(str(R.string.settings_021), style = MaterialTheme.typography.bodyLarge)
-                    Text(str(R.string.settings_022), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(str(R.string.settings_check_interval), style = MaterialTheme.typography.bodyLarge)
+                    Text(str(R.string.settings_check_interval_sub), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(Space.sm))
                     val opts = listOf(1, 6, 12, 24)
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                         opts.forEachIndexed { i, h ->
-                            SegmentedButton(s.checkIntervalHours == h, { core.settings.setCheckIntervalHours(h) }, SegmentedButtonDefaults.itemShape(i, opts.size)) { Text(str(R.string.settings_023, h)) }
+                            SegmentedButton(s.checkIntervalHours == h, { core.settings.setCheckIntervalHours(h) }, SegmentedButtonDefaults.itemShape(i, opts.size)) { Text(str(R.string.settings_hours, h)) }
                         }
                     }
                 }
                 Divider()
-                SwitchRow(str(R.string.settings_024), s.autoUpdate, { v -> core.settings.update { it.copy(autoUpdate = v) } }, subtitle = str(R.string.settings_025))
+                SwitchRow(str(R.string.settings_auto_update), s.autoUpdate, { v -> core.settings.update { it.copy(autoUpdate = v) } }, subtitle = str(R.string.settings_auto_update_sub))
                 Divider()
-                SwitchRow(str(R.string.settings_026), s.updateWifiOnly, { v -> core.settings.update { it.copy(updateWifiOnly = v) } }, enabled = s.autoUpdate)
+                SwitchRow(str(R.string.settings_wifi_only), s.updateWifiOnly, { v -> core.settings.update { it.copy(updateWifiOnly = v) } }, enabled = s.autoUpdate)
                 Divider()
-                SwitchRow(str(R.string.settings_027), s.updateChargingOnly, { v -> core.settings.update { it.copy(updateChargingOnly = v) } }, enabled = s.autoUpdate)
+                SwitchRow(str(R.string.settings_charging_only), s.updateChargingOnly, { v -> core.settings.update { it.copy(updateChargingOnly = v) } }, enabled = s.autoUpdate)
                 Divider()
-                SwitchRow(str(R.string.settings_028), s.checkWifiOnly, { v -> core.settings.update { it.copy(checkWifiOnly = v) } }, subtitle = str(R.string.settings_029))
+                SwitchRow(str(R.string.settings_check_wifi_only), s.checkWifiOnly, { v -> core.settings.update { it.copy(checkWifiOnly = v) } }, subtitle = str(R.string.settings_check_wifi_only_sub))
             }
             AdvancedSection {
                 RowGroup {
-                    SwitchRow(str(R.string.settings_030), s.mirrorPullRefs, { v -> if (v) core.settings.update { it.copy(mirrorPullRefs = true) } else dialog = "pullOff" },
-                        subtitle = str(R.string.settings_031))
+                    SwitchRow(str(R.string.settings_pull_refs), s.mirrorPullRefs, { v -> if (v) core.settings.update { it.copy(mirrorPullRefs = true) } else dialog = "pullOff" },
+                        subtitle = str(R.string.settings_pull_refs_sub))
                 }
             }
 
-            SectionHeader(str(R.string.settings_032))
+            SectionHeader(str(R.string.settings_notifications))
             RowGroup {
-                SwitchRow(str(R.string.settings_033), s.notifyOnSuccess, { v -> core.settings.update { it.copy(notifyOnSuccess = v) } }, subtitle = str(R.string.settings_034))
+                SwitchRow(str(R.string.settings_notify_success), s.notifyOnSuccess, { v -> core.settings.update { it.copy(notifyOnSuccess = v) } }, subtitle = str(R.string.settings_notify_success_sub))
                 Divider()
-                NavRow(str(R.string.settings_035), {
+                NavRow(str(R.string.settings_system_notifications), {
                     ctx.startActivity(Intent(AndroidSettings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(AndroidSettings.EXTRA_APP_PACKAGE, ctx.packageName))
-                }, icon = Icons.Outlined.Notifications, subtitle = str(R.string.settings_036))
+                }, icon = Icons.Outlined.Notifications, subtitle = str(R.string.settings_system_notifications_sub))
             }
 
-            SectionHeader(str(R.string.detail_036))
+            SectionHeader(str(R.string.detail_manage))
             RowGroup {
-                NavRow(str(R.string.add_003), { nav.go(Routes.CREDENTIALS) }, icon = Icons.Outlined.Key, value = str(R.string.settings_037, creds.size))
+                NavRow(str(R.string.cred_picker_label), { nav.go(Routes.CREDENTIALS) }, icon = Icons.Outlined.Key, value = str(R.string.settings_count, creds.size))
                 Divider()
-                NavRow(str(R.string.main_009), { nav.go(Routes.ACCESS_LOG) }, icon = Icons.Outlined.ListAlt)
+                NavRow(str(R.string.main_access_log), { nav.go(Routes.ACCESS_LOG) }, icon = Icons.Outlined.ListAlt)
                 Divider()
-                NavRow(str(R.string.main_007), { nav.go(Routes.STORAGE) }, icon = Icons.Outlined.Storage)
+                NavRow(str(R.string.main_storage), { nav.go(Routes.STORAGE) }, icon = Icons.Outlined.Storage)
                 Divider()
-                NavRow(str(R.string.main_008), { nav.go(Routes.BACKUP) }, icon = Icons.Outlined.Upload)
+                NavRow(str(R.string.main_full_backup), { nav.go(Routes.BACKUP) }, icon = Icons.Outlined.Upload)
                 Divider()
-                NavRow(str(R.string.manage_033), { nav.go(Routes.BATTERY) }, icon = Icons.Outlined.BatteryChargingFull, subtitle = str(R.string.settings_038))
+                NavRow(str(R.string.battery_title), { nav.go(Routes.BATTERY) }, icon = Icons.Outlined.BatteryChargingFull, subtitle = str(R.string.settings_background_sub))
             }
 
-            SectionHeader(str(R.string.detail_005))
+            SectionHeader(str(R.string.detail_tab_info))
             RowGroup {
-                NavRow(str(R.string.settings_039), {}, icon = Icons.Outlined.Info, value = BuildConfig.VERSION_NAME, enabled = false)
+                NavRow(str(R.string.settings_version), {}, icon = Icons.Outlined.Info, value = BuildConfig.VERSION_NAME, enabled = false)
                 Divider()
-                NavRow(str(R.string.settings_040), { nav.go(Routes.ONBOARDING) }, icon = Icons.Outlined.School)
+                NavRow(str(R.string.settings_replay_intro), { nav.go(Routes.ONBOARDING) }, icon = Icons.Outlined.School)
                 Divider()
-                NavRow(str(R.string.settings_041), { dialog = "licenses" }, icon = Icons.Outlined.Public)
+                NavRow(str(R.string.settings_licenses), { dialog = "licenses" }, icon = Icons.Outlined.Public)
             }
         }
     }
 
     when (dialog) {
-        "port" -> InputDialog(str(R.string.settings_002), "${s.port}", "1024~65535", KeyboardType.Number, note = if (running) str(R.string.settings_042) else null, onDismiss = { dialog = null }) {
+        "port" -> InputDialog(str(R.string.settings_port), "${s.port}", "1024~65535", KeyboardType.Number, note = if (running) str(R.string.settings_port_restart_note) else null, onDismiss = { dialog = null }) {
             val p = it.trim().toIntOrNull() ?: 0
-            if (p != s.port) { core.settings.setPort(p); snack(if (running) str(R.string.settings_043) else str(R.string.settings_044)) }
+            if (p != s.port) { core.settings.setPort(p); snack(if (running) str(R.string.settings_port_changed_restart) else str(R.string.settings_port_changed)) }
         }
-        "user" -> InputDialog(str(R.string.add_054), s.username, "git", onDismiss = { dialog = null }) { core.settings.setUsername(it); snack(str(R.string.settings_045)) }
+        "user" -> InputDialog(str(R.string.bulk_user_label), s.username, "git", onDismiss = { dialog = null }) { core.settings.setUsername(it); snack(str(R.string.settings_username_changed)) }
         "password" -> PasswordDialog(onDismiss = { dialog = null })
-        "token" -> InputDialog("ngrok authtoken", "", str(R.string.settings_046), password = true, note = str(R.string.settings_047), onDismiss = { dialog = null }) {
+        "token" -> InputDialog("ngrok authtoken", "", str(R.string.settings_ngrok_token_hint), password = true, note = str(R.string.settings_ngrok_token_clear_hint), onDismiss = { dialog = null }) {
             core.settings.setNgrokAuthtoken(it.ifBlank { null })
             if (it.isBlank()) core.settings.update { st -> st.copy(ngrokEnabled = false) }
-            snack(if (it.isBlank()) str(R.string.manage_013) else str(R.string.settings_048))
+            snack(if (it.isBlank()) str(R.string.cred_deleted) else str(R.string.settings_ngrok_token_saved))
         }
-        "authOff" -> ConfirmDialog(str(R.string.settings_049), str(R.string.settings_050), str(R.string.settings_auth_off_confirm),
+        "authOff" -> ConfirmDialog(str(R.string.settings_auth_off_title), str(R.string.settings_auth_off_body), str(R.string.settings_auth_off_confirm),
             destructive = true, onConfirm = { core.settings.update { it.copy(authEnabled = false) }; dialog = null }, onDismiss = { dialog = null })
         "ngrokWarn" -> ConfirmDialog(
-            str(R.string.settings_051), str(R.string.settings_052), str(R.string.settings_053),
+            str(R.string.settings_ngrok_on_title), str(R.string.settings_ngrok_on_body), str(R.string.settings_ngrok_on_confirm),
             onConfirm = { core.settings.update { it.copy(ngrokEnabled = true, ngrokWarningAccepted = true) }; dialog = null }, onDismiss = { dialog = null })
-        "pullOff" -> ConfirmDialog(str(R.string.settings_054), PULL_OFF_WARNING, str(R.string.settings_055), destructive = true,
+        "pullOff" -> ConfirmDialog(str(R.string.settings_pull_refs_off_title), PULL_OFF_WARNING, str(R.string.settings_turn_off), destructive = true,
             onConfirm = { core.settings.update { it.copy(mirrorPullRefs = false) }; dialog = null }, onDismiss = { dialog = null })
-        "licenses" -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text(str(R.string.settings_041)) }, text = {
+        "licenses" -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text(str(R.string.settings_licenses)) }, text = {
             Text(LICENSES, style = MaterialTheme.typography.bodySmall)
-        }, confirmButton = { TextButton(onClick = { dialog = null }) { Text(str(R.string.common_005)) } })
+        }, confirmButton = { TextButton(onClick = { dialog = null }) { Text(str(R.string.common_close)) } })
     }
 }
 
 /** CR-2: turning PR refs off deletes already-fetched ones on the next update, without archiving. */
-val PULL_OFF_WARNING: String get() = str(R.string.settings_056)
+val PULL_OFF_WARNING: String get() = str(R.string.settings_pull_refs_off_body)
 
 private const val LICENSES = """AndroidX, Jetpack Compose, Material 3, Navigation, WorkManager: Apache-2.0
 Kotlin, kotlinx.coroutines, kotlinx.serialization: Apache-2.0
@@ -262,8 +262,8 @@ fun InputDialog(
                 keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else keyboard), supportingText = (err ?: note)?.let { { Text(it) } })
         }
     }, confirmButton = {
-        TextButton(onClick = { try { onSave(v); onDismiss() } catch (e: Exception) { err = e.message } }) { Text(str(R.string.manage_024)) }
-    }, dismissButton = { TextButton(onClick = onDismiss) { Text(str(R.string.common_023)) } })
+        TextButton(onClick = { try { onSave(v); onDismiss() } catch (e: Exception) { err = e.message } }) { Text(str(R.string.common_save)) }
+    }, dismissButton = { TextButton(onClick = onDismiss) { Text(str(R.string.common_cancel)) } })
 }
 
 /** F-03 AC2/AC3: reset only. Generated passwords are shown once with a copy action. */
@@ -274,24 +274,24 @@ private fun PasswordDialog(onDismiss: () -> Unit) {
     var err by remember { mutableStateOf<String?>(null) }
     var done by remember { mutableStateOf<String?>(null) }
     if (done != null) {
-        AlertDialog(onDismissRequest = onDismiss, title = { Text(str(R.string.settings_057)) }, text = {
+        AlertDialog(onDismissRequest = onDismiss, title = { Text(str(R.string.settings_new_password_title)) }, text = {
             Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-                Text(str(R.string.settings_058), style = MaterialTheme.typography.bodyMedium)
+                Text(str(R.string.settings_new_password_body), style = MaterialTheme.typography.bodyMedium)
                 CommandBlock(done!!)
             }
-        }, confirmButton = { TextButton(onClick = onDismiss) { Text(str(R.string.main_046)) } })
+        }, confirmButton = { TextButton(onClick = onDismiss) { Text(str(R.string.main_check)) } })
         return
     }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(str(R.string.settings_003)) }, text = {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(str(R.string.settings_reset_password)) }, text = {
         Column {
-            OutlinedTextField(v, { v = it; err = null }, singleLine = true, label = { Text(str(R.string.settings_059)) }, isError = err != null,
+            OutlinedTextField(v, { v = it; err = null }, singleLine = true, label = { Text(str(R.string.settings_new_password_label)) }, isError = err != null,
                 visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), supportingText = err?.let { { Text(it) } })
             TextButton(onClick = { val p = SettingsStore.generatePassword(16); runCatching { core.settings.setPassword(p) }.onSuccess { done = p }.onFailure { err = it.message } }) {
-                Text(str(R.string.settings_060))
+                Text(str(R.string.settings_new_password_random))
             }
         }
     }, confirmButton = {
-        TextButton(onClick = { runCatching { core.settings.setPassword(v) }.onSuccess { onDismiss() }.onFailure { err = it.message } }) { Text(str(R.string.manage_024)) }
-    }, dismissButton = { TextButton(onClick = onDismiss) { Text(str(R.string.common_023)) } })
+        TextButton(onClick = { runCatching { core.settings.setPassword(v) }.onSuccess { onDismiss() }.onFailure { err = it.message } }) { Text(str(R.string.common_save)) }
+    }, dismissButton = { TextButton(onClick = onDismiss) { Text(str(R.string.common_cancel)) } })
 }
 

@@ -96,17 +96,17 @@ fun QrScreen(repo: String?, nav: Nav) {
     Column(Modifier.fillMaxSize().background(Color.White).safeDrawingPadding().verticalScroll(rememberScrollState()).padding(horizontal = Space.screen),
         horizontalAlignment = Alignment.CenterHorizontally) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(if (repo == null) str(R.string.qr_001) else str(R.string.qr_002, repo), color = Color(0xFF191F28), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            IconButton(onClick = nav::back) { Icon(Icons.Outlined.Close, str(R.string.common_005), tint = Color(0xFF191F28)) }
+            Text(if (repo == null) str(R.string.qr_title_web) else str(R.string.qr_title_clone, repo), color = Color(0xFF191F28), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            IconButton(onClick = nav::back) { Icon(Icons.Outlined.Close, str(R.string.common_close), tint = Color(0xFF191F28)) }
         }
         if (url == null) {
             Spacer(Modifier.height(80.dp))
-            Text(str(R.string.qr_003), color = Color(0xFF4E5968), textAlign = TextAlign.Center)
+            Text(str(R.string.qr_no_network), color = Color(0xFF4E5968), textAlign = TextAlign.Center)
             return@Column
         }
         Spacer(Modifier.height(Space.lg))
         val qrMod = Modifier.fillMaxWidth().widthIn(max = 420.dp).aspectRatio(1f)
-        qr?.let { Image(it, str(R.string.qr_004, url), qrMod, filterQuality = FilterQuality.None) } ?: androidx.compose.foundation.layout.Box(qrMod)
+        qr?.let { Image(it, str(R.string.qr_image_desc, url), qrMod, filterQuality = FilterQuality.None) } ?: androidx.compose.foundation.layout.Box(qrMod)
         Spacer(Modifier.height(Space.lg))
         Text(breakable(url), color = Color(0xFF191F28), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = when { url.length > 40 -> 16.sp; url.length > 24 -> 20.sp; else -> 26.sp },
             lineHeight = 30.sp, textAlign = TextAlign.Center)
@@ -115,8 +115,8 @@ fun QrScreen(repo: String?, nav: Nav) {
         Text(str(R.string.qr_who), color = Color(0xFF333D4B), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, modifier = Modifier.padding(top = Space.lg))
         Row(Modifier.padding(top = Space.md), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
             val colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF191F28))
-            OutlinedButton(onClick = { ctx.copyText("mobilegit", url); android.widget.Toast.makeText(ctx, str(R.string.common_001), android.widget.Toast.LENGTH_SHORT).show() }, colors = colors) {
-                Icon(Icons.Outlined.ContentCopy, null, Modifier.size(18.dp)); Spacer(Modifier.width(Space.xs)); Text(str(R.string.common_009))
+            OutlinedButton(onClick = { ctx.copyText("mobilegit", url); android.widget.Toast.makeText(ctx, str(R.string.common_copied), android.widget.Toast.LENGTH_SHORT).show() }, colors = colors) {
+                Icon(Icons.Outlined.ContentCopy, null, Modifier.size(18.dp)); Spacer(Modifier.width(Space.xs)); Text(str(R.string.common_copy))
             }
             OutlinedButton(onClick = {
                 ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, url), null))
@@ -131,6 +131,6 @@ fun QrScreen(repo: String?, nav: Nav) {
                     colors = FilterChipDefaults.filterChipColors(labelColor = Color(0xFF191F28), selectedContainerColor = Color(0xFFE5ECFF), selectedLabelColor = Color(0xFF0B2A80)))
             }
         }
-        Text(str(R.string.qr_005), color = Color(0xFF4E5968), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = Space.lg))
+        Text(str(R.string.qr_no_credentials), color = Color(0xFF4E5968), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = Space.lg))
     }
 }

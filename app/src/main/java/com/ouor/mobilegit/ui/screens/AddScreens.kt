@@ -118,17 +118,17 @@ fun CredentialPicker(creds: List<RemoteCredential>, selected: String?, onSelect:
     var open by remember { mutableStateOf(false) }
     val sel = creds.firstOrNull { it.id == selected }
     fun label(c: RemoteCredential) = (c.label.ifBlank { c.host }) + " · ${c.tokenPrefix}••••"
-    val auto = if (host != null && creds.any { it.host == host }) str(R.string.add_001, host) else str(R.string.add_002)
+    val auto = if (host != null && creds.any { it.host == host }) str(R.string.cred_auto_first, host) else str(R.string.cred_none_public)
     ExposedDropdownMenuBox(expanded = open, onExpandedChange = { open = it }) {
         OutlinedTextField(
-            value = sel?.let(::label) ?: auto, onValueChange = {}, readOnly = true, label = { Text(str(R.string.add_003)) },
+            value = sel?.let(::label) ?: auto, onValueChange = {}, readOnly = true, label = { Text(str(R.string.cred_picker_label)) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(open) },
             modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable), shape = MaterialTheme.shapes.medium,
         )
         ExposedDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DropdownMenuItem(text = { Text(auto) }, onClick = { open = false; onSelect(null) })
             creds.forEach { c -> DropdownMenuItem(text = { Text(label(c)) }, onClick = { open = false; onSelect(c.id) }) }
-            DropdownMenuItem(text = { Text(str(R.string.add_004), color = MaterialTheme.colorScheme.primary) }, onClick = { open = false; onAdd() })
+            DropdownMenuItem(text = { Text(str(R.string.cred_add_menu), color = MaterialTheme.colorScheme.primary) }, onClick = { open = false; onAdd() })
         }
     }
 }
@@ -180,7 +180,7 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
         probing = false
     }
 
-    val nameError = if (name.isBlank()) null else RepoNames.validate(name) ?: if (core.repos.exists(name)) str(R.string.add_005) else if (core.repos.damaged.value.any { it.name.equals(name, true) }) str(R.string.add_name_damaged) else null
+    val nameError = if (name.isBlank()) null else RepoNames.validate(name) ?: if (core.repos.exists(name)) str(R.string.repo_name_taken) else if (core.repos.damaged.value.any { it.name.equals(name, true) }) str(R.string.add_name_damaged) else null
     val lowSpace = free != null && free.first < free.second
     val multi = candidates.size > 1
     val canAdd = !busy && !lowSpace && confirmed && when {
@@ -188,8 +188,8 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
         else -> url != null && preview?.existing == null && name.isNotBlank() && nameError == null
     }
 
-    AppScaffold(str(R.string.add_006), onBack = nav::back, bottomBar = {
-        BottomAction(if (multi) str(R.string.add_007, candidates.size) else str(R.string.add_008), enabled = canAdd, loading = busy, onClick = {
+    AppScaffold(str(R.string.mirror_title), onBack = nav::back, bottomBar = {
+        BottomAction(if (multi) str(R.string.mirror_add_many, candidates.size) else str(R.string.mirror_add), enabled = canAdd, loading = busy, onClick = {
             busy = true; error = null
             scope.launch {
                 try {
@@ -203,49 +203,49 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
                 } catch (e: Exception) { error = e.message ?: e.toString() } finally { busy = false }
             }
         }, above = { // QA-10: next to the button so it never scrolls under it
-            free?.let { Text(str(R.string.add_028, bytes(it.first)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = Space.sm)) }
+            free?.let { Text(str(R.string.space_free, bytes(it.first)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = Space.sm)) }
         })
     }) { padding ->
         ScreenColumn(padding) {
-            Text(str(R.string.add_009), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(str(R.string.mirror_intro), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(
                 text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 120.dp),
-                label = { Text(str(R.string.add_010)) }, placeholder = { Text("https://github.com/owner/repo") },
+                label = { Text(str(R.string.mirror_url_label)) }, placeholder = { Text("https://github.com/owner/repo") },
                 textStyle = CodeText.body, shape = MaterialTheme.shapes.medium,
                 trailingIcon = {
                     if (text.isEmpty()) androidx.compose.material3.IconButton(onClick = {
                         ctx.getSystemService(ClipboardManager::class.java).primaryClip?.getItemAt(0)?.coerceToText(ctx)?.let { text = it.toString() }
-                    }) { Icon(Icons.Outlined.ContentPaste, str(R.string.add_011)) }
+                    }) { Icon(Icons.Outlined.ContentPaste, str(R.string.mirror_paste)) }
                 },
             )
-            if (lowSpace) Banner(Tone.Danger, Icons.Outlined.SdCardAlert, str(R.string.add_012), str(R.string.add_013, bytes(free!!.first), bytes(free.second)))
+            if (lowSpace) Banner(Tone.Danger, Icons.Outlined.SdCardAlert, str(R.string.mirror_low_space_title), str(R.string.mirror_low_space_body, bytes(free!!.first), bytes(free.second)))
             error?.let { ErrorState(it) }
             if (!confirmed && candidates.isNotEmpty()) Banner(Tone.Info, Icons.Outlined.Info, str(R.string.add_shared_title), str(R.string.add_shared_body),
                 actionLabel = str(R.string.add_shared_confirm), onAction = { confirmed = true })
             if (candidates.any { it.startsWith("http://", ignoreCase = true) }) Banner(Tone.Warning, Icons.Outlined.Shield, str(R.string.add_http_title), str(R.string.add_http_body))
 
             if (multi) {
-                SectionCard(title = str(R.string.add_014, candidates.size)) {
+                SectionCard(title = str(R.string.mirror_multi_title, candidates.size)) {
                     candidates.take(50).forEach { Text(it, style = CodeText.small, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(vertical = 3.dp)) }
-                    if (candidates.size > 50) Text(str(R.string.add_015, candidates.size - 50), style = MaterialTheme.typography.bodySmall)
-                    Text(str(R.string.add_016), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
+                    if (candidates.size > 50) Text(str(R.string.mirror_multi_more, candidates.size - 50), style = MaterialTheme.typography.bodySmall)
+                    Text(str(R.string.mirror_multi_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
                 }
                 CredentialPicker(creds, credId, { credId = it }, null) { nav.go(Routes.CREDENTIALS) }
             } else if (single != null) {
                 val p = preview
                 when {
-                    p == null -> Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(Space.sm)); Text(str(R.string.add_017)) }
+                    p == null -> Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(Space.sm)); Text(str(R.string.mirror_checking_url)) }
                     // QA-03: errorKind first; error is also set for an existing mirror
-                    p.errorKind == AddPreviewError.ALREADY_MIRRORED && p.existing != null -> Banner(Tone.Info, Icons.Outlined.Info, str(R.string.add_019),
+                    p.errorKind == AddPreviewError.ALREADY_MIRRORED && p.existing != null -> Banner(Tone.Info, Icons.Outlined.Info, str(R.string.mirror_already_title),
                         str(R.string.add_already_mirrored_body, p.existing!!.name), actionLabel = str(R.string.add_go_existing), onAction = { nav.replace(Routes.repo(p.existing!!.name)) })
-                    p.errorKind != null || p.error != null -> Banner(Tone.Danger, Icons.Outlined.ErrorOutline, str(R.string.add_018), p.error)
+                    p.errorKind != null || p.error != null -> Banner(Tone.Danger, Icons.Outlined.ErrorOutline, str(R.string.mirror_unsupported_url), p.error)
                     else -> {
-                        SectionCard(title = str(R.string.add_021)) {
-                            Text(str(R.string.add_022), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        SectionCard(title = str(R.string.mirror_info_title)) {
+                            Text(str(R.string.mirror_origin), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(p.normalized!!.url, style = CodeText.body)
                             Spacer(Modifier.size(Space.md))
-                            OutlinedTextField(name, { name = it; nameEdited = true }, Modifier.fillMaxWidth(), label = { Text(str(R.string.add_023)) }, singleLine = true,
-                                isError = nameError != null, supportingText = { Text(nameError ?: str(R.string.add_025, "${addrs.firstOrNull()?.baseUrl ?: str(R.string.main_031, settings.port)}/${name.ifBlank { str(R.string.add_024) }}.git")) }, shape = MaterialTheme.shapes.medium,
+                            OutlinedTextField(name, { name = it; nameEdited = true }, Modifier.fillMaxWidth(), label = { Text(str(R.string.mirror_name_label)) }, singleLine = true,
+                                isError = nameError != null, supportingText = { Text(nameError ?: str(R.string.mirror_phone_url, "${addrs.firstOrNull()?.baseUrl ?: str(R.string.main_address_placeholder, settings.port)}/${name.ifBlank { str(R.string.mirror_name_placeholder) }}.git")) }, shape = MaterialTheme.shapes.medium,
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done))
                             Spacer(Modifier.size(Space.sm))
                             CredentialPicker(creds.filter { it.host == host }, credId, { credId = it }, host) { nav.go(Routes.credentials(host)) }
@@ -253,8 +253,8 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
                         if (confirmed) ProbeView(probing, probe, pullOn) { nav.go(Routes.credentials(host)) }
                         if ((probe as? ProbeResult.Reachable)?.pullRefCount?.let { it > 0 } == true || includePull != null) AdvancedSection {
                             com.ouor.mobilegit.ui.components.RowGroup {
-                                com.ouor.mobilegit.ui.components.SwitchRow(str(R.string.add_026), pullOn, { v -> includePull = if (v == settings.mirrorPullRefs) null else v },
-                                    subtitle = str(R.string.add_027))
+                                com.ouor.mobilegit.ui.components.SwitchRow(str(R.string.mirror_pull_refs), pullOn, { v -> includePull = if (v == settings.mirrorPullRefs) null else v },
+                                    subtitle = str(R.string.mirror_pull_refs_body))
                             }
                         }
                     }
@@ -269,23 +269,23 @@ private fun ProbeView(probing: Boolean, probe: ProbeResult?, includePull: Boolea
     when {
         probing || probe == null -> Row(verticalAlignment = Alignment.CenterVertically) {
             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(Space.sm))
-            Text(str(R.string.add_029), style = MaterialTheme.typography.bodyMedium)
+            Text(str(R.string.probe_checking), style = MaterialTheme.typography.bodyMedium)
         }
-        probe is ProbeResult.Reachable -> Banner(Tone.Success, Icons.Outlined.CheckCircle, str(R.string.add_030),
-            (if (!includePull && probe.pullRefCount > 0) str(R.string.add_031, probe.refCount - probe.pullRefCount, probe.pullRefCount) else str(R.string.add_probe_refs, probe.refCount)) +
-                (probe.defaultBranch?.let { str(R.string.add_033, it) } ?: ""))
-        probe is ProbeResult.AuthRequired -> Banner(Tone.Warning, Icons.Outlined.Key, str(R.string.add_034), str(R.string.add_035),
-            actionLabel = str(R.string.add_036), onAction = onAddToken)
-        probe is ProbeResult.NotFound -> Banner(Tone.Danger, Icons.Outlined.CloudOff, str(R.string.add_037), str(R.string.add_038),
-            actionLabel = str(R.string.add_036), onAction = onAddToken)
-        probe is ProbeResult.Failed -> Banner(Tone.Danger, Icons.Outlined.ErrorOutline, str(Notifier.categoryRes(probe.category)), probe.detail.take(300) + str(R.string.add_039))
+        probe is ProbeResult.Reachable -> Banner(Tone.Success, Icons.Outlined.CheckCircle, str(R.string.probe_reachable),
+            (if (!includePull && probe.pullRefCount > 0) str(R.string.probe_refs_excluding_pull, probe.refCount - probe.pullRefCount, probe.pullRefCount) else str(R.string.add_probe_refs, probe.refCount)) +
+                (probe.defaultBranch?.let { str(R.string.default_branch_suffix, it) } ?: ""))
+        probe is ProbeResult.AuthRequired -> Banner(Tone.Warning, Icons.Outlined.Key, str(R.string.probe_token_needed), str(R.string.probe_token_needed_body),
+            actionLabel = str(R.string.probe_add_token), onAction = onAddToken)
+        probe is ProbeResult.NotFound -> Banner(Tone.Danger, Icons.Outlined.CloudOff, str(R.string.probe_not_found), str(R.string.probe_not_found_body),
+            actionLabel = str(R.string.probe_add_token), onAction = onAddToken)
+        probe is ProbeResult.Failed -> Banner(Tone.Danger, Icons.Outlined.ErrorOutline, str(Notifier.categoryRes(probe.category)), probe.detail.take(300) + str(R.string.probe_add_anyway))
     }
 }
 
 // ---------------- A-04 일괄 미러 ----------------
 
-private val sourceLabels get() = listOf(BulkSourceKind.GITHUB_USER to str(R.string.add_040), BulkSourceKind.GITHUB_ORG to str(R.string.add_041),
-    BulkSourceKind.GITLAB_USER to str(R.string.add_042), BulkSourceKind.GITLAB_GROUP to str(R.string.add_043))
+private val sourceLabels get() = listOf(BulkSourceKind.GITHUB_USER to str(R.string.bulk_github_user), BulkSourceKind.GITHUB_ORG to str(R.string.bulk_github_org),
+    BulkSourceKind.GITLAB_USER to str(R.string.bulk_gitlab_user), BulkSourceKind.GITLAB_GROUP to str(R.string.bulk_gitlab_group))
 
 /** A-04 (F-15 AC1~AC4). */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -328,13 +328,13 @@ fun BulkMirrorScreen(nav: Nav) {
                 mirrored = withContext(Dispatchers.IO) { core.catalog.alreadyMirrored(l, core.repos) }
                 list = l
             } catch (e: CatalogException) {
-                error = when (e.status) { 404 -> str(R.string.add_044); 401, 403 -> str(R.string.add_045); else -> e.message ?: str(R.string.add_046) }
+                error = when (e.status) { 404 -> str(R.string.bulk_account_not_found); 401, 403 -> str(R.string.bulk_token_rejected); else -> e.message ?: str(R.string.bulk_list_failed) }
             } catch (e: Exception) { error = e.message ?: e.toString() } finally { loading = false; rateUntil = null }
         }
     }
 
-    AppScaffold(str(R.string.add_047), onBack = nav::back, bottomBar = {
-        if (list != null) BottomAction(str(R.string.add_048, chosen.size), enabled = chosen.isNotEmpty(), loading = busy, onClick = {
+    AppScaffold(str(R.string.bulk_title), onBack = nav::back, bottomBar = {
+        if (list != null) BottomAction(str(R.string.bulk_add_count, chosen.size), enabled = chosen.isNotEmpty(), loading = busy, onClick = {
             busy = true
             scope.launch {
                 try {
@@ -345,10 +345,10 @@ fun BulkMirrorScreen(nav: Nav) {
         }) {
             val f = free
             val over = f != null && knownSize > f.first - f.second
-            Text(str(R.string.add_049, bytes(knownSize)) + (if (unknown > 0) str(R.string.add_050, unknown) else "") + (f?.let { str(R.string.add_051, bytes(it.first)) } ?: ""),
+            Text(str(R.string.bulk_selected, bytes(knownSize)) + (if (unknown > 0) str(R.string.bulk_unknown_size_suffix, unknown) else "") + (f?.let { str(R.string.bulk_free_suffix, bytes(it.first)) } ?: ""),
                 style = MaterialTheme.typography.bodySmall, color = if (over) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = Space.sm))
-            if (over) Text(str(R.string.add_052, bytes(f!!.second)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = Space.sm))
+            if (over) Text(str(R.string.bulk_too_large, bytes(f!!.second)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = Space.sm))
         }
     }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(horizontal = Space.screen, vertical = Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
@@ -359,35 +359,35 @@ fun BulkMirrorScreen(nav: Nav) {
                             leadingIcon = if (kind == k) ({ Icon(Icons.Outlined.Check, null, Modifier.size(18.dp)) }) else null) }
                     }
                     OutlinedTextField(account, { account = it }, Modifier.fillMaxWidth(), singleLine = true, shape = MaterialTheme.shapes.medium,
-                        label = { Text(if (kind == BulkSourceKind.GITHUB_ORG || kind == BulkSourceKind.GITLAB_GROUP) str(R.string.add_053) else str(R.string.add_054)) })
+                        label = { Text(if (kind == BulkSourceKind.GITHUB_ORG || kind == BulkSourceKind.GITLAB_GROUP) str(R.string.bulk_org_label) else str(R.string.bulk_user_label)) })
                     if (gitlab) OutlinedTextField(gitlabHost, { gitlabHost = it }, Modifier.fillMaxWidth().padding(top = Space.sm), singleLine = true, shape = MaterialTheme.shapes.medium,
-                        label = { Text(str(R.string.add_055)) }, placeholder = { Text("gitlab.com") })
+                        label = { Text(str(R.string.bulk_gitlab_host)) }, placeholder = { Text("gitlab.com") })
                     Spacer(Modifier.size(Space.sm))
                     CredentialPicker(hostCreds, credId, { credId = it }, host) { nav.go(Routes.credentials(host)) }
-                    Text(str(R.string.add_056), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.xs))
+                    Text(str(R.string.bulk_token_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.xs))
                     Spacer(Modifier.size(Space.md))
-                    com.ouor.mobilegit.ui.components.SecondaryButton(if (loading) str(R.string.add_057) else str(R.string.add_058), Modifier.fillMaxWidth(), enabled = account.isNotBlank() && !loading,
+                    com.ouor.mobilegit.ui.components.SecondaryButton(if (loading) str(R.string.bulk_loading) else str(R.string.bulk_load), Modifier.fillMaxWidth(), enabled = account.isNotBlank() && !loading,
                         icon = Icons.Outlined.Search) { load() }
                 }
             }
-            rateUntil?.let { item { Banner(Tone.Warning, Icons.Outlined.Timer, str(R.string.add_059), str(R.string.add_060, time(it))) } }
+            rateUntil?.let { item { Banner(Tone.Warning, Icons.Outlined.Timer, str(R.string.bulk_rate_limit), str(R.string.bulk_rate_limit_body, time(it))) } }
             error?.let { item { ErrorState(it, onRetry = ::load) } }
             if (loading && rateUntil == null) item { com.ouor.mobilegit.ui.components.Loading() }
             list?.let { l ->
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = Space.sm)) {
-                        FilterChip(noForks, { noForks = !noForks }, { Text(str(R.string.add_061)) }, leadingIcon = if (noForks) ({ Icon(Icons.Outlined.Check, null, Modifier.size(18.dp)) }) else null)
+                        FilterChip(noForks, { noForks = !noForks }, { Text(str(R.string.bulk_hide_forks)) }, leadingIcon = if (noForks) ({ Icon(Icons.Outlined.Check, null, Modifier.size(18.dp)) }) else null)
                         Spacer(Modifier.width(Space.sm))
-                        FilterChip(noArchived, { noArchived = !noArchived }, { Text(str(R.string.add_062)) }, leadingIcon = if (noArchived) ({ Icon(Icons.Outlined.Check, null, Modifier.size(18.dp)) }) else null)
+                        FilterChip(noArchived, { noArchived = !noArchived }, { Text(str(R.string.bulk_hide_archived)) }, leadingIcon = if (noArchived) ({ Icon(Icons.Outlined.Check, null, Modifier.size(18.dp)) }) else null)
                         Spacer(Modifier.weight(1f))
                         val allOn = selectable.isNotEmpty() && selectable.all { it.cloneUrl in selected }
                         TextButton(onClick = { if (allOn) selected.removeAll(selectable.map { it.cloneUrl }) else selectable.forEach { if (it.cloneUrl !in selected) selected += it.cloneUrl } }) {
-                            Text(if (allOn) str(R.string.add_063) else str(R.string.add_064))
+                            Text(if (allOn) str(R.string.bulk_select_none) else str(R.string.bulk_select_all))
                         }
                     }
-                    Text(str(R.string.add_065, l.size, visible.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(str(R.string.bulk_shown_count, l.size, visible.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                if (visible.isEmpty()) item { EmptyState(Icons.Outlined.Search, str(R.string.add_066), str(R.string.add_067)) }
+                if (visible.isEmpty()) item { EmptyState(Icons.Outlined.Search, str(R.string.bulk_empty_title), str(R.string.bulk_empty_body)) }
                 items(visible, key = { it.cloneUrl }) { r ->
                     val done = r.cloneUrl in mirrored
                     val on = r.cloneUrl in selected
@@ -400,11 +400,11 @@ fun BulkMirrorScreen(nav: Nav) {
                                 Text(r.name, style = MaterialTheme.typography.titleSmall)
                                 r.description?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                                 FlowRow(Modifier.padding(top = Space.xs), horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
-                                    if (done) Pill(str(R.string.add_068), Tone.Success)
+                                    if (done) Pill(str(R.string.bulk_registered), Tone.Success)
                                     r.sizeBytes?.let { Pill(bytes(it), Tone.Neutral) }
                                     if (r.fork) Pill(str(R.string.add_fork_pill), Tone.Neutral)
                                     if (r.archived) Pill(str(R.string.add_archived_pill), Tone.Warning)
-                                    if (r.isPrivate) Pill(str(R.string.add_069), Tone.Info)
+                                    if (r.isPrivate) Pill(str(R.string.bulk_private), Tone.Info)
                                 }
                             }
                         }
@@ -425,31 +425,31 @@ fun BulkProgressScreen(id: String, nav: Nav) {
     val jobs by core.bulkJobs.jobs.collectAsStateWithLifecycle()
     val running by core.coordinator.running.collectAsStateWithLifecycle()
     val job = jobs.firstOrNull { it.id == id }
-    AppScaffold(str(R.string.add_070), onBack = nav::back, bottomBar = { BottomAction(str(R.string.add_071), onClick = nav::home) }) { padding ->
-        if (job == null) { Box(Modifier.padding(padding)) { EmptyState(Icons.Outlined.Search, str(R.string.add_072), str(R.string.add_073)) }; return@AppScaffold }
+    AppScaffold(str(R.string.progress_title), onBack = nav::back, bottomBar = { BottomAction(str(R.string.progress_to_list), onClick = nav::home) }) { padding ->
+        if (job == null) { Box(Modifier.padding(padding)) { EmptyState(Icons.Outlined.Search, str(R.string.progress_not_found), str(R.string.progress_not_found_body)) }; return@AppScaffold }
         val total = job.items.size
         val done = job.count(BulkItemStatus.DONE); val failed = job.count(BulkItemStatus.FAILED)
         val waiting = job.count(BulkItemStatus.QUEUED) + job.count(BulkItemStatus.RUNNING)
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(horizontal = Space.screen, vertical = Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
             item {
                 SectionCard {
-                    Text(if (job.source == BulkSourceKind.URL_LIST) str(R.string.add_074) else (sourceLabels.firstOrNull { it.first == job.source }?.second ?: "") + " ${job.account}",
+                    Text(if (job.source == BulkSourceKind.URL_LIST) str(R.string.progress_multi_lines) else (sourceLabels.firstOrNull { it.first == job.source }?.second ?: "") + " ${job.account}",
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(if (waiting == 0) str(R.string.add_075, done, total) else str(R.string.add_076, done + failed, total), style = MaterialTheme.typography.headlineSmall)
+                    Text(if (waiting == 0) str(R.string.progress_done_total, done, total) else str(R.string.progress_processed, done + failed, total), style = MaterialTheme.typography.headlineSmall)
                     Spacer(Modifier.size(Space.md))
                     LinearProgressIndicator(progress = { if (total == 0) 1f else (done + failed).toFloat() / total }, Modifier.fillMaxWidth())
                     Spacer(Modifier.size(Space.md))
                     Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-                        Pill(str(R.string.add_077, done), Tone.Success); Pill(str(R.string.add_078, failed), if (failed > 0) Tone.Danger else Tone.Neutral); Pill(str(R.string.add_079, waiting), Tone.Neutral)
+                        Pill(str(R.string.progress_done, done), Tone.Success); Pill(str(R.string.progress_failed, failed), if (failed > 0) Tone.Danger else Tone.Neutral); Pill(str(R.string.progress_queued, waiting), Tone.Neutral)
                     }
-                    Text(str(R.string.add_080), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.md))
+                    Text(str(R.string.progress_background_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.md))
                 }
             }
             job.rateLimitedUntil?.takeIf { it > System.currentTimeMillis() }?.let {
-                item { Banner(Tone.Warning, Icons.Outlined.Timer, str(R.string.add_081), str(R.string.add_082, time(it))) }
+                item { Banner(Tone.Warning, Icons.Outlined.Timer, str(R.string.progress_rate_limit), str(R.string.progress_resume_at, time(it))) }
             }
             if (failed > 0) item {
-                com.ouor.mobilegit.ui.components.SecondaryButton(str(R.string.add_083, failed), Modifier.fillMaxWidth()) {
+                com.ouor.mobilegit.ui.components.SecondaryButton(str(R.string.progress_retry_failed, failed), Modifier.fillMaxWidth()) {
                     scope.launch(Dispatchers.IO) { core.mirrors.retryFailed(job.id) }
                 }
             }
@@ -463,8 +463,8 @@ fun BulkProgressScreen(id: String, nav: Nav) {
                                 Text(it.remoteUrl, style = CodeText.small, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             val (l, t) = when (it.status) {
-                                BulkItemStatus.QUEUED -> str(R.string.add_084) to Tone.Neutral; BulkItemStatus.RUNNING -> str(R.string.add_085) to Tone.Info
-                                BulkItemStatus.DONE -> str(R.string.add_086) to Tone.Success; BulkItemStatus.FAILED -> str(R.string.fmt_008) to Tone.Danger
+                                BulkItemStatus.QUEUED -> str(R.string.status_waiting) to Tone.Neutral; BulkItemStatus.RUNNING -> str(R.string.status_fetching) to Tone.Info
+                                BulkItemStatus.DONE -> str(R.string.status_done) to Tone.Success; BulkItemStatus.FAILED -> str(R.string.badge_failed) to Tone.Danger
                             }
                             Pill(l, t)
                         }
@@ -491,9 +491,9 @@ fun CreateRepoScreen(nav: Nav) {
     var desc by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    val nameError = if (name.isEmpty()) null else RepoNames.validate(name) ?: if (core.repos.exists(name)) str(R.string.add_005) else if (core.repos.damaged.value.any { it.name.equals(name, true) }) str(R.string.add_name_damaged) else null
-    AppScaffold(str(R.string.add_087), onBack = nav::back, bottomBar = {
-        BottomAction(str(R.string.add_088), enabled = name.isNotBlank() && nameError == null, loading = busy, onClick = {
+    val nameError = if (name.isEmpty()) null else RepoNames.validate(name) ?: if (core.repos.exists(name)) str(R.string.repo_name_taken) else if (core.repos.damaged.value.any { it.name.equals(name, true) }) str(R.string.add_name_damaged) else null
+    AppScaffold(str(R.string.empty_repo_title), onBack = nav::back, bottomBar = {
+        BottomAction(str(R.string.empty_repo_create), enabled = name.isNotBlank() && nameError == null, loading = busy, onClick = {
             busy = true; error = null
             scope.launch {
                 try {
@@ -504,10 +504,10 @@ fun CreateRepoScreen(nav: Nav) {
         })
     }) { padding ->
         ScreenColumn(padding) {
-            Text(str(R.string.add_089), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text(str(R.string.add_024)) }, singleLine = true, isError = nameError != null, shape = MaterialTheme.shapes.medium,
-                supportingText = { Text(nameError ?: str(R.string.add_090)) })
-            OutlinedTextField(desc, { desc = it }, Modifier.fillMaxWidth(), label = { Text(str(R.string.add_091)) }, shape = MaterialTheme.shapes.medium)
+            Text(str(R.string.empty_repo_intro), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text(str(R.string.mirror_name_placeholder)) }, singleLine = true, isError = nameError != null, shape = MaterialTheme.shapes.medium,
+                supportingText = { Text(nameError ?: str(R.string.repo_name_rule)) })
+            OutlinedTextField(desc, { desc = it }, Modifier.fillMaxWidth(), label = { Text(str(R.string.empty_repo_description)) }, shape = MaterialTheme.shapes.medium)
             error?.let { ErrorState(it) }
         }
     }

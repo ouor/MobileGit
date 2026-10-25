@@ -37,77 +37,77 @@ fun bytes(n: Long?): String {
 
 /** "방금", "5분 전", "3시간 전", "2일 전", then a date. */
 fun ago(t: Long?, now: Long = System.currentTimeMillis()): String {
-    if (t == null) return str(R.string.fmt_001)
+    if (t == null) return str(R.string.fmt_none)
     val d = (now - t).coerceAtLeast(0) / 1000
     return when {
-        d < 60 -> str(R.string.fmt_002)
-        d < 3600 -> str(R.string.fmt_003, d / 60)
-        d < 86400 -> str(R.string.fmt_004, d / 3600)
-        d < 86400 * 7 -> str(R.string.fmt_005, d / 86400)
+        d < 60 -> str(R.string.fmt_just_now)
+        d < 3600 -> str(R.string.fmt_minutes_ago, d / 60)
+        d < 86400 -> str(R.string.fmt_hours_ago, d / 3600)
+        d < 86400 * 7 -> str(R.string.fmt_days_ago, d / 86400)
         else -> SimpleDateFormat("yyyy.MM.dd", Locale.KOREA).format(Date(t))
     }
 }
 
-fun dateTime(t: Long?): String = t?.let { SimpleDateFormat("yyyy.MM.dd HH:mm", Locale.KOREA).format(Date(it)) } ?: str(R.string.fmt_001)
+fun dateTime(t: Long?): String = t?.let { SimpleDateFormat("yyyy.MM.dd HH:mm", Locale.KOREA).format(Date(it)) } ?: str(R.string.fmt_none)
 fun time(t: Long): String = SimpleDateFormat("HH:mm:ss", Locale.KOREA).format(Date(t))
 
 data class BadgeStyle(val label: String, val tone: Tone, val icon: ImageVector)
 
 fun Badge.style(): BadgeStyle = when (this) {
-    Badge.UPDATE_AVAILABLE -> BadgeStyle(str(R.string.fmt_006), Tone.Info, Icons.Outlined.NewReleases)
-    Badge.UPDATING -> BadgeStyle(str(R.string.fmt_007), Tone.Info, Icons.Outlined.Sync)
-    Badge.FAILED -> BadgeStyle(str(R.string.fmt_008), Tone.Danger, Icons.Outlined.ErrorOutline)
-    Badge.ORIGIN_GONE -> BadgeStyle(str(R.string.fmt_009), Tone.Danger, Icons.Outlined.CloudOff)
-    Badge.AUTH_REQUIRED -> BadgeStyle(str(R.string.fmt_010), Tone.Warning, Icons.Outlined.Key)
-    Badge.DELAYED -> BadgeStyle(str(R.string.fmt_011), Tone.Warning, Icons.Outlined.HourglassBottom)
-    Badge.LFS_MISSING -> BadgeStyle(str(R.string.fmt_012), Tone.Neutral, Icons.Outlined.Inventory2)
+    Badge.UPDATE_AVAILABLE -> BadgeStyle(str(R.string.badge_update_available), Tone.Info, Icons.Outlined.NewReleases)
+    Badge.UPDATING -> BadgeStyle(str(R.string.badge_updating), Tone.Info, Icons.Outlined.Sync)
+    Badge.FAILED -> BadgeStyle(str(R.string.badge_failed), Tone.Danger, Icons.Outlined.ErrorOutline)
+    Badge.ORIGIN_GONE -> BadgeStyle(str(R.string.badge_origin_gone), Tone.Danger, Icons.Outlined.CloudOff)
+    Badge.AUTH_REQUIRED -> BadgeStyle(str(R.string.badge_auth_required), Tone.Warning, Icons.Outlined.Key)
+    Badge.DELAYED -> BadgeStyle(str(R.string.badge_delayed), Tone.Warning, Icons.Outlined.HourglassBottom)
+    Badge.LFS_MISSING -> BadgeStyle(str(R.string.badge_lfs_missing), Tone.Neutral, Icons.Outlined.Inventory2)
 }
 
 /** Most severe first, so the first badge is the one that matters. */
 val badgeOrder = listOf(Badge.ORIGIN_GONE, Badge.FAILED, Badge.AUTH_REQUIRED, Badge.DELAYED, Badge.UPDATING, Badge.UPDATE_AVAILABLE, Badge.LFS_MISSING)
 
 fun AddressKind.label() = when (this) {
-    AddressKind.WIFI -> str(R.string.fmt_013); AddressKind.HOTSPOT -> str(R.string.fmt_014); AddressKind.TAILSCALE -> "Tailscale"; AddressKind.NGROK -> "ngrok"
+    AddressKind.WIFI -> str(R.string.route_wifi); AddressKind.HOTSPOT -> str(R.string.route_hotspot); AddressKind.TAILSCALE -> "Tailscale"; AddressKind.NGROK -> "ngrok"
 }
 
 fun AccessRoute.label() = when (this) {
-    AccessRoute.WIFI -> str(R.string.fmt_013); AccessRoute.HOTSPOT -> str(R.string.fmt_014); AccessRoute.TAILSCALE -> "Tailscale"
-    AccessRoute.NGROK -> "ngrok"; AccessRoute.LOCALHOST -> str(R.string.fmt_015); AccessRoute.OTHER -> str(R.string.fmt_016)
+    AccessRoute.WIFI -> str(R.string.route_wifi); AccessRoute.HOTSPOT -> str(R.string.route_hotspot); AccessRoute.TAILSCALE -> "Tailscale"
+    AccessRoute.NGROK -> "ngrok"; AccessRoute.LOCALHOST -> str(R.string.route_this_phone); AccessRoute.OTHER -> str(R.string.route_other)
 }
 
 fun AuthResult.style(): Pair<String, Tone> = when (this) {
-    AuthResult.OK -> str(R.string.fmt_017) to Tone.Success
-    AuthResult.ANONYMOUS -> str(R.string.fmt_018) to Tone.Neutral
-    AuthResult.FAILED -> str(R.string.fmt_019) to Tone.Danger
-    AuthResult.BLOCKED -> str(R.string.fmt_020) to Tone.Danger
+    AuthResult.OK -> str(R.string.auth_result_ok) to Tone.Success
+    AuthResult.ANONYMOUS -> str(R.string.auth_result_anonymous) to Tone.Neutral
+    AuthResult.FAILED -> str(R.string.auth_result_failed) to Tone.Danger
+    AuthResult.BLOCKED -> str(R.string.auth_result_blocked) to Tone.Danger
 }
 
 fun OriginStatus.style(): Pair<String, Tone> = when (this) {
-    OriginStatus.OK -> str(R.string.fmt_021) to Tone.Success
-    OriginStatus.GONE -> str(R.string.fmt_009) to Tone.Danger
-    OriginStatus.AUTH_REQUIRED -> str(R.string.fmt_010) to Tone.Warning
-    OriginStatus.UNKNOWN -> str(R.string.fmt_022) to Tone.Neutral
+    OriginStatus.OK -> str(R.string.origin_status_ok) to Tone.Success
+    OriginStatus.GONE -> str(R.string.badge_origin_gone) to Tone.Danger
+    OriginStatus.AUTH_REQUIRED -> str(R.string.badge_auth_required) to Tone.Warning
+    OriginStatus.UNKNOWN -> str(R.string.origin_status_unknown) to Tone.Neutral
 }
 
 fun SyncResult.style(): Pair<String, Tone> = when (this) {
-    SyncResult.NO_CHANGE -> str(R.string.fmt_023) to Tone.Neutral
-    SyncResult.SUCCESS -> str(R.string.fmt_024) to Tone.Success
-    SyncResult.FAILED -> str(R.string.fmt_008) to Tone.Danger
-    SyncResult.WAITING -> str(R.string.fmt_025) to Tone.Warning
+    SyncResult.NO_CHANGE -> str(R.string.sync_result_no_change) to Tone.Neutral
+    SyncResult.SUCCESS -> str(R.string.sync_result_success) to Tone.Success
+    SyncResult.FAILED -> str(R.string.badge_failed) to Tone.Danger
+    SyncResult.WAITING -> str(R.string.sync_result_waiting) to Tone.Warning
 }
 
 fun SyncTrigger.label() = when (this) {
-    SyncTrigger.MANUAL -> str(R.string.fmt_026); SyncTrigger.AUTO -> str(R.string.fmt_027); SyncTrigger.BULK -> str(R.string.fmt_028); SyncTrigger.INITIAL -> str(R.string.fmt_029)
+    SyncTrigger.MANUAL -> str(R.string.sync_trigger_manual); SyncTrigger.AUTO -> str(R.string.sync_trigger_auto); SyncTrigger.BULK -> str(R.string.sync_trigger_bulk); SyncTrigger.INITIAL -> str(R.string.sync_trigger_initial)
 }
 
 fun WaitingReason.label(): String? = when (this) {
     WaitingReason.NONE -> null
-    WaitingReason.WIFI -> str(R.string.fmt_030)
-    WaitingReason.CHARGING -> str(R.string.fmt_031)
-    WaitingReason.STORAGE -> str(R.string.fmt_032)
+    WaitingReason.WIFI -> str(R.string.waiting_wifi)
+    WaitingReason.CHARGING -> str(R.string.waiting_charging)
+    WaitingReason.STORAGE -> str(R.string.waiting_storage)
 }
 
-fun shortSha(s: String?) = s?.take(7) ?: str(R.string.fmt_001)
+fun shortSha(s: String?) = s?.take(7) ?: str(R.string.fmt_none)
 
 /**
  * Display form of a URL or command: line breaks only after "/" or at spaces, never inside a name like `field-notes`

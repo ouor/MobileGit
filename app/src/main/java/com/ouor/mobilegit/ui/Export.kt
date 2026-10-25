@@ -69,7 +69,7 @@ fun rememberExportRunner(): ExportRunner {
     runner.enqueue = { kind, repos, ref, uri ->
         runner.progress = null
         runner.workId = MobileGitApp.core(ctx).scheduler.enqueueExport(kind, repos, ref, uri)
-        snack(str(R.string.export_001))
+        snack(str(R.string.export_started))
     }
     val id = runner.workId
     LaunchedEffect(id) {
@@ -82,10 +82,10 @@ fun rememberExportRunner(): ExportRunner {
                 WorkInfo.State.SUCCEEDED -> {
                     runner.workId = null
                     val file = info.outputData.getString(ExportWorker.K_OUT_FILE)
-                    if (file != null) share(ctx, File(file)) else snack(str(R.string.export_002))
+                    if (file != null) share(ctx, File(file)) else snack(str(R.string.export_saved))
                 }
-                WorkInfo.State.FAILED -> { runner.workId = null; snack(str(R.string.export_004, info.outputData.getString(ExportWorker.K_ERROR) ?: str(R.string.export_003))) }
-                WorkInfo.State.CANCELLED -> { runner.workId = null; snack(str(R.string.export_005)) }
+                WorkInfo.State.FAILED -> { runner.workId = null; snack(str(R.string.export_failed, info.outputData.getString(ExportWorker.K_ERROR) ?: str(R.string.export_unknown_error))) }
+                WorkInfo.State.CANCELLED -> { runner.workId = null; snack(str(R.string.export_cancelled)) }
                 else -> Unit
             }
         }

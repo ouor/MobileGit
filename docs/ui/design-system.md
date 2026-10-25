@@ -108,6 +108,8 @@
 
 화면에 git 내부 용어를 그대로 쓰지 않는다. 고급 설명 안에서만 원래 이름을 괄호로 함께 쓴다.
 
+문자열 리소스 키는 `영역_의미` 형식으로 짓는다(`main_server_on`, `detail_tab_info`, `badge_failed`). 번호 키(`detail_054`)는 쓰지 않는다(ARC-13). 여러 화면이 쓰는 말은 `common_`, 배지·상태 이름은 `badge_`·`sync_result_`·`route_`처럼 그 개념 이름을 앞에 둔다. 일괄 변경 도구: `docs/ui/tools/rename_string_keys.py`.
+
 | 쓰지 않음 | 쓰는 말 |
 |---|---|
 | ref, refs | 브랜치·태그 |

@@ -160,7 +160,7 @@ fun MainScreen(nav: Nav) {
     androidx.compose.material3.Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
-            ExtendedFloatingActionButton(onClick = { addSheet = true }, icon = { Icon(Icons.Outlined.Add, null) }, text = { Text(str(R.string.main_001)) },
+            ExtendedFloatingActionButton(onClick = { addSheet = true }, icon = { Icon(Icons.Outlined.Add, null) }, text = { Text(str(R.string.main_add_repo)) },
                 expanded = list.firstVisibleItemIndex == 0, shape = MaterialTheme.shapes.large,
                 containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)
         },
@@ -173,28 +173,28 @@ fun MainScreen(nav: Nav) {
             item(key = "top") {
                 Row(Modifier.fillMaxWidth().padding(top = Space.sm, bottom = Space.xs), verticalAlignment = Alignment.CenterVertically) {
                     Text("mobilegit", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-                    IconButton(onClick = { nav.go(Routes.SETTINGS) }) { Icon(Icons.Outlined.Settings, str(R.string.main_002)) }
+                    IconButton(onClick = { nav.go(Routes.SETTINGS) }) { Icon(Icons.Outlined.Settings, str(R.string.main_settings)) }
                     OverflowMenu {
-                        item(str(R.string.main_003)) { core.mirrors.updateAll(); snack(str(R.string.main_004)) }
-                        item(str(R.string.main_005)) { core.mirrors.checkAll(); snack(str(R.string.main_006)) }
-                        item(str(R.string.main_007)) { nav.go(Routes.STORAGE) }
-                        item(str(R.string.main_008)) { nav.go(Routes.BACKUP) }
-                        item(str(R.string.main_009)) { nav.go(Routes.ACCESS_LOG) }
-                        item(str(R.string.main_002)) { nav.go(Routes.SETTINGS) }
+                        item(str(R.string.main_update_all)) { core.mirrors.updateAll(); snack(str(R.string.main_update_all_started)) }
+                        item(str(R.string.main_check_all)) { core.mirrors.checkAll(); snack(str(R.string.main_check_all_started)) }
+                        item(str(R.string.main_storage)) { nav.go(Routes.STORAGE) }
+                        item(str(R.string.main_full_backup)) { nav.go(Routes.BACKUP) }
+                        item(str(R.string.main_access_log)) { nav.go(Routes.ACCESS_LOG) }
+                        item(str(R.string.main_settings)) { nav.go(Routes.SETTINGS) }
                     }
                 }
             }
             if (settings.ngrokEnabled) item(key = "ngrok") {
                 Banner(Tone.Danger, Icons.Outlined.Public, tunnelTitle(tunnel, server is ServerState.Running), tunnelText(tunnel, server is ServerState.Running), detail = tunnelDetail(tunnel),
-                    actionLabel = str(R.string.main_011), onAction = { core.settings.update { it.copy(ngrokEnabled = false) }; snack(str(R.string.main_012)) })
+                    actionLabel = str(R.string.main_ngrok_off), onAction = { core.settings.update { it.copy(ngrokEnabled = false) }; snack(str(R.string.main_ngrok_off_done)) })
             }
             if (damagedState.isNotEmpty()) item(key = "damaged") {
                 Banner(Tone.Danger, Icons.Outlined.ErrorOutline, str(R.string.main_damaged_title), str(R.string.main_damaged_body),
                     actionLabel = str(R.string.main_damaged_action), onAction = { nav.go(Routes.STORAGE) })
             }
             if (lowStorage) item(key = "storage") {
-                Banner(Tone.Danger, Icons.Outlined.SdCardAlert, str(R.string.main_013), str(R.string.main_014),
-                    actionLabel = str(R.string.main_015), onAction = { nav.go(Routes.STORAGE) })
+                Banner(Tone.Danger, Icons.Outlined.SdCardAlert, str(R.string.main_low_storage_title), str(R.string.main_low_storage_body),
+                    actionLabel = str(R.string.main_low_storage_action), onAction = { nav.go(Routes.STORAGE) })
             }
             item(key = "server") {
                 ServerCard(server, addrs, settings.port, settings.effectiveAuthEnabled, settings.effectiveAnonymousRead,
@@ -209,28 +209,28 @@ fun MainScreen(nav: Nav) {
             val chips = !settings.effectiveAuthEnabled || delayed > 0
             if (chips) item(key = "chips") {
                 FlowRow(Modifier.fillMaxWidth().padding(top = Space.xs), horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-                    if (!settings.effectiveAuthEnabled) WarningChip(str(R.string.main_016), Icons.Outlined.LockOpen, Tone.Danger) { nav.go(Routes.SETTINGS) }
-                    if (delayed > 0) WarningChip(str(R.string.main_017, delayed), Icons.Outlined.HourglassBottom) { dialog = "delayed" }
+                    if (!settings.effectiveAuthEnabled) WarningChip(str(R.string.main_chip_password_off), Icons.Outlined.LockOpen, Tone.Danger) { nav.go(Routes.SETTINGS) }
+                    if (delayed > 0) WarningChip(str(R.string.main_chip_delayed, delayed), Icons.Outlined.HourglassBottom) { dialog = "delayed" }
                 }
             }
             item(key = "repoHeader") {
                 Column(Modifier.padding(top = Space.lg)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(str(R.string.main_019), style = MaterialTheme.typography.titleLarge)
+                        Text(str(R.string.main_repos), style = MaterialTheme.typography.titleLarge)
                         Spacer(Modifier.width(Space.sm))
                         Text("${all.size}", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.weight(1f))
                         TextButton(onClick = { sort = if (sort == RepoSort.RECENT) RepoSort.NAME else RepoSort.RECENT }) {
                             Icon(Icons.AutoMirrored.Outlined.Sort, null, Modifier.size(18.dp)); Spacer(Modifier.width(Space.xs))
-                            Text(if (sort == RepoSort.RECENT) str(R.string.main_020) else str(R.string.main_021))
+                            Text(if (sort == RepoSort.RECENT) str(R.string.main_sort_recent) else str(R.string.main_sort_name))
                         }
                     }
                     if (all.isNotEmpty()) {
                         SearchField(query) { query = it }
                         LazyRow(Modifier.padding(top = Space.sm), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-                            val opts = listOf(RepoFilter.ALL to str(R.string.main_022), RepoFilter.MIRROR to str(R.string.main_023, all.count { it.meta.type == RepoType.MIRROR }),
-                                RepoFilter.LOCAL to str(R.string.main_024, all.count { it.meta.type == RepoType.LOCAL })) +
-                                (if (problems > 0 || filter == RepoFilter.PROBLEM) listOf(RepoFilter.PROBLEM to str(R.string.main_025, problems)) else emptyList())
+                            val opts = listOf(RepoFilter.ALL to str(R.string.main_filter_all), RepoFilter.MIRROR to str(R.string.main_filter_mirror, all.count { it.meta.type == RepoType.MIRROR }),
+                                RepoFilter.LOCAL to str(R.string.main_filter_local, all.count { it.meta.type == RepoType.LOCAL })) +
+                                (if (problems > 0 || filter == RepoFilter.PROBLEM) listOf(RepoFilter.PROBLEM to str(R.string.main_filter_problem, problems)) else emptyList())
                             items(opts) { (f, label) ->
                                 FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(label) },
                                     leadingIcon = if (filter == f) ({ Icon(Icons.Outlined.Check, null, Modifier.size(18.dp)) }) else null)
@@ -242,25 +242,25 @@ fun MainScreen(nav: Nav) {
             when {
                 items == null -> item(key = "loading") { Loading() }
                 all.isEmpty() -> item(key = "empty") {
-                    EmptyState(Icons.Outlined.Inventory2, str(R.string.main_026), str(R.string.main_027)) {
+                    EmptyState(Icons.Outlined.Inventory2, str(R.string.main_empty_title), str(R.string.main_empty_body)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-                            SecondaryButton(str(R.string.add_006), icon = Icons.Outlined.SyncAlt) { nav.go(Routes.add()) }
-                            SecondaryButton(str(R.string.main_028), icon = Icons.Outlined.CreateNewFolder) { nav.go(Routes.CREATE) }
+                            SecondaryButton(str(R.string.mirror_title), icon = Icons.Outlined.SyncAlt) { nav.go(Routes.add()) }
+                            SecondaryButton(str(R.string.main_add_empty), icon = Icons.Outlined.CreateNewFolder) { nav.go(Routes.CREATE) }
                         }
                         Spacer(Modifier.height(Space.sm))
-                        SecondaryButton(str(R.string.main_029), icon = Icons.Outlined.Groups) { nav.go(Routes.BULK) }
+                        SecondaryButton(str(R.string.main_add_bulk), icon = Icons.Outlined.Groups) { nav.go(Routes.BULK) }
                         Spacer(Modifier.height(Space.sm))
                         SecondaryButton(str(R.string.main_push_title), icon = Icons.Outlined.Computer) { pushGuide = true }
                     }
                 }
                 shown.isEmpty() -> item(key = "noMatch") {
-                    EmptyState(Icons.Outlined.Search, str(R.string.main_032), str(R.string.main_033)) {
-                        TextButton(onClick = { query = ""; filter = RepoFilter.ALL }) { Text(str(R.string.main_034)) }
+                    EmptyState(Icons.Outlined.Search, str(R.string.main_no_match_title), str(R.string.main_no_match_body)) {
+                        TextButton(onClick = { query = ""; filter = RepoFilter.ALL }) { Text(str(R.string.main_clear_filters)) }
                     }
                 }
                 else -> items(shown, key = { it.meta.id }) { item ->
                     RepoRow(item, onClick = { nav.go(Routes.repo(item.meta.name)) },
-                        onUpdate = if (item.meta.mirror != null) ({ core.mirrors.updateNow(item.meta.name); snack(str(R.string.main_035, item.meta.name)) }) else null)
+                        onUpdate = if (item.meta.mirror != null) ({ core.mirrors.updateNow(item.meta.name); snack(str(R.string.main_update_started, item.meta.name)) }) else null)
                 }
             }
         }
@@ -268,11 +268,11 @@ fun MainScreen(nav: Nav) {
 
     if (addSheet) ModalBottomSheet(onDismissRequest = { addSheet = false }, containerColor = MaterialTheme.colorScheme.surfaceContainer) {
         Column(Modifier.padding(horizontal = Space.lg).padding(bottom = Space.xl).navigationBarsPadding()) {
-            Text(str(R.string.main_001), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = Space.sm, vertical = Space.sm))
-            AddOption(Icons.Outlined.SyncAlt, str(R.string.add_006), str(R.string.main_036)) { addSheet = false; nav.go(Routes.add()) }
-            AddOption(Icons.Outlined.Groups, str(R.string.add_047), str(R.string.main_037)) { addSheet = false; nav.go(Routes.BULK) }
+            Text(str(R.string.main_add_repo), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = Space.sm, vertical = Space.sm))
+            AddOption(Icons.Outlined.SyncAlt, str(R.string.mirror_title), str(R.string.main_add_mirror_sub)) { addSheet = false; nav.go(Routes.add()) }
+            AddOption(Icons.Outlined.Groups, str(R.string.bulk_title), str(R.string.main_add_bulk_sub)) { addSheet = false; nav.go(Routes.BULK) }
             AddOption(Icons.Outlined.Computer, str(R.string.main_push_title), str(R.string.main_push_sub)) { addSheet = false; pushGuide = true }
-            AddOption(Icons.Outlined.CreateNewFolder, str(R.string.add_087), str(R.string.main_038)) { addSheet = false; nav.go(Routes.CREATE) }
+            AddOption(Icons.Outlined.CreateNewFolder, str(R.string.empty_repo_title), str(R.string.main_add_empty_sub)) { addSheet = false; nav.go(Routes.CREATE) }
         }
     }
 
@@ -281,30 +281,30 @@ fun MainScreen(nav: Nav) {
     when (dialog) {
         "delayed" -> AlertDialog(
             onDismissRequest = { dialog = null },
-            title = { Text(str(R.string.main_039)) },
-            text = { Text(str(R.string.main_040)) },
-            confirmButton = { TextButton(onClick = { dialog = null; nav.go(Routes.BATTERY) }) { Text(str(R.string.main_041)) } },
-            dismissButton = { TextButton(onClick = { dialog = null; filter = RepoFilter.PROBLEM }) { Text(str(R.string.main_042)) } },
+            title = { Text(str(R.string.main_delayed_title)) },
+            text = { Text(str(R.string.main_delayed_body)) },
+            confirmButton = { TextButton(onClick = { dialog = null; nav.go(Routes.BATTERY) }) { Text(str(R.string.main_battery_guide)) } },
+            dismissButton = { TextButton(onClick = { dialog = null; filter = RepoFilter.PROBLEM }) { Text(str(R.string.main_view_repo)) } },
         )
         "tailscale" -> AlertDialog(
             onDismissRequest = { dialog = null },
-            title = { Text(str(R.string.main_043)) },
+            title = { Text(str(R.string.main_tailscale_title)) },
             text = {
-                Text(str(R.string.main_044) +
-                    str(R.string.main_045))
+                Text(str(R.string.main_tailscale_body) +
+                    str(R.string.main_tailscale_vpn_note))
             },
-            confirmButton = { TextButton(onClick = { dialog = null }) { Text(str(R.string.main_046)) } },
-            dismissButton = { TextButton(onClick = { dialog = null; nav.go(Routes.SETTINGS) }) { Text(str(R.string.main_047)) } },
+            confirmButton = { TextButton(onClick = { dialog = null }) { Text(str(R.string.main_check)) } },
+            dismissButton = { TextButton(onClick = { dialog = null; nav.go(Routes.SETTINGS) }) { Text(str(R.string.main_ngrok_settings)) } },
         )
     }
 }
 
 fun tunnelText(t: TunnelState, serverRunning: Boolean): String = when {
-    !serverRunning -> str(R.string.main_048)
+    !serverRunning -> str(R.string.tunnel_off_server_body)
     else -> when (t) {
-        TunnelState.Off -> str(R.string.main_049)
-        is TunnelState.Connecting -> str(R.string.main_050, t.attempt)
-        is TunnelState.Connected -> str(R.string.main_051, t.publicUrl)
+        TunnelState.Off -> str(R.string.tunnel_preparing)
+        is TunnelState.Connecting -> str(R.string.tunnel_connecting_attempt, t.attempt)
+        is TunnelState.Connected -> str(R.string.tunnel_public_body, t.publicUrl)
         is TunnelState.Retrying -> str(R.string.tunnel_retrying, com.ouor.mobilegit.ui.time(t.atMillis))
         is TunnelState.TokenRejected -> str(R.string.tunnel_token_rejected)
     }
@@ -331,11 +331,11 @@ private fun ServerCard(
     var open by rememberSaveable { mutableStateOf(false) }
     val copy = rememberCopy()
     val (title, sub) = when (server) {
-        is ServerState.Running -> str(R.string.main_054) to (primary?.baseUrl?.removePrefix("http://") ?: str(R.string.main_068))
-        ServerState.Starting -> str(R.string.main_059) to str(R.string.main_060, port)
-        ServerState.Stopping -> str(R.string.main_061) to str(R.string.main_062)
-        ServerState.Stopped -> str(R.string.main_063) to str(R.string.main_064)
-        is ServerState.Failed -> str(R.string.main_063) to str(R.string.main_065)
+        is ServerState.Running -> str(R.string.main_server_on) to (primary?.baseUrl?.removePrefix("http://") ?: str(R.string.main_no_network_title))
+        ServerState.Starting -> str(R.string.main_server_starting) to str(R.string.main_server_port, port)
+        ServerState.Stopping -> str(R.string.main_server_stopping) to str(R.string.main_server_stopping_body)
+        ServerState.Stopped -> str(R.string.main_server_off) to str(R.string.main_server_off_body)
+        is ServerState.Failed -> str(R.string.main_server_off) to str(R.string.main_server_failed)
     }
     val showAddr = running && primary != null
     com.ouor.mobilegit.ui.components.SectionCard(padding = PaddingValues(start = Space.lg, end = Space.sm, top = Space.md, bottom = Space.md)) {
@@ -344,12 +344,12 @@ private fun ServerCard(
             Spacer(Modifier.width(Space.md))
             // the address itself copies on tap (main use); the chevron opens the details
             Column(Modifier.weight(1f).clip(MaterialTheme.shapes.small)
-                .clickable(onClickLabel = if (showAddr) str(R.string.common_009) else str(R.string.main_server_details)) { if (showAddr) copy(primary!!.baseUrl) else open = !open }) {
+                .clickable(onClickLabel = if (showAddr) str(R.string.common_copy) else str(R.string.main_server_details)) { if (showAddr) copy(primary!!.baseUrl) else open = !open }) {
                 Text(title, style = MaterialTheme.typography.titleMedium)
                 Text(if (showAddr) breakable(sub) else sub, style = if (showAddr) CodeText.body else MaterialTheme.typography.bodySmall,
                     color = if (server is ServerState.Failed) tone(Tone.Danger).content else if (showAddr) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (showAddr) IconButton(onClick = onQr) { Icon(Icons.Outlined.QrCode2, str(R.string.common_011)) }
+            if (showAddr) IconButton(onClick = onQr) { Icon(Icons.Outlined.QrCode2, str(R.string.common_qr_large)) }
             IconButton(onClick = { open = !open }) { Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, str(R.string.main_server_details)) }
             Switch(checked = on, onCheckedChange = { onToggle(it) }, enabled = server !is ServerState.Stopping, colors = appSwitchColors(),
                 modifier = Modifier.semantics { contentDescription = str(R.string.main_server_switch) })
@@ -358,22 +358,22 @@ private fun ServerCard(
             Spacer(Modifier.height(Space.md))
             val portBusy = server.kind == ServerFailure.PORT_IN_USE
             Banner(if (blocked) Tone.Warning else Tone.Danger, Icons.Outlined.Close, server.message,
-                when { portBusy -> str(R.string.main_066); blocked -> str(R.string.server_blocked_hint); else -> null },
-                actionLabel = if (portBusy) str(R.string.main_067) else null, onAction = onPort, detail = server.detail)
+                when { portBusy -> str(R.string.main_server_port_in_use_body); blocked -> str(R.string.server_blocked_hint); else -> null },
+                actionLabel = if (portBusy) str(R.string.main_change_port) else null, onAction = onPort, detail = server.detail)
         }
         if (addrs.isEmpty()) {
             Spacer(Modifier.height(Space.md))
-            Banner(Tone.Warning, Icons.Outlined.WifiOff, str(R.string.main_068), str(R.string.main_069), actionLabel = str(R.string.main_070), onAction = onTailscale)
+            Banner(Tone.Warning, Icons.Outlined.WifiOff, str(R.string.main_no_network_title), str(R.string.main_no_network_body), actionLabel = str(R.string.main_tailscale_guide), onAction = onTailscale)
         }
         if (open) Column(Modifier.padding(top = Space.md, end = Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-            Text(str(R.string.main_055, port) + when { !auth -> str(R.string.main_056); anon -> str(R.string.main_057); else -> str(R.string.main_058) },
+            Text(str(R.string.main_server_port_prefix, port) + when { !auth -> str(R.string.main_auth_none); anon -> str(R.string.main_auth_push_only); else -> str(R.string.main_auth_on) },
                 style = MaterialTheme.typography.bodyMedium)
-            addrs.forEach { a -> AddressBar(str(R.string.main_071, a.kind.label()), a.baseUrl, enabled = running) }
-            if (addrs.isNotEmpty()) Text(if (running) str(R.string.main_072) else str(R.string.main_073), style = MaterialTheme.typography.bodyMedium)
+            addrs.forEach { a -> AddressBar(str(R.string.main_address_kind, a.kind.label()), a.baseUrl, enabled = running) }
+            if (addrs.isNotEmpty()) Text(if (running) str(R.string.main_address_hint) else str(R.string.main_address_when_on), style = MaterialTheme.typography.bodyMedium)
             // review #11: the plain-HTTP warning belongs next to the address, not only in settings
             if (addrs.any { it.kind == AddressKind.WIFI || it.kind == AddressKind.HOTSPOT }) Banner(Tone.Warning, Icons.Outlined.Shield, str(R.string.main_plain_http), str(R.string.main_plain_http_body))
             if (addrs.none { it.kind == AddressKind.TAILSCALE }) {
-                Text(str(R.string.main_074), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold,
+                Text(str(R.string.main_tailscale_link), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.clip(MaterialTheme.shapes.extraSmall).clickable(role = Role.Button, onClick = onTailscale).padding(vertical = Space.xs))
             }
         }
@@ -386,7 +386,7 @@ private fun ServerCard(
 private fun PushGuideSheet(baseUrl: String?, port: Int, username: String, onDismiss: () -> Unit) {
     var name by rememberSaveable { mutableStateOf("my-project") }
     val n = name.trim().ifBlank { "my-project" }
-    val url = "${baseUrl ?: str(R.string.main_031, port)}/$n.git"
+    val url = "${baseUrl ?: str(R.string.main_address_placeholder, port)}/$n.git"
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainer) {
         Column(Modifier.padding(horizontal = Space.screen).padding(bottom = Space.xl).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
             Text(str(R.string.main_push_title), style = MaterialTheme.typography.titleLarge)
@@ -405,8 +405,8 @@ private fun PushGuideSheet(baseUrl: String?, port: Int, username: String, onDism
 private fun SearchField(value: String, onChange: (String) -> Unit) {
     TextField(
         value, onChange, Modifier.fillMaxWidth().padding(top = Space.xs), singleLine = true,
-        placeholder = { Text(str(R.string.main_075)) }, leadingIcon = { Icon(Icons.Outlined.Search, null) },
-        trailingIcon = { if (value.isNotEmpty()) IconButton(onClick = { onChange("") }) { Icon(Icons.Outlined.Close, str(R.string.main_076)) } },
+        placeholder = { Text(str(R.string.main_search)) }, leadingIcon = { Icon(Icons.Outlined.Search, null) },
+        trailingIcon = { if (value.isNotEmpty()) IconButton(onClick = { onChange("") }) { Icon(Icons.Outlined.Close, str(R.string.main_search_clear)) } },
         shape = MaterialTheme.shapes.medium,
         colors = TextFieldDefaults.colors(
             focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
