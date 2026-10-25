@@ -9,11 +9,12 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.serialization.builtins.ListSerializer
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.lib.Config
 import org.eclipse.jgit.lib.Constants
 import org.eclipse.jgit.lib.Repository
+import org.eclipse.jgit.lib.RepositoryCache
+import org.eclipse.jgit.util.FS
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder
 import org.eclipse.jgit.treewalk.TreeWalk
 import java.io.File
@@ -21,6 +22,9 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+
+/** A repo directory whose meta.json could not be read (ARC-01). Shown by the UI; nothing is overwritten. */
+data class DamagedRepo(val name: String, val path: String, val issue: StoreIssue)
 
 class RepoException(val code: Code, message: String) : Exception(message) {
     enum class Code { INVALID_NAME, NAME_TAKEN, NOT_FOUND, ALREADY_MIRRORED, STORAGE_LOW, NOT_A_MIRROR, BUSY }
@@ -40,26 +44,42 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
     /** All repos, sorted by name. Updates in real time (F-13 AC4). */
     val repos: StateFlow<List<RepoMeta>> = _repos.asStateFlow()
 
-    init { load() }
-
     private fun key(name: String) = name.lowercase()
     private fun metaFile(dir: File) = File(dir, "mobilegit/meta.json")
     private fun eventsFile(dir: File) = File(dir, "mobilegit/events.json")
     private fun pushesFile(dir: File) = File(dir, "mobilegit/pushes.json")
 
+    /** ARC-01/GIT-15: repos whose meta.json exists but cannot be read. They are not served or adopted, and their files are left untouched. */
+    private val _damaged = MutableStateFlow<List<DamagedRepo>>(emptyList())
+    val damaged: StateFlow<List<DamagedRepo>> = _damaged.asStateFlow()
+
+    init { load() }
+
     private fun load() {
+        StoreCleanup.sweepReposDir(reposDir)
+        val damaged = mutableListOf<DamagedRepo>()
         reposDir.listFiles { f -> f.isDirectory && f.name.endsWith(".git") }?.forEach { dir ->
-            val meta = JsonFile.read(metaFile(dir), RepoMeta.serializer())
-            if (meta != null) metas[key(meta.name)] = meta
+            StoreCleanup.sweepRepo(dir)
+            val mf = metaFile(dir)
+            val meta = try { JsonFile.read(mf, RepoMeta.serializer()) } catch (e: CorruptFileException) {
+                damaged += DamagedRepo(dir.name.removeSuffix(".git"), dir.absolutePath, StoreIssue.of(e)); return@forEach
+            }
+            if (meta != null) { metas[key(meta.name)] = meta; runCatching { tuneConfig(dir) } }
             else if (File(dir, "HEAD").isFile) {
                 // Crash between `git init` and writing meta (e.g. push-create): adopt it as a local repo.
+                // Only when meta.json is *missing*: an unreadable one is reported in [damaged] instead (ARC-01).
                 val name = dir.name.removeSuffix(".git")
                 if (RepoNames.isValid(name)) {
                     val m = RepoMeta(UUID.randomUUID().toString(), name, RepoType.LOCAL, createdAt = dir.lastModified(), createdBy = CreatedBy.PUSH)
-                    JsonFile.write(metaFile(dir), RepoMeta.serializer(), m); metas[key(name)] = m
+                    JsonFile.write(mf, RepoMeta.serializer(), m); metas[key(name)] = m
+                    runCatching { tuneConfig(dir) }
                 }
+            } else if (!mf.exists()) {
+                // ARC-04: neither HEAD nor meta: an interrupted create/delete. Nothing to serve or keep.
+                dir.deleteRecursively()
             }
         }
+        _damaged.value = damaged
         publish()
     }
 
@@ -71,7 +91,23 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
     fun dir(name: String): File = File(reposDir, (get(name)?.name ?: name) + ".git")
     fun findMirrorByUrl(url: String): RepoMeta? = RemoteUrls.identity(url).let { id -> metas.values.firstOrNull { it.mirror != null && RemoteUrls.identity(it.mirror.remoteUrl) == id } }
 
-    fun open(name: String): Repository = FileRepositoryBuilder().setGitDir(dir(name)).setMustExist(true).build()
+    /**
+     * GIT-04: one shared [Repository] per repo via JGit's [RepositoryCache] (as JGit's own servlets do), so pack indexes
+     * are loaded once instead of per request. `use {}` / close() only releases this caller's reference.
+     */
+    fun open(name: String): Repository = RepositoryCache.open(RepositoryCache.FileKey.exact(dir(name), FS.DETECTED), true)
+
+    /** Drops the shared instance and closes it once its last user is done (unregister alone does not close it). */
+    private fun uncache(dir: File) {
+        val key = RepositoryCache.FileKey.exact(dir, FS.DETECTED)
+        if (key !in RepositoryCache.getRegisteredKeys()) return
+        val r = runCatching { RepositoryCache.open(key, false) }.getOrNull()
+        RepositoryCache.unregister(key)
+        r?.close()
+    }
+
+    /** GIT-01: call while holding [withRepoLock] before writing refs. Returns how many stale locks were removed. */
+    fun sweepLocks(name: String) = StoreCleanup.sweepLocks(dir(name))
 
     suspend fun <T> withRepoLock(name: String, block: suspend () -> T): T = locks.computeIfAbsent(key(name)) { Mutex() }.withLock { block() }
     fun isLocked(name: String) = locks[key(name)]?.isLocked == true
@@ -84,7 +120,11 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
         RepoNames.validate(name)?.let { throw RepoException(RepoException.Code.INVALID_NAME, it) }
         if (exists(name)) throw RepoException(RepoException.Code.NAME_TAKEN, "'$name' 이름은 이미 쓰고 있습니다")
         val dir = File(reposDir, "$name.git")
-        if (dir.exists()) dir.deleteRecursively()
+        if (dir.exists()) {
+            // GIT-11/ARC-04: never wipe a directory that may hold data (damaged meta, fork rename in flight).
+            if (File(dir, "HEAD").exists() || metaFile(dir).exists()) throw RepoException(RepoException.Code.NAME_TAKEN, "'$name' 이름은 이미 쓰고 있습니다")
+            dir.deleteRecursively()
+        }
         Git.init().setBare(true).setGitDir(dir).setInitialBranch(initialBranch).call().close()
         tuneConfig(dir)
         val meta = RepoMeta(
@@ -97,15 +137,20 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
         meta
     }
 
+    /** Applied on create and, as a migration, to every existing repo at startup (saved only when something changes). */
     private fun tuneConfig(dir: File) {
         FileRepositoryBuilder().setGitDir(dir).build().use { r ->
-            r.config.apply {
-                setBoolean("core", null, "logallrefupdates", false)
-                setBoolean("receive", null, "fsckobjects", true)
-                setBoolean("http", null, "receivepack", true)
-                setBoolean("uploadpack", null, "allowfilter", true)
-                save()
-            }
+            val c = r.config
+            val before = c.toText()
+            c.setBoolean("core", null, "logallrefupdates", false)
+            c.setBoolean("receive", null, "fsckobjects", true)
+            // GIT-06: real-world history often has zero-padded tree modes and odd author lines (git itself only warns);
+            // mirrors fetch them unchecked, so pushes of the same history must not be refused for that.
+            c.setBoolean("fsck", null, "allowLeadingZeroFileMode", true)
+            c.setBoolean("fsck", null, "allowInvalidPersonIdent", true)
+            c.setBoolean("http", null, "receivepack", true)
+            c.setBoolean("uploadpack", null, "allowfilter", true)
+            if (c.toText() != before) c.save()
         }
     }
 
@@ -126,26 +171,34 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
     fun deleteData(name: String) {
         val meta = require(name)
         synchronized(this) { metas.remove(key(name)); publish() }
-        File(reposDir, meta.name + ".git").deleteRecursively()
+        val dir = File(reposDir, meta.name + ".git")
+        uncache(dir)
+        // GIT-05: rename first (atomic), then delete. A crash mid-delete leaves `.trash-*`, swept at the next start,
+        // instead of a half-deleted repo that would be re-adopted as a local repo.
+        val trash = File(reposDir, ".trash-${UUID.randomUUID()}")
+        if (dir.renameTo(trash)) { JsonFile.syncDir(reposDir); trash.deleteRecursively() } else dir.deleteRecursively()
         bumpEvents(name)
         bumpEvents("push:$name")
     }
 
     /** Registers a repo directory that was produced elsewhere (fork copy). */
     fun adopt(meta: RepoMeta) = synchronized(this) {
+        uncache(dir(meta.name))
         JsonFile.write(metaFile(dir(meta.name)), RepoMeta.serializer(), meta)
         metas[key(meta.name)] = meta
         publish()
     }
 
     // ---- F-12 history (newest first, 200 per repo) ----
-    private val eventsSer = ListSerializer(SyncEvent.serializer())
-
     /** Per-repo write counter so [eventsFlow] re-reads only when that repo's history changed. */
     private val eventsVersion = MutableStateFlow<Map<String, Long>>(emptyMap())
 
     /** Newest first. Reads the disk: call off the main thread (or use [eventsFlow]). */
-    fun events(name: String): List<SyncEvent> = JsonFile.read(eventsFile(dir(name)), eventsSer) ?: emptyList()
+    fun events(name: String): List<SyncEvent> = readList(eventsFile(dir(name)), SyncEvent.serializer())
+
+    /** History files are disposable: an unreadable one is preserved by [JsonFile] and treated as empty. */
+    private fun <T> readList(f: File, ser: kotlinx.serialization.KSerializer<T>): List<T> =
+        try { JsonFile.readList(f, ser) ?: emptyList() } catch (_: CorruptFileException) { emptyList() }
 
     /** CR-3: history of [name], newest first; emits on subscribe and after every [appendEvent]/delete. Reads on IO. */
     fun eventsFlow(name: String): Flow<List<SyncEvent>> = eventsVersion.map { it[key(name)] ?: 0L }.distinctUntilChanged()
@@ -154,9 +207,7 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
     private fun bumpEvents(name: String) = eventsVersion.update { it + (key(name) to (it[key(name)] ?: 0L) + 1) }
 
     // ---- CR-7 received pushes (newest first, MAX_PUSH_EVENTS per repo) ----
-    private val pushesSer = ListSerializer(PushEvent.serializer())
-
-    fun pushEvents(name: String): List<PushEvent> = JsonFile.read(pushesFile(dir(name)), pushesSer) ?: emptyList()
+    fun pushEvents(name: String): List<PushEvent> = readList(pushesFile(dir(name)), PushEvent.serializer())
 
     /** CR-7: one entry per updated ref of each accepted push, newest first; re-emits after every push or delete. Reads on IO. */
     fun pushEventsFlow(name: String): Flow<List<PushEvent>> = eventsVersion.map { it["push:" + key(name)] ?: 0L }.distinctUntilChanged()
@@ -165,15 +216,17 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
     fun appendPushEvents(name: String, events: List<PushEvent>) {
         if (events.isEmpty()) return
         synchronized(this) {
-            JsonFile.write(pushesFile(dir(name)), pushesSer, (events + pushEvents(name)).take(MAX_PUSH_EVENTS))
+            if (!exists(name)) return // ARC-04: never recreate the directory of a deleted repo
+            JsonFile.writeList(pushesFile(dir(name)), PushEvent.serializer(), (events + pushEvents(name)).take(MAX_PUSH_EVENTS))
         }
         bumpEvents("push:$name")
     }
 
     fun appendEvent(name: String, event: SyncEvent) {
         synchronized(this) {
+            if (!exists(name)) return // ARC-04
             val list = (listOf(event) + events(name)).take(MAX_EVENTS)
-            JsonFile.write(eventsFile(dir(name)), eventsSer, list)
+            JsonFile.writeList(eventsFile(dir(name)), SyncEvent.serializer(), list)
         }
         bumpEvents(name)
     }
@@ -222,4 +275,43 @@ class RepoStore(root: File, private val clock: Clock = SystemClock) {
         const val MAX_PUSH_EVENTS = 200
         const val ARCHIVE_PREFIX = "refs/archive/"
     }
+}
+
+/**
+ * ARC-04 / GIT-01 / GIT-05: leftovers of a killed process. mobilegit is the only writer of its repos and runs in one
+ * process, so at startup every lock or temp file is stale. (Gitaly deletes ref locks older than an hour during
+ * housekeeping for the same reason; JGit and git never remove them by themselves.)
+ */
+object StoreCleanup {
+    private val repoLocks = setOf("packed-refs.lock", "config.lock", "HEAD.lock", "shallow.lock", "index.lock", "FETCH_HEAD.lock")
+
+    /** `repos/.tmp-*` (fork copy in progress), `repos/.trash-*` (delete in progress). */
+    fun sweepReposDir(reposDir: File) {
+        reposDir.listFiles()?.forEach { f ->
+            if (f.isDirectory && (f.name.startsWith(".tmp-") || f.name.startsWith(".trash-"))) f.deleteRecursively()
+            else if (f.isFile && JsonFile.isTmp(f)) f.delete()
+        }
+    }
+
+    /** Stale ref/config locks, interrupted pack/loose-object writes and JSON tmp files inside one bare repo. Returns the count. */
+    fun sweepRepo(dir: File): Int {
+        var n = sweepLocks(dir)
+        fun del(f: File) { if (f.delete()) n++ }
+        File(dir, "objects/pack").listFiles()?.forEach { if (it.isFile && (it.name.startsWith("incoming_") || it.name.endsWith("_tmp") || it.name.startsWith("gc_"))) del(it) }
+        File(dir, "objects").listFiles()?.forEach { if (it.isFile && it.name.startsWith("noz")) del(it) }
+        File(dir, "mobilegit").listFiles()?.forEach { if (it.isFile && JsonFile.isTmp(it)) del(it) }
+        return n
+    }
+
+    /**
+     * Ref/config lock files only. Also safe at runtime while holding the repo lock, because every writer of a repo
+     * (push, mirror update, fork, GC, delete) runs under [RepoStore.withRepoLock].
+     */
+    fun sweepLocks(dir: File): Int {
+        val stale = (dir.listFiles()?.filter { it.isFile && it.name in repoLocks }.orEmpty() +
+            File(dir, "refs").walkTopDown().filter { it.isFile && it.name.endsWith(".lock") })
+        return stale.count { it.delete() }
+    }
+
+    fun sweepTmpFiles(dir: File) { dir.listFiles()?.forEach { if (it.isFile && JsonFile.isTmp(it)) it.delete() } }
 }

@@ -169,9 +169,9 @@ class Exporter(private val store: RepoStore, private val appVersion: String, pri
         fun toFileAtomically(target: File, writer: (OutputStream) -> Unit): File {
             val part = File(target.parentFile, target.name + ".part")
             try {
-                FileOutputStream(part).buffered().use { writer(it) }
-                if (target.exists()) target.delete()
-                if (!part.renameTo(target)) throw java.io.IOException("rename failed")
+                FileOutputStream(part).use { fos -> fos.buffered().let { writer(NonClosing(it)); it.flush() }; fos.fd.sync() }
+                // ARC-15: one atomic replace; the old file stays until the new one is complete
+                java.nio.file.Files.move(part.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
                 return target
             } finally { part.delete() }
         }

@@ -47,12 +47,18 @@ data class Settings(
 class SettingsException(message: String) : IllegalArgumentException(message)
 
 class SettingsStore(private val file: File, private val cipher: SecretCipher) {
+    /**
+     * ARC-01: set when settings.json existed but could not be read. The file was preserved ([StoreIssue.preservedAs])
+     * and the app started like a first run (server off, new password shown in onboarding) instead of failing.
+     */
+    var loadIssue: StoreIssue? = null; private set
     private val _state = MutableStateFlow(load())
     val state: StateFlow<Settings> = _state.asStateFlow()
     val current: Settings get() = _state.value
 
     private fun load(): Settings {
-        JsonFile.read(file, Settings.serializer())?.let { return it }
+        try { JsonFile.read(file, Settings.serializer())?.let { return it } }
+        catch (e: CorruptFileException) { loadIssue = StoreIssue.of(e) }
         // First run (F-03 AC2): username "git" + random 16-char password, shown once in onboarding.
         val pw = generatePassword()
         val s = Settings(passwordHash = PasswordHasher.hash(pw), initialPasswordEnc = cipher.encrypt(pw))

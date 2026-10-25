@@ -55,7 +55,7 @@ data class StorageSummary(val appUsageBytes: Long, val freeBytes: Long, val tota
  */
 class Core(private val context: Context) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val stateDir = File(context.filesDir, "state")
+    private val stateDir = File(context.filesDir, "state").also { com.ouor.mobilegit.core.StoreCleanup.sweepTmpFiles(it) }
     val cipher = KeystoreCipher()
     val env = AndroidEnv(context)
 
@@ -97,6 +97,14 @@ class Core(private val context: Context) {
     /** F-16 AC1: clone URL per address kind (no credentials, AC3). */
     fun cloneUrls(repo: String, addresses: List<ServerAddress> = network.addresses.value): List<Pair<ServerAddress, String>> =
         addresses.map { it to it.cloneUrl(repo) }
+
+    /**
+     * ARC-01: state files that existed but could not be read at startup. Each original was copied next to it
+     * ([StoreIssue.preservedAs]) and nothing was overwritten silently. Empty = all fine. Damaged repos are also in
+     * `repos.damaged` (not listed or served until fixed).
+     */
+    fun storageIssues(): List<com.ouor.mobilegit.core.StoreIssue> =
+        listOfNotNull(settings.loadIssue, credentials.loadIssue, accessLog.loadIssue, bulkJobs.loadIssue) + repos.damaged.value.map { it.issue }
 
     /** F-17. Uses cached repo sizes; call [refreshSizes] to re-measure. */
     fun storageSummary(): StorageSummary {

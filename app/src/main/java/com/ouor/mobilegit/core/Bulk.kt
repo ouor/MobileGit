@@ -7,7 +7,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -160,34 +159,33 @@ class RemoteCatalog(private val clock: Clock = SystemClock, private val apiBaseO
 
 /** F-15 / F-06 AC7 progress (A-05). Persisted so progress survives app restarts. */
 class BulkJobStore(private val file: File, private val clock: Clock = SystemClock) {
-    private val ser = ListSerializer(BulkJob.serializer())
-    private val _jobs = MutableStateFlow(JsonFile.read(file, ser) ?: emptyList())
+    var loadIssue: StoreIssue? = null; private set
+    private val _jobs = MutableStateFlow(
+        try { JsonFile.readList(file, BulkJob.serializer()) ?: emptyList() } catch (e: CorruptFileException) { loadIssue = StoreIssue.of(e); emptyList() })
     val jobs: StateFlow<List<BulkJob>> = _jobs.asStateFlow()
 
-    @Synchronized private fun save(list: List<BulkJob>) { val l = list.takeLast(20); JsonFile.write(file, ser, l); _jobs.value = l }
+    /** ARC-03: every change is a read-modify-write under this lock (worker threads and catalog coroutines race). */
+    @Synchronized private fun mutate(f: (List<BulkJob>) -> List<BulkJob>) {
+        val l = f(_jobs.value).takeLast(20); if (l == _jobs.value) return; JsonFile.writeList(file, BulkJob.serializer(), l); _jobs.value = l
+    }
 
     fun get(id: String) = _jobs.value.firstOrNull { it.id == id }
 
     fun create(source: BulkSourceKind, account: String, host: String, items: List<BulkItem>): BulkJob {
         val job = BulkJob(UUID.randomUUID().toString(), source, account, host, clock.now(), items)
-        save(_jobs.value + job)
+        mutate { it + job }
         return job
     }
 
     /** Updates the item for [repoName] in [jobId] (or in the newest job containing it). */
-    @Synchronized
-    fun onRepoStatus(repoName: String, status: BulkItemStatus, error: String?, jobId: String? = null) {
-        val list = _jobs.value
+    fun onRepoStatus(repoName: String, status: BulkItemStatus, error: String?, jobId: String? = null) = mutate { list ->
         val idx = if (jobId != null) list.indexOfFirst { it.id == jobId }
             else list.indexOfLast { j -> j.items.any { it.repoName.equals(repoName, true) } }
-        if (idx < 0) return
+        if (idx < 0) return@mutate list
         val job = list[idx]
         val updated = job.copy(items = job.items.map { if (it.repoName.equals(repoName, true)) it.copy(status = status, error = error) else it })
-        save(list.toMutableList().also { it[idx] = updated })
+        list.toMutableList().also { it[idx] = updated }
     }
 
-    fun setRateLimited(jobId: String, until: Long?) {
-        val list = _jobs.value.map { if (it.id == jobId) it.copy(rateLimitedUntil = until) else it }
-        save(list)
-    }
+    fun setRateLimited(jobId: String, until: Long?) = mutate { l -> l.map { if (it.id == jobId) it.copy(rateLimitedUntil = until) else it } }
 }

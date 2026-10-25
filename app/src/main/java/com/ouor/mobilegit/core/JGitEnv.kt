@@ -30,6 +30,8 @@ object JGitEnv {
             deltaBaseCacheLimit = 16 * 1024 * 1024
             streamFileThreshold = 16 * 1024 * 1024
         }.install()
+        // GIT-04: RepoStore shares one Repository per repo through RepositoryCache; idle ones are closed after 10 min.
+        org.eclipse.jgit.lib.RepositoryCacheConfig().apply { expireAfter = 10 * 60_000L }.install()
         done = true
     }
 

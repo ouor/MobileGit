@@ -3,15 +3,16 @@ package com.ouor.mobilegit.core
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.serialization.builtins.ListSerializer
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /** F-23: last 2,000 requests, newest first. Never stores Authorization headers or passwords (AC3). */
 class AccessLogStore(private val file: File?, private val capacity: Int = 2000) {
-    private val ser = ListSerializer(AccessLogEntry.serializer())
-    private val _entries = MutableStateFlow(file?.let { JsonFile.read(it, ser) } ?: emptyList())
+    var loadIssue: StoreIssue? = null; private set
+    private val _entries = MutableStateFlow(
+        try { file?.let { JsonFile.readList(it, AccessLogEntry.serializer()) } ?: emptyList() } catch (e: CorruptFileException) { loadIssue = StoreIssue.of(e); emptyList() })
+    private val writeLock = Any()
     val entries: StateFlow<List<AccessLogEntry>> = _entries.asStateFlow()
     @Volatile private var dirty = false
     private val flusher = file?.let {
@@ -26,11 +27,13 @@ class AccessLogStore(private val file: File?, private val capacity: Int = 2000) 
         dirty = true
     }
 
+    /** ARC-03: flusher thread, stop() and clear() may call this together; writes are serialized and retried on failure. */
     fun flush() {
         val f = file ?: return
-        if (!dirty) return
-        dirty = false
-        runCatching { JsonFile.write(f, ser, _entries.value) }
+        synchronized(writeLock) {
+            val snapshot = synchronized(this) { if (!dirty) return; dirty = false; _entries.value }
+            try { JsonFile.writeList(f, AccessLogEntry.serializer(), snapshot) } catch (e: Exception) { dirty = true }
+        }
     }
 
     fun clear() { synchronized(this) { _entries.value = emptyList(); dirty = true }; flush() }
