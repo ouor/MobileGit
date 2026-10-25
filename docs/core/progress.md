@@ -108,7 +108,18 @@ Go 테스트(`ngrok-mobile`, `go test`)는 실제 ngrok 서비스가 가짜 토�
 4. 확인: `adb shell run-as com.ouor.mobilegit ls files/repos`. 테스트가 서버를 끄므로 원래 켜져 있었다면 앱에서 다시 켠다.
 - 주의: `OnDeviceTest`의 포트 관련 테스트는 실제 앱 설정(포트, 서버 켜짐)을 바꿨다가 되돌린다. 레포 데이터는 건드리지 않는다.
 
-## 8. 남은 일 / 위험
+## 8. 1차 사용자 리뷰 요청 (`docs/ui/core-requests.md` CR-6, CR-7)
+
+| 요청 | 결과 | 커밋 | 검증 |
+|---|---|---|---|
+| CR-6 부팅 시 자동 시작 기본값 | `Settings.startOnBoot = true`(새 설치). 설정 파일은 기본값까지 모두 저장하므로 기존 설치의 `false`는 그대로 | `56493f8` | JVM `startOnBootDefault`(빈 JSON → true, 저장된 false 유지) |
+| CR-7 로컬 push 이력 | `PushEvent` + `RepoStore.pushEventsFlow`, 레포당 200개 | `3f4ca23` | JVM `pushEventsAreRecorded`(생성·갱신·force·삭제, 순서, 한도) |
+
+- **CR-6은 PRD와 다른 결정이다.** PRD 6장 데이터 모델은 `startOnBoot | false`다. 바꾼 근거: 1차 사용자 리뷰에서 2명(02, 04)이 "폰을 재부팅하면 서버가 꺼져 있다"를 불편으로 꼽았다. 이 앱은 폰을 상시 서버로 쓰는 것이 기본 사용 방식이다. 자동 시작은 사용자가 서버를 켜 둔 상태(`serverEnabled`)에서만 일어나므로, 서버를 쓰지 않는 사용자에게는 영향이 없다. Android 15의 부팅 시 FGS 제한은 dataSync 등 특정 유형에만 적용되고 서버의 specialUse 유형은 대상이 아니다. 실기기 재부팅 확인은 하지 않았다(리뷰용 데이터 보호, 기존 미검증 항목과 같음).
+- 기존 설치(리뷰용 폰 포함)는 저장된 `startOnBoot=false`가 남는다. 요청대로 마이그레이션하지 않았다.
+- 기기 테스트는 돌리지 않았다(서버 코드 경로는 JVM 테스트로 충분하고 폰 데이터를 건드리지 않기 위해).
+
+## 9. 남은 일 / 위험
 
 | 항목 | 메모 |
 |---|---|

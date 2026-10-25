@@ -159,6 +159,14 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
   - `Notifier.EXTRA_REPO`: 레포 이름.
   - `Notifier.EXTRA_TARGET`: `"repo"`, `"credentials"`, `"battery"`, `"main"`.
 
+### push 이력 (CR-7)
+- `repos.pushEventsFlow(name): Flow<List<PushEvent>>`: 받은 push를 ref 하나당 한 항목으로, **최신이 처음**. push나 삭제 뒤 다시 보낸다. IO에서 읽는다. 동기 버전 `repos.pushEvents(name)`(메인 스레드 금지).
+- `PushEvent(at, ref, oldSha?, newSha?, route: AccessRoute, clientIp, forced)`, 파생 `branch`(refs/heads/…일 때 브랜치 이름, 아니면 null).
+  - `oldSha == null`: 새로 만든 ref. `newSha == null`: 삭제. `forced`: fast-forward가 아닌 갱신(force-push).
+  - 같은 push의 여러 ref는 같은 `at`을 가진다. 실제로 적용된 ref만 기록된다(거부된 push는 없음).
+- 레포마다 최근 200개(`RepoStore.MAX_PUSH_EVENTS`)만 `<repo>/mobilegit/pushes.json`에 보관한다. 미러는 push를 받지 않으므로 비어 있다. 분리(fork COPY)한 레포는 빈 이력으로 시작한다.
+- 접속 기록(F-23)을 재사용하지 않은 이유: ref와 sha가 없고, 전역 2000개 한도라 레포별 이력이 밀려나며, 사용자가 지울 수 있다.
+
 ### F-13 push로 레포 생성
 - 서버가 처리한다. `git push http://<주소>/<새이름>.git main`이면 첫 POST에서 LOCAL 레포가 만들어진다(`CreatedBy.PUSH`).
 - ref가 하나도 들어오지 않으면 다시 지운다.
@@ -217,7 +225,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
   - `BatteryHelper.isIgnoringOptimizations(ctx)`, `requestIntent(ctx)`, `settingsIntent()`, `appDetailsIntent(ctx)`.
   - `maker()`: 제조사별 안내 분기.
   - `shouldShowHint(ctx, settings.batteryHintDismissedAt)`: 30일마다 다시 표시.
-- 부팅 후 자동 시작: `settings.update { it.copy(startOnBoot = true) }`. 그러면 `BootReceiver`가 서버를 켠다(서버가 켜져 있던 경우).
+- 부팅 후 자동 시작: `Settings.startOnBoot`(새 설치 기본값 **true**, CR-6. 기존 설치는 저장된 값 유지). 켜져 있고 재부팅 전에 서버가 켜져 있었으면 `BootReceiver`가 서버를 켠다. 끄기: `settings.update { it.copy(startOnBoot = false) }`.
 
 ### F-23 접속 기록
 - `accessLog.entries: StateFlow<List<AccessLogEntry>>`: 최대 2000개, 5초마다 저장.

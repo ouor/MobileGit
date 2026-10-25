@@ -53,6 +53,7 @@
 - **왜**: 리뷰어 두 명이 "폰을 껐다 켜면 서버가 꺼져 있다"를 불편으로 꼽았다. 이 앱은 폰을 상시 서버로 쓰는 앱이라 켜 두는 것이 기대 동작이다.
 - **원하는 시그니처**: `Settings.startOnBoot: Boolean = true`. 기존 설치는 저장된 값을 그대로 쓴다(마이그레이션 없음).
 - **현재 UI 처리**: 설정 > 서버의 "부팅하면 서버 켜기" 스위치를 그대로 둔다.
+- **코어 처리 결과**: 완료(`56493f8`). `Settings.startOnBoot: Boolean = true`. 설정 파일에는 기본값까지 저장되므로 기존 설치는 저장된 값(`false`)을 그대로 쓴다. PRD 6장(`false`)과 다른 결정이며 근거는 core/progress.md 8절에 있다.
 
 ## CR-7 로컬 레포 push 이력 (선택, 1차 사용자 리뷰 상세 구조 항목)
 
@@ -60,5 +61,6 @@
 - **왜**: 리뷰어가 미러와 로컬 상세의 탭 구성이 다르다고 했다. 로컬에도 "받은 push" 이력이 있으면 같은 "이력" 탭으로 맞출 수 있다.
 - **원하는 시그니처**: `RepoStore.pushEventsFlow(name): Flow<List<PushEvent>>` (`at`, `branch`, `oldSha`, `newSha`, `route`). 최신이 처음, 최근 N개만 보관.
 - **현재 UI 처리**: 로컬은 정보 탭만 둔다. 두 종류의 탭 앞부분(clone 카드 → 정보 → 관리 → 삭제) 순서는 맞췄다.
+- **코어 처리 결과**: 완료(`3f4ca23`). `RepoStore.pushEventsFlow(name): Flow<List<PushEvent>>`, 최신이 처음. 동기 버전은 `pushEvents(name)`. `PushEvent(at, ref, oldSha?, newSha?, route, clientIp, forced)`이고 `branch`는 파생 속성이다(태그 등은 null, 전체 이름은 `ref`). ref 하나당 한 항목이고 같은 push는 `at`이 같다. `oldSha == null`이면 생성, `newSha == null`이면 삭제. 레포당 200개까지 보관한다. 접속 기록에는 ref와 sha가 없고 사용자가 지울 수 있어서 별도로 저장한다. 이 기능 이전의 push는 이력에 없다.
 
 참고: 웹 UI의 미러 아이콘(↻)과 문구 정리는 웹 담당 범위다. 앱은 `SyncAlt` 아이콘을 쓴다(design-system 3장).
