@@ -301,6 +301,34 @@ class GitServerTest {
         }
     }
 
+    // QA-14: images inline with their type (SVG sandboxed); other files stay opaque downloads; ?download=1 forces one.
+    @Test fun rawContentTypes() {
+        assumeTrue(GitCli.available)
+        val work = Commits.initWork()
+        Commits.commit(work, "media/logo.svg", """<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><rect width="1" height="1"/></svg>""")
+        Commits.commit(work, "media/a.png", "png")
+        Commits.commit(work, "page.html", "<script>alert(1)</script>")
+        Commits.commit(work, "notes.txt", "hi")
+        GitCli.ok(work.repository.workTree, "push", url("demo.git"), "main")
+        fun raw(path: String, extra: String = "") = rawGet("/api/v1/repos/demo/raw?path=$path$extra").second
+        val svg = raw("media/logo.svg")
+        assertEquals("image/svg+xml", svg["content-type"])
+        assertTrue(svg["content-disposition"]!!.startsWith("inline"))
+        // local filtering proxies (e.g. AdGuard on the dev PC) may rewrite CSP on the wire, so check the sent policy and its presence
+        assertTrue(svg["content-security-policy"]!!.contains("sandbox"))
+        assertTrue(GitServer.RAW_CSP.endsWith("sandbox") && "script-src" !in GitServer.RAW_CSP && GitServer.RAW_CSP.startsWith("default-src 'none'"))
+        assertEquals("nosniff", svg["x-content-type-options"])
+        assertEquals("image/png", raw("media/a.png")["content-type"])
+        for (p in listOf("page.html", "notes.txt")) {
+            val h = raw(p)
+            assertEquals(p, "application/octet-stream", h["content-type"])
+            assertTrue(p, h["content-disposition"]!!.startsWith("attachment"))
+        }
+        val forced = raw("media/logo.svg", "&download=1")
+        assertEquals("application/octet-stream", forced["content-type"])
+        assertTrue(forced["content-disposition"]!!.startsWith("attachment"))
+    }
+
     @Test fun compressionScope() {
         assertTrue(GitServer.isCompressible("/api/v1/repos"))
         assertTrue(GitServer.isCompressible("/assets/index-abc.js"))

@@ -435,11 +435,19 @@ class GitServer(
                                 "commits" -> json(call, CommitPageDto.serializer(), RepoBrowser.commits(repo, q["ref"], q["path"], q["page"]?.toIntOrNull() ?: 1, q["perPage"]?.toIntOrNull() ?: 50))
                                 "raw" -> {
                                     val size = RepoBrowser.rawSize(repo, q["ref"], q["path"])
-                                    val fileName = (q["path"] ?: "file").substringAfterLast('/').replace("\"", "")
-                                    call.response.header(HttpHeaders.ContentDisposition, "attachment; filename=\"$fileName\"")
+                                    val fileName = (q["path"] ?: "file").substringAfterLast('/').replace(Regex("[\"\\\\\\r\\n]"), "")
+                                    // QA-14: images (incl. SVG) are served inline with their real type so <img> can show them;
+                                    // everything else stays an opaque download. ?download=1 forces a download for any file.
+                                    val imageType = rawImageTypes[fileName.substringAfterLast('.', "").lowercase()]
+                                    val inline = imageType != null && q["download"] != "1"
+                                    call.response.header(HttpHeaders.ContentDisposition, "${if (inline) "inline" else "attachment"}; filename=\"$fileName\"")
                                     call.response.header("X-Content-Type-Options", "nosniff")
+                                    // Opened directly (not via <img>), an SVG is a document: sandbox it so embedded scripts never run.
+                                    call.response.header("Content-Security-Policy", RAW_CSP)
                                     // WR-2: let Ktor write Content-Length itself; a manual header plus a streamed body sent both CL and chunked.
-                                    call.respondOutputStream(ContentType.Application.OctetStream, contentLength = size) { RepoBrowser.raw(repo, q["ref"], q["path"]) { this } }
+                                    call.respondOutputStream(if (inline) ContentType.parse(imageType!!) else ContentType.Application.OctetStream, contentLength = size) {
+                                        RepoBrowser.raw(repo, q["ref"], q["path"]) { this }
+                                    }
                                 }
                                 else -> throw BrowseException(404, "NOT_FOUND", "알 수 없는 API")
                             }
@@ -462,7 +470,14 @@ class GitServer(
         "html" to "text/html; charset=utf-8", "js" to "text/javascript; charset=utf-8", "mjs" to "text/javascript; charset=utf-8",
         "css" to "text/css; charset=utf-8", "json" to "application/json", "svg" to "image/svg+xml", "png" to "image/png",
         "ico" to "image/x-icon", "woff2" to "font/woff2", "woff" to "font/woff", "txt" to "text/plain; charset=utf-8",
-        "map" to "application/json", "webp" to "image/webp", "jpg" to "image/jpeg",
+        "map" to "application/json", "webp" to "image/webp", "jpg" to "image/jpeg", "jpeg" to "image/jpeg", "gif" to "image/gif",
+        "avif" to "image/avif",
+    )
+
+    /** QA-14: raw files shown inline. No HTML/XML/PDF: those would render as documents from our origin. */
+    private val rawImageTypes = mapOf(
+        "png" to "image/png", "jpg" to "image/jpeg", "jpeg" to "image/jpeg", "gif" to "image/gif", "webp" to "image/webp",
+        "avif" to "image/avif", "bmp" to "image/bmp", "ico" to "image/x-icon", "svg" to "image/svg+xml",
     )
 
     private suspend fun static(call: ApplicationCall) {
@@ -504,6 +519,9 @@ class GitServer(
             else -> true
         }
 
-        private const val PLACEHOLDER = "<!doctype html><meta charset=utf-8><title>mobilegit</title><p>mobilegit 서버가 동작 중입니다. 웹 화면 파일(assets/web/index.html)이 아직 없습니다. JSON API: <a href=\"/api/v1/repos\">/api/v1/repos</a></p>"
+        /** QA-14: raw responses never run scripts or load anything, even when opened as a top-level document. */
+        const val RAW_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox"
+
+        private const val PLACEHOLDER ="<!doctype html><meta charset=utf-8><title>mobilegit</title><p>mobilegit 서버가 동작 중입니다. 웹 화면 파일(assets/web/index.html)이 아직 없습니다. JSON API: <a href=\"/api/v1/repos\">/api/v1/repos</a></p>"
     }
 }
