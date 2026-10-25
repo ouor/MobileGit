@@ -127,6 +127,7 @@ class OnDeviceTest {
         } finally {
             core.server.stop()
             core.settings.setPort(oldPort)
+            core.settings.flush() // writes are async (AND-08); am instrument kills the process right after the test
         }
     }
 
@@ -149,7 +150,37 @@ class OnDeviceTest {
             } finally {
                 core.server.stop()
                 core.settings.setPort(oldPort)
+                core.settings.flush()
             }
+        }
+    }
+
+    /** AND-02: overlapping start/stop commands end in the state of the last one, with one server and no leaked locks. */
+    @Test fun startStopCommandsAreSerialized() = runBlocking {
+        val core = MobileGitApp.core(ctx)
+        val wasOn = core.settings.current.serverEnabled
+        val port = core.settings.current.port
+        fun up() = runCatching { (URL("http://127.0.0.1:$port/api/v1/info").openConnection() as HttpURLConnection).run { connectTimeout = 2000; responseCode } }.getOrNull() != null
+        try {
+            core.server.stop()
+            withTimeout(15_000) { core.server.state.first { it == ServerState.Stopped } }
+            // start twice before the first bring-up finished (process restart + START_STICKY)
+            core.server.start(); core.server.start()
+            withTimeout(15_000) { core.server.state.first { it == ServerState.Running(port) } }
+            assertTrue(up())
+            // stop, start, stop in a row: the last command wins
+            core.server.stop(); core.server.start(); core.server.stop()
+            kotlinx.coroutines.delay(4_000)
+            assertEquals(ServerState.Stopped, core.server.state.value)
+            assertTrue(!core.gitServer.isRunning)
+            // start then stop at once (switch flipped back quickly)
+            core.server.start(); core.server.stop()
+            kotlinx.coroutines.delay(4_000)
+            assertEquals(ServerState.Stopped, core.server.state.value)
+            assertTrue(!core.gitServer.isRunning && !up())
+        } finally {
+            if (wasOn) core.server.start() else core.server.stop()
+            core.settings.flush()
         }
     }
 }
