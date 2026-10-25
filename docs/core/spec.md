@@ -282,6 +282,7 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
 | 메서드/경로 | 응답 |
 |---|---|
 | `GET /api/v1/info` | `{"app":"mobilegit","version":"0.1.0","baseUrl":"http://192.168.31.120:8080","authRequired":true,"anonymousRead":false}` |
+| `GET /api/v1/overview` | `RepoOverview`(8절 CR-11). 앱 메인 요약과 같은 숫자 |
 | `GET /api/v1/repos` | `RepoSummaryDto[]`. 2차부터 `needsAttention`, `issue`, `includePullRefs` 포함(8절 WR-6) |
 | `GET /api/v1/repos/{name}` | `RepoDetailDto` |
 | `GET /api/v1/repos/{name}/tree?ref=&path=` | `TreeDto` |
@@ -492,6 +493,15 @@ val core = MobileGitApp.core(context)   // 앱 전역 싱글턴 그래프 (app/C
   - `includePullRefs: boolean | null`: 미러가 PR 브랜치를 받는지(레포별 설정, 없으면 전역 기본값). 로컬은 null.
 - 같은 코드(`Badges.of` → `RepoListItem`)로 계산한다. 웹 요청에는 "업데이트 중"을 모르지만 주의 상태에는 영향이 없다.
 - 예: `{"name":"x",…,"needsAttention":true,"issue":{"badge":"FAILED","since":1792886934344,"category":"NETWORK"},"includePullRefs":false}`
+
+### CR-11 확인이 멈춘 동안의 지연, 오류·주의 구분
+- `RepoQuery.checksStalled(repos, settings, now)`: 모든 미러 가운데 가장 최근의 확인 **시도**(실패 포함, `lastCheckAt`, 없으면 추가 시각)가 주기의 3배보다 오래됐다. `RepoOverview.checksStalled`도 이 값이다(이전에는 마지막 성공 기준이라 원본이 모두 실패하는 동안에도 "멈춤"이 됐다).
+- 멈춘 동안에는 `DELAYED` 배지를 레포에 붙이지 않는다(`Badges.of(..., checksStalled)`). 그래서 `needsAttention`, `issue`, `RepoFilter.PROBLEM`, 최근 활동순 정렬, `overview`의 개수, 웹 `needsAttention`·`issue`가 모두 지연을 빼고 센다. 멈춤은 요약의 `checksStalled` 하나로 알린다. 일부 미러만 늦으면 지금처럼 그 레포의 지연이다.
+- 심각도: `Severity { ERROR, WARNING }`. 오류 = `FAILED`·`ORIGIN_GONE`·`AUTH_REQUIRED`(`Badges.errors`), 주의 = `DELAYED`·`HISTORY_CHANGED`. `RepoListItem.severity`, `RepoIssue.severity`(행 사유의 배지 기준).
+- `RepoOverview`에 `errors`, `warnings` 추가. `attention = errors + warnings` = "주의 필요" 필터에 드는 레포 수(로컬 포함). `healthy`는 문제가 없는 미러 수.
+- 웹:
+  - `RepoSummaryDto.severity: "ERROR" | "WARNING" | null`. `needsAttention`·`issue`도 멈춤 규칙을 따른다(목록과 상세 모두).
+  - `GET /api/v1/overview` → `RepoOverview` JSON `{"mirrors","healthy","attention","locals","lastCheckAt","checksStalled","errors","warnings"}`. 앱 요약과 같은 숫자.
 
 ### R2-07 AC6
 - 할 일 없음. 접근 확인 결과 `ProbeResult.Reachable.pullRefCount`, `Settings.mirrorPullRefs`/`MirrorSource.includePullRefs`, 웹 API `RepoSummaryDto.hasLfs`가 이미 있다.

@@ -66,7 +66,11 @@ object NotificationRules {
 
 object Badges {
     /** F-05 AC2 / F-12 AC5. */
-    fun of(m: RepoMeta, s: Settings, now: Long, running: RepoProgress?): Set<Badge> {
+    /**
+     * [checksStalled] ([RepoQuery.checksStalled]): background checks stopped for every mirror (CR-11). Then "지연" is one
+     * app-wide problem shown once in the summary, not a per-repo badge, so it is left out here.
+     */
+    fun of(m: RepoMeta, s: Settings, now: Long, running: RepoProgress?, checksStalled: Boolean = false): Set<Badge> {
         val out = mutableSetOf<Badge>()
         if (m.hasLfs) out += Badge.LFS_MISSING
         if (m.historyChangedAt != null) out += Badge.HISTORY_CHANGED
@@ -78,12 +82,14 @@ object Badges {
             OriginStatus.AUTH_REQUIRED -> out += Badge.AUTH_REQUIRED
             else -> if (mir.lastError != null) out += Badge.FAILED
         }
-        if (now - (mir.lastCheckAt ?: m.createdAt) > 3 * s.checkIntervalMillis) out += Badge.DELAYED
+        if (!checksStalled && now - (mir.lastCheckAt ?: m.createdAt) > 3 * s.checkIntervalMillis) out += Badge.DELAYED
         return out
     }
 
     /** R2-01 AC4: "주의 필요" (filter [RepoFilter.PROBLEM], summary count). */
     val problem = setOf(Badge.FAILED, Badge.ORIGIN_GONE, Badge.AUTH_REQUIRED, Badge.DELAYED, Badge.HISTORY_CHANGED)
+    /** CR-11 / 용어집 8.1: 오류 (red). The rest of [problem] is 주의 (orange). */
+    val errors = setOf(Badge.FAILED, Badge.ORIGIN_GONE, Badge.AUTH_REQUIRED)
 
     /** R2-01 AC1: the one reason shown in the row's second line, most serious first. */
     fun issue(m: RepoMeta, badges: Set<Badge>): RepoIssue? {
@@ -104,15 +110,23 @@ object Badges {
  * round 2); DELAYED — last check; HISTORY_CHANGED — when the archive happened. [category] for FAILED/ORIGIN_GONE/AUTH.
  */
 @kotlinx.serialization.Serializable
-data class RepoIssue(val badge: Badge, val since: Long?, val category: ErrorCategory?)
+data class RepoIssue(val badge: Badge, val since: Long?, val category: ErrorCategory?) {
+    val severity: Severity get() = if (badge in Badges.errors) Severity.ERROR else Severity.WARNING
+}
+
+/** CR-11: 오류 = 실패·원본 없음·토큰 확인 필요, 주의 = 지연·히스토리 바뀜. */
+@kotlinx.serialization.Serializable enum class Severity { ERROR, WARNING }
 
 /**
- * R2-02 A-02 summary line: "미러 [mirrors]개 · 정상 [healthy] · 주의 [attention] · 마지막 확인 …" + "로컬 [locals]개".
- * [attention] counts every repo needing attention (the "주의 필요" filter), [healthy] the mirrors that do not.
- * [lastCheckAt]: newest successful contact with an origin over all mirrors. [checksStalled]: no mirror reached its
- * origin for more than 3 check intervals (F-12 AC5) → "백그라운드 확인이 멈춘 것 같아요".
+ * R2-02 / CR-11 A-02 summary line: "미러 [mirrors]개 · 정상 [healthy] · 오류 [errors] · 주의 [warnings] · 마지막 확인 …" + "로컬 [locals]개".
+ * [errors] + [warnings] = [attention] = repos in the "주의 필요" filter (by [RepoListItem.severity], local repos included);
+ * [healthy] = mirrors needing nothing. [lastCheckAt]: newest successful contact with an origin over all mirrors.
+ * [checksStalled]: no mirror attempted a check for more than 3 check intervals (F-12 AC5) → "백그라운드 확인이 멈춘
+ * 것 같아요"; "지연" is then not counted per repo.
  */
-data class RepoOverview(val mirrors: Int, val healthy: Int, val attention: Int, val locals: Int, val lastCheckAt: Long?, val checksStalled: Boolean)
+@kotlinx.serialization.Serializable
+data class RepoOverview(val mirrors: Int, val healthy: Int, val attention: Int, val locals: Int, val lastCheckAt: Long?, val checksStalled: Boolean,
+    val errors: Int = 0, val warnings: Int = 0)
 
 /**
  * F-09/F-10/F-11/F-12 orchestration: concurrency limit (2, NFR-원본 예의), exponential backoff (max 24 h),
@@ -477,12 +491,22 @@ data class RepoListItem(val meta: RepoMeta, val badges: Set<Badge>, val progress
     val needsAttention: Boolean get() = badges.any { it in Badges.problem }
     /** R2-01 AC1: null = show "업데이트 N분 전" as before. */
     val issue: RepoIssue? get() = Badges.issue(meta, badges)
+    /** CR-11: red (오류) or orange (주의); null when the repo needs nothing. */
+    val severity: Severity? get() = issue?.severity
 }
 
 /** F-05 AC3/AC4 sort, filter and search. Cheap enough for 500 repos on every keystroke. */
 object RepoQuery {
-    fun items(repos: List<RepoMeta>, s: Settings, now: Long, running: Map<String, RepoProgress>) =
-        repos.map { m -> running[m.name.lowercase()].let { p -> RepoListItem(m, Badges.of(m, s, now, p), p) } }
+    fun items(repos: List<RepoMeta>, s: Settings, now: Long, running: Map<String, RepoProgress>): List<RepoListItem> {
+        val stalled = checksStalled(repos, s, now)
+        return repos.map { m -> running[m.name.lowercase()].let { p -> RepoListItem(m, Badges.of(m, s, now, p, stalled), p) } }
+    }
+
+    /** R2-02 AC3 / CR-11: the newest check attempt over all mirrors (failed ones count: they ran) is older than 3 intervals. */
+    fun checksStalled(repos: List<RepoMeta>, s: Settings, now: Long): Boolean {
+        val newest = repos.mapNotNull { m -> m.mirror?.let { it.lastCheckAt ?: m.createdAt } }.maxOrNull() ?: return false
+        return now - newest > 3 * s.checkIntervalMillis
+    }
 
     fun apply(items: List<RepoListItem>, sort: RepoSort, filter: RepoFilter, search: String): List<RepoListItem> = items
         .filter { i ->
@@ -501,8 +525,9 @@ object RepoQuery {
     fun overview(items: List<RepoListItem>, s: Settings, now: Long): RepoOverview {
         val mirrors = items.filter { it.meta.mirror != null }
         val last = mirrors.mapNotNull { it.meta.mirror!!.lastOkAt }.maxOrNull()
-        val since = last ?: mirrors.minOfOrNull { it.meta.createdAt }
-        return RepoOverview(mirrors.size, mirrors.count { !it.needsAttention }, items.count { it.needsAttention },
-            items.size - mirrors.size, last, since != null && now - since > 3 * s.checkIntervalMillis)
+        val errors = items.count { it.severity == Severity.ERROR }
+        val warnings = items.count { it.severity == Severity.WARNING }
+        return RepoOverview(mirrors.size, mirrors.count { !it.needsAttention }, errors + warnings,
+            items.size - mirrors.size, last, checksStalled(items.map { it.meta }, s, now), errors, warnings)
     }
 }

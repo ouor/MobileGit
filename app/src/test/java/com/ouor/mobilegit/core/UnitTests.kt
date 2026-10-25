@@ -217,8 +217,25 @@ class NotificationRulesTest {
         val ok = RepoMeta("4", "ok", RepoType.MIRROR, createdAt = 5, createdBy = CreatedBy.MIRROR_ADD,
             mirror = MirrorSource("u2", originStatus = OriginStatus.OK, lastCheckAt = 7, lastCheckResult = SyncResult.NO_CHANGE))
         val all = RepoQuery.items(listOf(a, b, ok), s, 8, emptyMap())
-        assertEquals(RepoOverview(mirrors = 2, healthy = 1, attention = 1, locals = 1, lastCheckAt = 7, checksStalled = false), RepoQuery.overview(all, s, 8))
+        assertEquals(RepoOverview(mirrors = 2, healthy = 1, attention = 1, locals = 1, lastCheckAt = 7, checksStalled = false, errors = 1, warnings = 0),
+            RepoQuery.overview(all, s, 8))
         assertTrue(RepoQuery.overview(all, s, 7 + 3 * s.checkIntervalMillis + 1).checksStalled)
+
+        // CR-11: while checks are stalled for every mirror, "지연" is not a per-repo problem (app list, summary, web)
+        val iv = s.checkIntervalMillis
+        val late1 = ok.copy(id = "5", name = "late1"); val late2 = ok.copy(id = "6", name = "late2")
+        val stalledNow = 7 + 3 * iv + 1
+        val st = RepoQuery.items(listOf(late1, late2, c), s, stalledNow, emptyMap())
+        assertTrue(st.none { Badge.DELAYED in it.badges })
+        assertEquals(RepoOverview(2, 2, 1, 1, 7, true, errors = 0, warnings = 1), RepoQuery.overview(st, s, stalledNow)) // only gamma's history change
+        assertEquals(listOf("gamma"), RepoQuery.apply(st, RepoSort.NAME, RepoFilter.PROBLEM, "").map { it.meta.name })
+        assertFalse(RepoBrowser.summary(late1, s, stalledNow, checksStalled = true).needsAttention)
+        // one mirror still checking → the other one's delay is its own problem (주의, not 오류)
+        val fresh = ok.copy(id = "7", name = "fresh", mirror = ok.mirror!!.copy(lastCheckAt = stalledNow - 1))
+        val one = RepoQuery.items(listOf(late1, fresh), s, stalledNow, emptyMap())
+        assertEquals(Severity.WARNING, one.single { it.meta.name == "late1" }.severity)
+        assertEquals(RepoOverview(2, 1, 1, 0, stalledNow - 1, false, errors = 0, warnings = 1), RepoQuery.overview(one, s, stalledNow))
+        assertEquals(Severity.ERROR, RepoBrowser.summary(b, s, 7).severity)
         assertEquals(RepoOverview(0, 0, 0, 1, null, false), RepoQuery.overview(RepoQuery.items(listOf(a), s, 8, emptyMap()), s, Long.MAX_VALUE / 2))
         // WR-6: the web summary uses the same rule as the app row
         val web = RepoBrowser.summary(b, s, 7)

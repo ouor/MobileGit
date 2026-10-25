@@ -66,3 +66,9 @@
 - **지금 웹**: 필터 이름만 "주의 필요"로 맞추고 원본 상태 두 가지로만 셉니다. 받는 범위는 "모든 브랜치·태그 · LFS 파일 저장 안 함"으로, PR 브랜치는 언급하지 않습니다.
 - **반영되면**: 목록 행의 배지·둘째 줄 사유, 필터 개수를 앱과 같게, 받는 범위에 PR 브랜치 포함 여부를 붙입니다.
 - **코어 처리 결과**: 완료. `RepoSummaryDto`에 `needsAttention: boolean`, `issue: {badge, since, category} | null`, `includePullRefs: boolean | null`을 더했다. 목록(`/api/v1/repos`)과 상세의 `repo` 둘 다. 앱 목록과 같은 코드(`Badges.of`, `RepoListItem.needsAttention`/`issue`)로 계산하므로 개수가 같다. `badge`는 `ORIGIN_GONE`·`AUTH_REQUIRED`·`FAILED`·`DELAYED`·`HISTORY_CHANGED`, 우선순위도 앱과 같다. `since`(epoch ms)는 실패면 연속 실패 시작(2차 이전 실패는 null), 지연이면 마지막 확인, 히스토리 바뀜이면 보존 시각. `category`는 실패 분류(`NETWORK` 등) 또는 null. `includePullRefs`는 레포별 설정이 없으면 전역 기본값, 로컬은 null. 형식은 spec 8절 WR-6.
+
+## 코어 알림: CR-11 (요청 아님)
+
+- 백그라운드 확인이 모든 미러에서 멈춘 동안(`checksStalled`)은 `DELAYED`를 레포별 문제로 세지 않는다. `RepoSummaryDto.needsAttention`·`issue`도 그 규칙을 따른다.
+- `RepoSummaryDto.severity: "ERROR" | "WARNING" | null` 추가(오류 = 실패·원본 없음·토큰 확인 필요, 주의 = 지연·히스토리 바뀜). 목록의 위험 색/주의 색은 이 값으로.
+- `GET /api/v1/overview` 추가: `{"mirrors","healthy","attention","locals","lastCheckAt","checksStalled","errors","warnings"}`. 앱 메인 요약과 같은 숫자다. `attention = errors + warnings`이고 "주의 필요" 필터 결과 수와 같다.

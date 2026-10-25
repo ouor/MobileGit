@@ -110,3 +110,14 @@
   1. `checksStalled`인 동안 `DELAYED`는 레포별 문제로 세지 않는다(`needsAttention`, `overview.attention`, PROBLEM 필터·정렬, 웹 `needsAttention`).
   2. `RepoOverview`에 오류와 주의를 나눈 개수(예: `errors`, `warnings`)를 둔다. 웹 요약도 같은 구분을 쓸 수 있게.
 - **현재 UI 처리**: 앱은 코어 값을 쓰지 않고 `MainScreen.kt`의 `Counts`로 직접 센다. 오류(빨강)·주의(주황)를 나눠 보이고, 멈춘 동안 지연은 세지 않으며 레포 줄의 지연 사유·배지도 숨긴다. 대신 메인에 "백그라운드 확인이 멈췄어요" 배너 하나(배터리 안내로 연결). "주의 필요" 필터는 코어 필터 결과를 `Counts.problem`으로 한 번 더 거른다. 코어가 반영하면 이 임시 처리를 걷어 낸다.
+- **코어 처리 결과**: 완료. spec 8절 CR-11.
+  - `checksStalled`(모든 미러의 마지막 확인 *시도*가 주기의 3배보다 오래됨)인 동안 코어가 `DELAYED` 배지를 붙이지 않는다. 그래서 `RepoListItem.badges`·`issue`·`needsAttention`, `RepoFilter.PROBLEM`, 최근 활동순 정렬, `core.overview`, 웹 `needsAttention`·`issue`가 모두 지연을 빼고 센다. 레포 줄의 지연 배지·사유도 이 동안 코어 값에 없다.
+  - 멈춤 판정을 마지막 성공이 아니라 마지막 시도로 바꿨다. 원본이 모두 실패하는 동안(네트워크 끊김)은 멈춤이 아니라 레포마다 "실패"다.
+  - 오류·주의 구분: `RepoListItem.severity: Severity?`(`ERROR` = 실패·원본 없음·토큰 확인 필요, `WARNING` = 지연·히스토리 바뀜), `RepoOverview.errors`, `RepoOverview.warnings`(`attention = errors + warnings`).
+  - 웹: `RepoSummaryDto.severity`, `GET /api/v1/overview`(같은 `RepoOverview`).
+  - **UI에서 바꿀 것**(`MainScreen.kt`):
+    1. `Counts.of(all, stalled)` 대신 `overview`를 쓴다: `mirrors`, `locals`, `healthy`, `errors`, `warnings`. 주의: 코어 `errors`/`warnings`는 로컬 레포(분리 후 히스토리 바뀜)도 세므로 "주의 필요" 필터 결과 수와 같다. `Counts`는 미러만 셌다.
+    2. 필터: `RepoQuery.apply(all, sort, filter, query)` 결과를 그대로 쓴다(`Counts.problem`으로 다시 거르는 부분 삭제).
+    3. 행 색: `Counts.problem(item, stalled)` 대신 `item.severity`(`ERROR` → Danger, `WARNING` → Warning, null → 없음).
+    4. 멈춤 동안 지연 배지·사유를 숨기는 UI 쪽 처리는 지워도 된다(코어 값에 없음). 배너는 지금처럼 `overview.checksStalled`.
+    5. 이 작업 뒤 `Counts` 클래스는 지울 수 있다.
