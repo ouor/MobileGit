@@ -3,7 +3,9 @@ package com.ouor.mobilegit
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ouor.mobilegit.app.KeystoreCipher
+import com.ouor.mobilegit.app.MobileGitApp
 import com.ouor.mobilegit.app.NgrokBackend
+import com.ouor.mobilegit.app.ServerState
 import com.ouor.mobilegit.core.AccessLogStore
 import com.ouor.mobilegit.core.AuthRateLimiter
 import com.ouor.mobilegit.core.Authenticator
@@ -23,7 +25,11 @@ import com.ouor.mobilegit.core.SyncEnvironment
 import com.ouor.mobilegit.core.SyncResult
 import com.ouor.mobilegit.core.SyncTrigger
 import com.ouor.mobilegit.core.TunnelAuthException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import java.net.HttpURLConnection
+import java.net.URL
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.lib.PersonIdent
 import org.eclipse.jgit.transport.RefSpec
@@ -101,6 +107,26 @@ class OnDeviceTest {
         } catch (e: TunnelAuthException) {
             // expected: Go library loaded, ngrok service refused the token (ERR_NGROK_105)
             assertTrue(e.message, e.message!!.contains("ERR_NGROK") || e.message!!.contains("authtoken"))
+        }
+    }
+
+    /** CR-1: changing the port while the server runs re-binds the real foreground service on the new port. */
+    @Test fun portChangeRebindsRunningServer() = runBlocking {
+        val core = MobileGitApp.core(ctx)
+        val oldPort = core.settings.current.port
+        val newPort = if (oldPort == 8089) 8090 else 8089
+        fun status(port: Int) = runCatching { (URL("http://127.0.0.1:$port/api/v1/info").openConnection() as HttpURLConnection).run { connectTimeout = 2000; responseCode } }.getOrNull()
+        try {
+            core.server.start()
+            withTimeout(15_000) { core.server.state.first { it == ServerState.Running(oldPort) } }
+            core.settings.setPort(newPort)
+            withTimeout(15_000) { core.server.state.first { it == ServerState.Running(newPort) } }
+            assertTrue(status(newPort) != null)
+            assertEquals(null, status(oldPort))
+            assertEquals(ServerState.Running(newPort), core.server.restart()) // already on that port: no-op
+        } finally {
+            core.server.stop()
+            core.settings.setPort(oldPort)
         }
     }
 }

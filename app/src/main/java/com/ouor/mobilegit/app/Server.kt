@@ -23,6 +23,9 @@ import com.ouor.mobilegit.core.TunnelSession
 import com.ouor.mobilegit.core.TunnelState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -77,6 +80,25 @@ class ServerController(private val context: Context, private val core: () -> Cor
     }
 
     private fun bootCount(): Int = android.provider.Settings.Global.getInt(context.contentResolver, android.provider.Settings.Global.BOOT_COUNT, -1)
+
+    private val restartLock = Mutex()
+
+    /**
+     * CR-1: re-binds the running server on the current `settings.port` (in-flight transfers get the normal stop grace).
+     * The service calls this on its own when the port setting changes. Returns [ServerState.Failed] (portInUse) if the
+     * new port is taken; the server then stays off like a failed start. No-op when stopped or already on that port.
+     */
+    suspend fun restart(): ServerState = restartLock.withLock {
+        withContext(Dispatchers.IO) {
+            val c = core()
+            val cur = _state.value
+            if (!c.gitServer.isRunning || cur == ServerState.Running(c.settings.current.port)) return@withContext cur
+            _state.value = ServerState.Stopping
+            c.tunnel.stop()
+            c.gitServer.stop()
+            bringUp()
+        }
+    }
 
     internal fun bringUp(): ServerState {
         val c = core()
@@ -145,9 +167,11 @@ class ServerService : Service() {
 
     private fun observe() {
         val c = core
-        // ngrok follows settings while the server runs (F-04 AC3).
+        // Port changes re-bind the server (CR-1); ngrok follows settings while the server runs (F-04 AC3).
+        // One collector so the tunnel always starts after the re-bind, on the new loopback port.
         scope.launch {
             c.settings.state.map { Triple(it.ngrokEnabled, it.ngrokAuthtokenEnc, it.port) }.distinctUntilChanged().collect { (on, _, _) ->
+                if (c.server.restart() !is ServerState.Running) { stopSelfSafely(); return@collect }
                 val token = c.settings.ngrokAuthtoken()
                 if (on && token != null && c.gitServer.ngrokPort > 0) c.tunnel.start(token, c.gitServer.ngrokPort) else c.tunnel.stop()
             }
