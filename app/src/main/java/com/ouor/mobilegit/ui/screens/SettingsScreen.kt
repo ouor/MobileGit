@@ -119,7 +119,7 @@ fun SettingsScreen(nav: Nav) {
                     val level = authLevel(s)
                     Text(listOf(str(R.string.settings_auth_all_sub), str(R.string.settings_auth_push_sub), str(R.string.settings_auth_off_sub))[level],
                         style = MaterialTheme.typography.bodySmall, color = if (level == 2) tone(Tone.Danger).content else MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (s.exposedWithoutPassword) ExposedMark()
+                    if (s.exposedWithoutPassword) ExposedMark(running && tunnel is TunnelState.Connected)
                     Spacer(Modifier.height(Space.sm))
                     val opts = listOf(str(R.string.settings_auth_all), str(R.string.settings_auth_push), str(R.string.settings_auth_off))
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -220,7 +220,7 @@ fun SettingsScreen(nav: Nav) {
             Text(str(R.string.unsupported_line), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = Space.sm))
 
             AdvancedSection(title = str(R.string.settings_ngrok_title) + " · " + ngrokStatus(s.ngrokEnabled, tunnel, running)) {
-                if (s.exposedWithoutPassword) ExposedMark()
+                if (s.exposedWithoutPassword) ExposedMark(running && tunnel is TunnelState.Connected)
                 RowGroup {
                     SwitchRow(str(R.string.settings_ngrok_switch), s.ngrokEnabled, { on -> if (on) turnNgrokOn() else core.settings.update { it.copy(ngrokEnabled = false) } },
                         subtitle = if (s.ngrokEnabled) tunnelText(tunnel, running) else str(R.string.settings_ngrok_sub))
@@ -289,12 +289,12 @@ private fun ngrokStatus(on: Boolean, t: TunnelState, running: Boolean) = when {
     else -> str(R.string.settings_ngrok_status_on)
 }
 
-/** R2-06 AC3: shown next to both settings while the combination is saved. */
+/** R2-06 AC3: shown next to both settings while the combination is saved. QA2-06: "공개 중" only while the tunnel is up. */
 @Composable
-private fun ExposedMark() {
+private fun ExposedMark(live: Boolean) {
     Row(Modifier.padding(vertical = Space.xs), verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Outlined.LockOpen, null, Modifier.size(16.dp), tint = tone(Tone.Danger).content); Spacer(Modifier.width(Space.xs))
-        Text(str(R.string.main_exposed_no_password), style = MaterialTheme.typography.labelLarge, color = tone(Tone.Danger).content)
+        Text(str(if (live) R.string.main_exposed_no_password else R.string.main_exposed_pending_body), style = MaterialTheme.typography.labelLarge, color = tone(Tone.Danger).content)
     }
 }
 
