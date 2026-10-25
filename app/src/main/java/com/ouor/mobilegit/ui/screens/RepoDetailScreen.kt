@@ -1,5 +1,6 @@
 package com.ouor.mobilegit.ui.screens
 
+import androidx.compose.foundation.layout.heightIn
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.LockOpen
@@ -341,10 +342,8 @@ private fun OriginCard(item: RepoListItem, nav: Nav, onSheet: (String) -> Unit) 
             Modifier.fillMaxWidth(), enabled = item.progress == null, icon = Icons.Outlined.Refresh) {
             core.mirrors.updateNow(m.name); snack(str(R.string.detail_update_started))
         }
-        Row(Modifier.padding(top = Space.sm), verticalAlignment = Alignment.CenterVertically) {
-            Text(str(R.string.detail_read_only_note), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            TextButton(onClick = { onSheet("fork") }) { Text(str(R.string.detail_fork_short)) }
-        }
+        Text(str(R.string.detail_read_only_note), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = Space.sm))
+        androidx.compose.material3.OutlinedButton(onClick = { onSheet("fork") }, Modifier.padding(top = Space.xs).heightIn(min = 48.dp)) { Text(str(R.string.detail_fork_short)) }
     }
     RowGroup {
         SwitchRow(str(R.string.detail_auto_update), !mir.autoUpdateExcluded, { v -> scope.launch(Dispatchers.IO) { core.mirrors.setAutoUpdateExcluded(m.name, !v) } },
@@ -397,7 +396,6 @@ private fun LocalInfoCard(m: RepoMeta) {
         InfoRow(str(R.string.detail_last_push), m.lastPushAt?.let { "${ago(it)} · ${m.lastPushIp ?: str(R.string.detail_ip_unknown)}" } ?: str(R.string.detail_not_yet))
         InfoRow(str(R.string.detail_created_by), when (m.createdBy) { CreatedBy.PUSH -> str(R.string.detail_created_push); CreatedBy.APP_EMPTY -> str(R.string.detail_created_app); CreatedBy.FORK -> str(R.string.detail_created_fork); else -> str(R.string.common_kind_mirror) } + " · ${dateTime(m.createdAt)}")
         m.forkedFromUrl?.let { InfoRow(str(R.string.detail_forked_from), "${it}\n${dateTime(m.forkedAt)}") }
-        InfoRow(str(R.string.detail_scope), str(R.string.detail_scope_local) + " · " + str(R.string.detail_scope_no_lfs))
     }
     if (branches.isNotEmpty()) AdvancedSection {
         SectionCard {
@@ -449,12 +447,12 @@ private fun EventRow(e: SyncEvent, onArchive: (String) -> Unit) {
             if (open) {
                 (if (all) e.refChanges else e.refChanges.take(5)).forEach { c ->
                     Row(Modifier.padding(top = Space.xs), verticalAlignment = Alignment.CenterVertically) {
-                        Pill(c.kind.label(), c.kind.tone); Spacer(Modifier.width(Space.sm))
+                        Pill(c.kind.label(c.ref), c.kind.tone); Spacer(Modifier.width(Space.sm))
                         Text(c.ref.removePrefix("refs/heads/").removePrefix("refs/tags/").removePrefix("refs/"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
                             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                         Spacer(Modifier.width(Space.sm))
                         Text(when { c.oldSha == null -> shortSha(c.newSha); c.newSha == null -> shortSha(c.oldSha); else -> "${shortSha(c.oldSha)} → ${shortSha(c.newSha)}" },
-                            style = CodeText.small, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            style = CodeText.small, color = MaterialTheme.colorScheme.onSurface)
                     }
                 }
                 if (!all && e.refChanges.size > 5) TextButton(onClick = { all = true }) { Text(str(R.string.detail_more_changes, e.refChanges.size - 5)) }
@@ -585,7 +583,7 @@ private fun ForkSheet(m: RepoMeta, nav: Nav, onDismiss: () -> Unit) {
             SheetTitle(str(R.string.detail_fork), onBack = if (step == 1) ({ step = 0 }) else null)
             if (step == 0) {
                 ForkChoice(mode == ForkMode.COPY, str(R.string.fork_copy), str(R.string.fork_copy_stays), str(R.string.fork_copy_changes)) { mode = ForkMode.COPY }
-                ForkChoice(mode == ForkMode.CONVERT, str(R.string.fork_convert), str(R.string.fork_convert_stays), str(R.string.fork_convert_changes)) { mode = ForkMode.CONVERT }
+                ForkChoice(mode == ForkMode.CONVERT, str(R.string.fork_convert), str(R.string.fork_convert_stays), str(R.string.fork_convert_changes), warning = str(R.string.fork_irreversible)) { mode = ForkMode.CONVERT }
                 androidx.compose.material3.Button(onClick = { step = 1 }, Modifier.fillMaxWidth().height(44.dp), shape = MaterialTheme.shapes.small) { Text(str(R.string.common_next)) }
             } else {
                 if (mode == ForkMode.COPY) OutlinedTextField(newName, { newName = it }, Modifier.fillMaxWidth(), label = { Text(str(R.string.fork_new_name)) },
@@ -610,18 +608,19 @@ private fun ForkSheet(m: RepoMeta, nav: Nav, onDismiss: () -> Unit) {
 
 /** R2-14 AC1: "남는 것 / 바뀌는 것" side by side under each way. */
 @Composable
-private fun ForkChoice(selected: Boolean, title: String, stays: String, changes: String, onClick: () -> Unit) {
+private fun ForkChoice(selected: Boolean, title: String, stays: String, changes: String, warning: String? = null, onClick: () -> Unit) {
     Column(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).selectable(selected, onClick = onClick, role = Role.RadioButton)
         .background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.background).padding(Space.md)) {
         Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected, null); Spacer(Modifier.width(Space.sm)); Text(title, style = MaterialTheme.typography.titleSmall) }
-        Row(Modifier.padding(top = Space.sm), horizontalArrangement = Arrangement.spacedBy(Space.md)) {
-            listOf(str(R.string.fork_stays) to stays, str(R.string.fork_changes) to changes).forEach { (h, b) ->
-                Column(Modifier.weight(1f)) {
-                    Text(h, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(b, style = MaterialTheme.typography.bodySmall)
-                }
-            }
+        val stacked = androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f
+        val cells = listOf(str(R.string.fork_stays) to stays, str(R.string.fork_changes) to changes)
+        @Composable fun Cell(h: String, b: String, m: Modifier) = Column(m) {
+            Text(h, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(b, style = MaterialTheme.typography.bodySmall)
         }
+        if (stacked) Column(Modifier.padding(top = Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) { cells.forEach { (h, b) -> Cell(h, b, Modifier) } }
+        else Row(Modifier.padding(top = Space.sm), horizontalArrangement = Arrangement.spacedBy(Space.md)) { cells.forEach { (h, b) -> Cell(h, b, Modifier.weight(1f)) } }
+        if (warning != null) Text(warning, style = MaterialTheme.typography.labelLarge, color = tone(Tone.Danger).content, modifier = Modifier.padding(top = Space.sm))
     }
 }
 

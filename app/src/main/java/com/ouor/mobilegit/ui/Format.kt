@@ -129,12 +129,12 @@ fun breakable(s: String): String = buildString {
 /** "3일째", "5시간째", "방금부터": how long something has been going on. */
 fun running(since: Long, now: Long = System.currentTimeMillis()): String {
     val h = (now - since).coerceAtLeast(0) / 3_600_000
-    return when { h >= 24 -> str(R.string.fmt_days_running, h / 24 + 1); h >= 1 -> str(R.string.fmt_hours_running, h); else -> str(R.string.fmt_just_started) }
+    return when { h >= 24 -> str(R.string.fmt_days_running, h / 24 + 1); h >= 1 -> str(R.string.fmt_hours_running, h); else -> str(R.string.fmt_just_started, clock(since, now)) }
 }
 
 /** R2-01 AC1: the row's second line when the repo needs attention ([RepoListItem.issue]). */
 fun com.ouor.mobilegit.core.RepoIssue.text(intervalHours: Int, now: Long = System.currentTimeMillis()): String = when (badge) {
-    Badge.ORIGIN_GONE -> since?.let { str(R.string.issue_origin_gone_since, ago(it, now)) } ?: str(R.string.badge_origin_gone)
+    Badge.ORIGIN_GONE -> since?.let { str(R.string.issue_origin_gone_since, running(it, now)) } ?: str(R.string.badge_origin_gone)
     Badge.AUTH_REQUIRED -> str(R.string.badge_auth_required)
     Badge.FAILED -> listOfNotNull(str(R.string.issue_failed), category?.let { str(com.ouor.mobilegit.app.Notifier.categoryRes(it)) }, since?.let { running(it, now) }).joinToString(" · ")
     Badge.DELAYED -> str(R.string.issue_delayed, intervalHours, running(since ?: now, now))
@@ -147,14 +147,14 @@ val com.ouor.mobilegit.core.RepoIssue.tone get() = if (badge == Badge.ORIGIN_GON
 /** "15:20" (today) or "10.26 15:20". */
 fun clock(t: Long, now: Long = System.currentTimeMillis()): String {
     val day = SimpleDateFormat("yyyyMMdd", Locale.KOREA)
-    return SimpleDateFormat(if (day.format(Date(t)) == day.format(Date(now))) "HH:mm" else "M.d HH:mm", Locale.KOREA).format(Date(t))
+    return SimpleDateFormat(if (day.format(Date(t)) == day.format(Date(now))) "HH:mm" else "yyyy.MM.dd HH:mm", Locale.KOREA).format(Date(t))
 }
 
 /** R2-04 / R2-03: what happened to a ref. null (older archives) = "강제 push 또는 삭제". */
-fun com.ouor.mobilegit.core.RefChangeKind?.label(): String = when (this) {
+fun com.ouor.mobilegit.core.RefChangeKind?.label(ref: String? = null): String = when (this) {
     com.ouor.mobilegit.core.RefChangeKind.FAST_FORWARD -> str(R.string.change_fast_forward)
     com.ouor.mobilegit.core.RefChangeKind.FORCED -> str(R.string.change_forced)
-    com.ouor.mobilegit.core.RefChangeKind.CREATED -> str(R.string.change_created)
+    com.ouor.mobilegit.core.RefChangeKind.CREATED -> str(if (ref?.startsWith("refs/tags/") == true) R.string.change_created_tag else if (ref != null) R.string.change_created_branch else R.string.change_created)
     com.ouor.mobilegit.core.RefChangeKind.DELETED -> str(R.string.change_deleted)
     com.ouor.mobilegit.core.RefChangeKind.TAG_MOVED -> str(R.string.change_tag_moved)
     com.ouor.mobilegit.core.RefChangeKind.TAG_DELETED -> str(R.string.change_tag_deleted)

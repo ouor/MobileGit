@@ -355,7 +355,7 @@ fun BulkMirrorScreen(nav: Nav) {
             if (over) Text(str(R.string.bulk_too_large, bytes(f!!.second)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = Space.sm))
         }
     }) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(horizontal = Space.screen, vertical = Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(start = Space.screen, end = Space.screen, top = Space.sm, bottom = Space.xl), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
             item {
                 SectionCard {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
@@ -435,7 +435,7 @@ fun BulkProgressScreen(id: String, nav: Nav) {
         val total = job.items.size
         val done = job.count(BulkItemStatus.DONE); val failed = job.count(BulkItemStatus.FAILED)
         val waiting = job.count(BulkItemStatus.QUEUED) + job.count(BulkItemStatus.RUNNING)
-        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(horizontal = Space.screen, vertical = Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(start = Space.screen, end = Space.screen, top = Space.sm, bottom = Space.xl), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
             item {
                 SectionCard {
                     Text(if (job.source == BulkSourceKind.URL_LIST) str(R.string.progress_multi_lines) else (sourceLabels.firstOrNull { it.first == job.source }?.second ?: "") + " ${job.account}",

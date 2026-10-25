@@ -111,14 +111,14 @@ fun ArchiveScreen(name: String, group: String?, nav: Nav) {
 private fun ArchiveEntryRow(e: ArchiveEntryDto, modifier: Modifier) {
     Column(modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Pill(e.kind.label(), e.kind.tone)
+            Pill(e.kind.label(e.ref), e.kind.tone)
             Spacer(Modifier.width(Space.sm))
             Text(e.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
             Spacer(Modifier.width(Space.sm))
-            Text(e.shortSha, style = CodeText.small, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(e.shortSha, style = CodeText.small, color = MaterialTheme.colorScheme.onSurface)
         }
         e.summary?.let { Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = Space.xs)) }
-        Text(listOfNotNull(e.committedAt?.let { str(R.string.archive_committed, ago(it)) },
+        Text(listOfNotNull(e.committedAt?.let { str(R.string.archive_committed, dateTime(it)) },
             e.currentSha?.let { str(R.string.archive_current, it.take(7)) } ?: str(R.string.archive_current_gone)).joinToString(" · "),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }

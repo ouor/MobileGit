@@ -1,5 +1,9 @@
 package com.ouor.mobilegit.ui.components
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.material3.minimumInteractiveComponentSize
 import com.ouor.mobilegit.ui.text
 import com.ouor.mobilegit.ui.tone
 import androidx.compose.material3.SwitchDefaults
@@ -155,7 +159,9 @@ fun OverflowMenu(description: String = str(R.string.common_more), build: MenuSco
 /** Bottom action bar with one primary button (full width, 56dp). */
 @Composable
 fun BottomAction(label: String, enabled: Boolean = true, loading: Boolean = false, onClick: () -> Unit, above: @Composable ColumnScope.() -> Unit = {}) {
+    // a hairline so a half-scrolled row reads as "continues under the bar", not as covered (RV2-05)
     Surface(color = MaterialTheme.colorScheme.background) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = Space.screen, vertical = Space.md)) {
             above()
             PrimaryButton(label, enabled = enabled && !loading, onClick = onClick, loading = loading)
@@ -244,19 +250,19 @@ fun Banner(
             Spacer(Modifier.width(Space.sm + Space.xxs))
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleSmall, color = c.content)
-                if (body != null) Text(body, style = MaterialTheme.typography.bodySmall, color = c.content.copy(alpha = 0.85f), modifier = Modifier.padding(top = 2.dp))
-                if (actionLabel != null && onAction != null) {
-                    Text(actionLabel, style = MaterialTheme.typography.labelLarge, color = c.content, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = Space.sm).clip(MaterialTheme.shapes.extraSmall).clickable(role = Role.Button, onClick = onAction).padding(vertical = 2.dp))
+                if (body != null) Text(body, style = MaterialTheme.typography.bodySmall, color = c.content, modifier = Modifier.padding(top = 2.dp))
+                val hasDetail = !detail.isNullOrBlank()
+                if ((actionLabel != null && onAction != null) || hasDetail) Row(Modifier.padding(top = Space.xs).offset(x = (-12).dp), verticalAlignment = Alignment.CenterVertically) {
+                    val colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = c.content)
+                    if (actionLabel != null && onAction != null) androidx.compose.material3.TextButton(onClick = onAction, colors = colors) { Text(actionLabel, fontWeight = FontWeight.Bold) }
+                    if (hasDetail) androidx.compose.material3.TextButton(onClick = { open = !open }, colors = colors) { Text(if (open) str(R.string.common_details_hide) else str(R.string.common_details)) }
                 }
-                if (!detail.isNullOrBlank()) {
-                    Text(if (open) str(R.string.common_details_hide) else str(R.string.common_details), style = MaterialTheme.typography.labelMedium, color = c.content,
-                        modifier = Modifier.padding(top = Space.xs).clip(MaterialTheme.shapes.extraSmall).clickable(role = Role.Button) { open = !open }.padding(vertical = 2.dp))
-                    if (open) Text(detail.lines().map { it.trim() }.filter { it.isNotEmpty() }.joinToString("\n"), style = CodeText.small,
-                        color = c.content.copy(alpha = 0.85f), modifier = Modifier.padding(top = 2.dp))
+                if (hasDetail) {
+                    if (open) Text(detail!!.lines().map { it.trim() }.filter { it.isNotEmpty() }.joinToString("\n"), style = CodeText.small,
+                        color = c.content, modifier = Modifier.padding(top = 2.dp))
                 }
             }
-            if (onDismiss != null) IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Close, str(R.string.common_close), tint = c.content, modifier = Modifier.size(18.dp)) }
+            if (onDismiss != null) IconButton(onClick = onDismiss, modifier = Modifier.offset(x = Space.sm, y = (-Space.sm))) { Icon(Icons.Outlined.Close, str(R.string.common_close), tint = c.content, modifier = Modifier.size(18.dp)) }
         }
     }
 }
@@ -266,7 +272,7 @@ fun Banner(
 fun WarningChip(text: String, icon: ImageVector, tone: Tone = Tone.Warning, onDismiss: (() -> Unit)? = null, onClick: () -> Unit) {
     val c = tone(tone)
     Row(
-        Modifier.clip(RoundedCornerShape(50)).background(c.container).clickable(role = Role.Button, onClick = onClick)
+        Modifier.minimumInteractiveComponentSize().clip(RoundedCornerShape(50)).background(c.container).clickable(role = Role.Button, onClick = onClick)
             .padding(start = Space.md, end = if (onDismiss != null) Space.xs else Space.md, top = 7.dp, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -339,7 +345,7 @@ fun CommandBlock(command: String, modifier: Modifier = Modifier) {
             .clickable(onClickLabel = str(R.string.common_copy_command)) { copy(command) }.padding(start = Space.md, top = Space.xs, bottom = Space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(breakable(command), style = CodeText.small, modifier = Modifier.weight(1f).padding(vertical = Space.xs))
+        Text(command, style = CodeText.small, softWrap = false, modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(vertical = Space.xs))
         IconButton(onClick = { copy(command) }) { Icon(Icons.Outlined.ContentCopy, str(R.string.common_copy_command), Modifier.size(18.dp)) }
     }
 }
@@ -404,7 +410,7 @@ fun Divider() = HorizontalDivider(Modifier.padding(horizontal = Space.lg), color
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun RepoRow(item: RepoListItem, intervalHours: Int, onClick: () -> Unit, onUpdate: (() -> Unit)?) {
+fun RepoRow(item: RepoListItem, intervalHours: Int, onClick: () -> Unit, onUpdate: (() -> Unit)?, stalled: Boolean = false) {
     val m = item.meta
     var menu by remember { mutableStateOf(false) }
     val mirror = m.type == RepoType.MIRROR
@@ -424,11 +430,13 @@ fun RepoRow(item: RepoListItem, intervalHours: Int, onClick: () -> Unit, onUpdat
                     Text(m.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     val whenText = if (mirror && m.mirror?.waitingForForeground == true) str(R.string.detail_waiting_foreground_short) else if (mirror) m.mirror?.lastSuccessUpdateAt?.let { str(R.string.common_updated_ago, ago(it)) } ?: str(R.string.common_before_first_fetch) else m.lastPushAt?.let { "push ${ago(it)}" } ?: str(R.string.common_before_push)
                     val kind = if (mirror) str(R.string.common_kind_mirror) else str(R.string.common_kind_local)
-                    val issue = item.issue
-                    // R2-01: the reason replaces "업데이트 N분 전" when something needs attention
-                    if (issue != null) Text("$kind · ${issue.text(intervalHours)}", style = MaterialTheme.typography.bodySmall, color = tone(issue.tone).content, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    else Text("$kind · ${whenText} · ${bytes(m.sizeBytes)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                    if (item.badges.isNotEmpty()) BadgeRow(item.badges, Modifier.padding(top = Space.xs + Space.xxs))
+                    // RV2-06: when background checks stopped for every mirror, "지연" is one shared cause (main banner), not a per-row alarm
+                    val issue = item.issue?.takeUnless { stalled && it.badge == com.ouor.mobilegit.core.Badge.DELAYED }
+                    // R2-01: the reason replaces "업데이트 N분 전"; the icon already says 미러, and "언제부터" must not be cut (RV2-05)
+                    if (issue != null) Text(issue.text(intervalHours), style = MaterialTheme.typography.bodySmall, color = tone(issue.tone).content, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    else Text("$kind · ${whenText} · ${bytes(m.sizeBytes)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                    val badges = if (stalled) item.badges - com.ouor.mobilegit.core.Badge.DELAYED else item.badges
+                    if (badges.isNotEmpty()) BadgeRow(badges, Modifier.padding(top = Space.xs + Space.xxs))
                     item.progress?.let { p ->
                         val f = p.progress?.fraction
                         Spacer(Modifier.height(Space.sm))
@@ -479,9 +487,9 @@ fun ScreenColumn(padding: PaddingValues, content: @Composable ColumnScope.() -> 
 fun AdvancedSection(title: String = str(R.string.common_advanced), content: @Composable ColumnScope.() -> Unit) {
     var open by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable(role = Role.Button, onClickLabel = title) { open = !open }.padding(vertical = Space.sm),
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(MaterialTheme.shapes.small).clickable(role = Role.Button, onClickLabel = title) { open = !open }.padding(vertical = Space.sm),
             verticalAlignment = Alignment.CenterVertically) {
-            Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
             Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (open) Column(verticalArrangement = Arrangement.spacedBy(Space.md), content = content)

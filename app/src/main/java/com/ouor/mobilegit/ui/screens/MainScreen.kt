@@ -1,5 +1,6 @@
 package com.ouor.mobilegit.ui.screens
 
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.activity.compose.BackHandler
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -140,6 +141,7 @@ fun MainScreen(nav: Nav) {
     val items by core.repoItems.collectAsStateWithLifecycle(initialValue = null)
     val overview by core.overview.collectAsStateWithLifecycle(initialValue = null)
     val ngrokOff by core.server.ngrokOffAfterRestart.collectAsStateWithLifecycle()
+    val stalled = overview?.checksStalled == true
 
     var sort by rememberSaveable { mutableStateOf(RepoSort.RECENT) }
     var filter by rememberSaveable { mutableStateOf(RepoFilter.ALL) }
@@ -163,8 +165,11 @@ fun MainScreen(nav: Nav) {
     val batteryHint = remember(resumeTick, settings.batteryHintDismissedAt) { BatteryHelper.shouldShowHint(ctx, settings.batteryHintDismissedAt) }
 
     val all = items.orEmpty()
-    val shown = remember(items, sort, filter, query) { RepoQuery.apply(all, sort, filter, query) }
-    val problems = all.count { it.needsAttention }
+    val shown = remember(items, sort, filter, query, stalled) {
+        RepoQuery.apply(all, sort, filter, query).let { l -> if (filter == RepoFilter.PROBLEM) l.filter { Counts.problem(it, stalled) != null } else l }
+    }
+    val counts = remember(items, stalled) { Counts.of(all, stalled) }
+    val problems = counts.errors + counts.warnings
     val notifOk = remember(resumeTick) { androidx.core.app.NotificationManagerCompat.from(ctx).areNotificationsEnabled() }
 
     val list = rememberLazyListState()
@@ -172,7 +177,7 @@ fun MainScreen(nav: Nav) {
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
             ExtendedFloatingActionButton(onClick = { addSheet = true }, icon = { Icon(Icons.Outlined.Add, null) }, text = { Text(str(R.string.main_add_repo)) },
-                expanded = list.firstVisibleItemIndex == 0, shape = MaterialTheme.shapes.large,
+                expanded = all.isEmpty() || !list.canScrollForward, shape = MaterialTheme.shapes.large,
                 containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)
         },
     ) { padding ->
@@ -195,13 +200,22 @@ fun MainScreen(nav: Nav) {
                     }
                 }
             }
+            item(key = "server") {
+                ServerCard(server, addrs, settings.port, settings.effectiveAuthEnabled, settings.effectiveAnonymousRead,
+                    onToggle = { on -> if (on) core.server.start() else core.server.stop() },
+                    onQr = { nav.go(Routes.qr(null)) }, onPort = { nav.go(Routes.SETTINGS) }, onTailscale = { dialog = "tailscale" })
+            }
             if (settings.ngrokEnabled) item(key = "ngrok") {
-                // R2-06 AC3: the risky combination says so; QA2-03: the title still follows the tunnel, only a live one is "공개 중"
+                // R2-06 AC3 / QA2-03 / RV2-03: the title follows the tunnel; while it is not live the body says first that nothing is open yet
                 val live = server is ServerState.Running && tunnel is TunnelState.Connected
+                val state = tunnelText(tunnel, server is ServerState.Running)
                 Banner(Tone.Danger, if (settings.exposedWithoutPassword) Icons.Outlined.LockOpen else Icons.Outlined.Public,
                     if (settings.exposedWithoutPassword && live) str(R.string.main_exposed_no_password) else tunnelTitle(tunnel, server is ServerState.Running),
-                    tunnelText(tunnel, server is ServerState.Running) + if (!settings.exposedWithoutPassword) "" else "\n" +
-                        if (live) str(if (settings.authEnabled) R.string.main_exposed_push_only_body else R.string.main_exposed_off_body) else str(R.string.main_exposed_pending_body),
+                    when {
+                        !settings.exposedWithoutPassword -> state
+                        live -> state + "\n" + str(if (settings.authEnabled) R.string.main_exposed_push_only_body else R.string.main_exposed_off_body)
+                        else -> str(if (settings.authEnabled) R.string.main_exposed_pending_body else R.string.main_exposed_pending_off_body) + "\n" + state
+                    },
                     detail = tunnelDetail(tunnel),
                     actionLabel = str(R.string.main_ngrok_off), onAction = { core.settings.update { it.copy(ngrokEnabled = false) }; snack(str(R.string.main_ngrok_off_done)) })
             }
@@ -217,15 +231,21 @@ fun MainScreen(nav: Nav) {
                 Banner(Tone.Danger, Icons.Outlined.SdCardAlert, str(R.string.main_low_storage_title), str(R.string.main_low_storage_body),
                     actionLabel = str(R.string.main_low_storage_action), onAction = { nav.go(Routes.STORAGE) })
             }
-            item(key = "server") {
-                ServerCard(server, addrs, settings.port, settings.effectiveAuthEnabled, settings.effectiveAnonymousRead,
-                    onToggle = { on -> if (on) core.server.start() else core.server.stop() },
-                    onQr = { nav.go(Routes.qr(null)) }, onPort = { nav.go(Routes.SETTINGS) }, onTailscale = { dialog = "tailscale" })
-            }
-            if (batteryHint) item(key = "battery") {
+            // RV2-05/06: one banner for one cause. A stalled background check is the battery problem showing, so it replaces the battery hint.
+            if (stalled) item(key = "stalled") {
+                Banner(Tone.Warning, Icons.Outlined.HourglassBottom, str(R.string.main_summary_stalled), str(R.string.main_summary_stalled_body),
+                    actionLabel = str(R.string.main_battery_guide), onAction = { nav.go(Routes.BATTERY) })
+            } else if (batteryHint) item(key = "battery") {
                 Banner(Tone.Warning, Icons.Outlined.BatteryAlert, str(R.string.main_battery_title), str(R.string.main_battery_body),
                     actionLabel = str(R.string.main_battery_action), onAction = { nav.go(Routes.BATTERY) },
                     onDismiss = { core.settings.update { it.copy(batteryHintDismissedAt = System.currentTimeMillis()) }; snack(str(R.string.main_battery_later)) })
+            }
+            if (!notifOk && all.any { it.meta.mirror != null }) item(key = "notifOff") {
+                Banner(Tone.Warning, Icons.Outlined.NotificationsOff, str(R.string.notif_off_title), str(R.string.notif_off_body),
+                    actionLabel = str(R.string.notif_off_action), onAction = { openNotificationSettings(ctx) })
+            }
+            if (server !is ServerState.Running && server !is ServerState.Starting && !settings.serverOffHintDismissed && all.any { it.meta.mirror != null }) item(key = "serverOffHint") {
+                Banner(Tone.Info, Icons.Outlined.Info, str(R.string.main_server_off_hint), null, onDismiss = { core.settings.update { it.copy(serverOffHintDismissed = true) } })
             }
             if (!settings.effectiveAuthEnabled && !settings.ngrokEnabled) item(key = "chips") {
                 FlowRow(Modifier.fillMaxWidth().padding(top = Space.xs), horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
@@ -244,19 +264,14 @@ fun MainScreen(nav: Nav) {
                             Text(if (sort == RepoSort.RECENT) str(R.string.main_sort_recent) else str(R.string.main_sort_name))
                         }
                     }
-                    overview?.takeIf { all.isNotEmpty() }?.let { o -> Summary(o, onAttention = { filter = RepoFilter.PROBLEM }, onStalled = { nav.go(Routes.BATTERY) }) }
-                    if (!notifOk && all.any { it.meta.mirror != null }) Banner(Tone.Warning, Icons.Outlined.NotificationsOff, str(R.string.notif_off_title), str(R.string.notif_off_body),
-                        Modifier.padding(top = Space.sm), actionLabel = str(R.string.notif_off_action), onAction = { openNotificationSettings(ctx) })
-                    if (server !is ServerState.Running && server !is ServerState.Starting && !settings.serverOffHintDismissed && all.any { it.meta.mirror != null })
-                        Banner(Tone.Info, Icons.Outlined.Info, str(R.string.main_server_off_hint), null, Modifier.padding(top = Space.sm),
-                            onDismiss = { core.settings.update { it.copy(serverOffHintDismissed = true) } })
+                    if (all.isNotEmpty()) Summary(counts, overview?.lastCheckAt, onProblems = { filter = RepoFilter.PROBLEM })
                     if (all.isNotEmpty()) {
                         SearchField(query) { query = it }
-                        LazyRow(Modifier.padding(top = Space.sm), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+                        FlowRow(Modifier.padding(top = Space.sm), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
                             val opts = listOf(RepoFilter.ALL to str(R.string.main_filter_all), RepoFilter.MIRROR to str(R.string.main_filter_mirror, all.count { it.meta.type == RepoType.MIRROR }),
                                 RepoFilter.LOCAL to str(R.string.main_filter_local, all.count { it.meta.type == RepoType.LOCAL })) +
                                 (if (problems > 0 || filter == RepoFilter.PROBLEM) listOf(RepoFilter.PROBLEM to str(R.string.main_filter_problem, problems)) else emptyList())
-                            items(opts) { (f, label) ->
+                            opts.forEach { (f, label) ->
                                 FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(label) },
                                     leadingIcon = if (filter == f) ({ Icon(Icons.Outlined.Check, null, Modifier.size(18.dp)) }) else null)
                             }
@@ -281,7 +296,7 @@ fun MainScreen(nav: Nav) {
                     }
                 }
                 else -> items(shown, key = { it.meta.id }) { item ->
-                    RepoRow(item, settings.checkIntervalHours, onClick = { nav.go(Routes.repo(item.meta.name)) },
+                    RepoRow(item, settings.checkIntervalHours, stalled = stalled, onClick = { nav.go(Routes.repo(item.meta.name)) },
                         onUpdate = if (item.meta.mirror != null) ({ core.mirrors.updateNow(item.meta.name); snack(str(R.string.main_update_started, item.meta.name)) }) else null)
                 }
             }
@@ -429,32 +444,52 @@ private fun PushGuide(baseUrl: String?, port: Int, username: String, name: Strin
     }
 }
 
-/** R2-02: "미러 12개 · 정상 11 · 주의 1 · 마지막 확인 10분 전 · 로컬 3개". */
+/** Main-list problem counts. 오류 = failed, origin gone, token; 주의 = delayed, history changed (glossary 8.1). */
+internal data class Counts(val mirrors: Int, val locals: Int, val errors: Int, val warnings: Int) {
+    val healthy get() = mirrors - errors - warnings
+    companion object {
+        private val errorBadges = setOf(com.ouor.mobilegit.core.Badge.FAILED, com.ouor.mobilegit.core.Badge.ORIGIN_GONE, com.ouor.mobilegit.core.Badge.AUTH_REQUIRED)
+        /** null = fine. While checks are stalled for all mirrors, "지연" is not counted per repo (RV2-06; CR-11 asks core to do the same). */
+        fun problem(i: com.ouor.mobilegit.core.RepoListItem, stalled: Boolean): Tone? {
+            val b = i.issue?.badge ?: return null
+            return when {
+                b in errorBadges -> Tone.Danger
+                stalled && b == com.ouor.mobilegit.core.Badge.DELAYED -> null
+                else -> Tone.Warning
+            }
+        }
+        fun of(all: List<com.ouor.mobilegit.core.RepoListItem>, stalled: Boolean): Counts {
+            val mirrors = all.filter { it.meta.type == RepoType.MIRROR }
+            val tones = mirrors.map { problem(it, stalled) }
+            return Counts(mirrors.size, all.size - mirrors.size, tones.count { it == Tone.Danger }, tones.count { it == Tone.Warning })
+        }
+    }
+}
+
+/**
+ * R2-02 / RV2-06: "미러 12개 · 정상 10 · 오류 1 · 주의 1 · 마지막 확인 10분 전 · 로컬 3개". Errors are red, warnings orange.
+ * Each part carries its own " ·" so a wrapped line never starts with the separator (RV2-05).
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Summary(o: com.ouor.mobilegit.core.RepoOverview, onAttention: () -> Unit, onStalled: () -> Unit) {
+private fun Summary(c: Counts, lastCheckAt: Long?, onProblems: () -> Unit) {
     val style = MaterialTheme.typography.bodyMedium
-    if (o.checksStalled) {
-        Banner(Tone.Warning, Icons.Outlined.HourglassBottom, str(R.string.main_summary_stalled),
-            o.lastCheckAt?.let { str(R.string.main_summary_last_check, ago(it)) }, Modifier.padding(top = Space.sm),
-            actionLabel = str(R.string.main_battery_guide), onAction = onStalled)
-        return
+    val dim = MaterialTheme.colorScheme.onSurfaceVariant
+    val parts = buildList<Triple<String, Tone?, Boolean>> {
+        if (c.mirrors > 0) add(Triple(str(R.string.main_summary_mirrors, c.mirrors), null, false))
+        if (c.mirrors > 0 && c.errors + c.warnings > 0) add(Triple(str(R.string.main_summary_healthy, c.healthy), null, false))
+        if (c.errors > 0) add(Triple(str(R.string.main_summary_errors, c.errors), Tone.Danger, true))
+        if (c.warnings > 0) add(Triple(str(R.string.main_summary_attention, c.warnings), Tone.Warning, true))
+        if (c.mirrors > 0 && c.errors + c.warnings == 0) add(Triple(str(R.string.main_summary_all_ok), Tone.Success, false))
+        lastCheckAt?.let { add(Triple(str(R.string.main_summary_last_check, ago(it)), null, false)) }
+        if (c.locals > 0) add(Triple(str(R.string.main_summary_locals, c.locals), null, false))
     }
     FlowRow(Modifier.fillMaxWidth().padding(top = Space.xs), verticalArrangement = Arrangement.Center) {
-        val dim = MaterialTheme.colorScheme.onSurfaceVariant
-        val parts = buildList {
-            if (o.mirrors > 0) add(str(R.string.main_summary_mirrors, o.mirrors))
-            if (o.mirrors > 0 && o.attention > 0) add(str(R.string.main_summary_healthy, o.healthy))
+        parts.forEachIndexed { i, (text, t, click) ->
+            val label = if (i < parts.lastIndex) "$text · " else text
+            val m = if (click) Modifier.minimumInteractiveComponentSize().clip(MaterialTheme.shapes.extraSmall).clickable(role = Role.Button, onClick = onProblems) else Modifier.padding(vertical = Space.xs)
+            Text(label, style = style, color = t?.let { tone(it).content } ?: dim, fontWeight = if (t != null) FontWeight.SemiBold else null, modifier = m)
         }
-        if (parts.isNotEmpty()) Text(parts.joinToString(" · ") + " · ", style = style, color = dim, modifier = Modifier.padding(vertical = Space.xs))
-        if (o.attention > 0) Text(str(R.string.main_summary_attention, o.attention), style = style, color = tone(Tone.Warning).content, fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.clip(MaterialTheme.shapes.extraSmall).clickable(role = Role.Button, onClick = onAttention).padding(vertical = Space.xs))
-        else Text(str(R.string.main_summary_all_ok), style = style, color = tone(Tone.Success).content, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = Space.xs))
-        val tail = buildList {
-            o.lastCheckAt?.let { add(str(R.string.main_summary_last_check, ago(it))) }
-            if (o.locals > 0) add(str(R.string.main_summary_locals, o.locals))
-        }
-        if (tail.isNotEmpty()) Text(" · " + tail.joinToString(" · "), style = style, color = dim, modifier = Modifier.padding(vertical = Space.xs))
     }
 }
 

@@ -130,7 +130,7 @@ fun StorageScreen(nav: Nav) {
                     Text(str(R.string.storage_floor_value, bytes(s.floorBytes)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(Modifier.padding(top = Space.xs), verticalAlignment = Alignment.CenterVertically) {
                         val at = s.reposBySize.mapNotNull { it.sizeMeasuredAt }.minOrNull()
-                        Text(if (measuring) str(R.string.storage_remeasuring) else at?.let { str(R.string.storage_measured_once, ago(it)) } ?: str(R.string.detail_size_unmeasured),
+                        Text(if (measuring) str(R.string.storage_remeasuring) else at?.let { str(R.string.storage_measured_once, com.ouor.mobilegit.ui.clock(it)) } ?: str(R.string.detail_size_unmeasured),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                         if (measuring) androidx.compose.material3.CircularProgressIndicator(Modifier.padding(Space.sm).size(18.dp), strokeWidth = 2.dp)
                         else androidx.compose.material3.TextButton(onClick = { measuring = true; scope.launch { core.refreshSizes(); measuring = false; tick++ } }) {

@@ -1,5 +1,6 @@
 package com.ouor.mobilegit.ui.theme
 
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
@@ -33,7 +34,8 @@ object Space {
     val screen = 20.dp
 }
 
-private val Brand = Color(0xFF3366FF)
+/** Text/buttons use a deeper blue than the icon (#3366FF) so links on the grey background reach 4.5:1 (RV2-10). */
+private val Brand = Color(0xFF2B5AE8)
 private val BrandDark = Color(0xFF7C9CFF)
 
 private val LightColors = lightColorScheme(
@@ -44,7 +46,7 @@ private val LightColors = lightColorScheme(
     tertiary = Color(0xFF00A86B), onTertiary = Color.White,
     background = Color(0xFFF2F4F6), onBackground = Color(0xFF191F28),
     surface = Color(0xFFF2F4F6), onSurface = Color(0xFF191F28),
-    surfaceVariant = Color(0xFFE8EBEF), onSurfaceVariant = Color(0xFF6B7684),
+    surfaceVariant = Color(0xFFE8EBEF), onSurfaceVariant = Color(0xFF5C6774), // RV2-10: 4.5:1 on background (was #6B7684, 4.2:1)
     surfaceContainerLowest = Color.White, surfaceContainerLow = Color.White,
     surfaceContainer = Color.White, surfaceContainerHigh = Color.White, surfaceContainerHighest = Color(0xFFE8EBEF),
     surfaceBright = Color.White,
@@ -104,19 +106,23 @@ val LocalStatus = staticCompositionLocalOf { LightStatus }
 
 val Mono = FontFamily.Monospace
 
+/** RV2-07: break Korean lines between words (어절), never inside "6시간" or before "요.". Needs API 33; older phones keep character breaks. */
+private val Words = LineBreak(LineBreak.Strategy.HighQuality, LineBreak.Strictness.Strict, LineBreak.WordBreak.Phrase)
+private fun TextStyle.words() = copy(lineBreak = Words)
+
 private val AppTypography = Typography().run {
     copy(
-        headlineLarge = headlineLarge.copy(fontWeight = FontWeight.Bold, fontSize = 30.sp, lineHeight = 38.sp),
-        headlineMedium = headlineMedium.copy(fontWeight = FontWeight.Bold, fontSize = 26.sp, lineHeight = 34.sp),
-        headlineSmall = headlineSmall.copy(fontWeight = FontWeight.Bold, fontSize = 22.sp, lineHeight = 30.sp),
-        titleLarge = titleLarge.copy(fontWeight = FontWeight.Bold, fontSize = 19.sp, lineHeight = 26.sp),
-        titleMedium = titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 17.sp, lineHeight = 24.sp),
-        titleSmall = titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 15.sp, lineHeight = 22.sp),
-        bodyLarge = bodyLarge.copy(fontSize = 16.sp, lineHeight = 24.sp),
-        bodyMedium = bodyMedium.copy(fontSize = 14.sp, lineHeight = 21.sp),
-        bodySmall = bodySmall.copy(fontSize = 13.sp, lineHeight = 18.sp),
-        labelLarge = labelLarge.copy(fontWeight = FontWeight.SemiBold, fontSize = 15.sp),
-        labelMedium = labelMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 12.sp),
+        headlineLarge = headlineLarge.copy(fontWeight = FontWeight.Bold, fontSize = 30.sp, lineHeight = 38.sp).words(),
+        headlineMedium = headlineMedium.copy(fontWeight = FontWeight.Bold, fontSize = 26.sp, lineHeight = 34.sp).words(),
+        headlineSmall = headlineSmall.copy(fontWeight = FontWeight.Bold, fontSize = 22.sp, lineHeight = 30.sp).words(),
+        titleLarge = titleLarge.copy(fontWeight = FontWeight.Bold, fontSize = 19.sp, lineHeight = 26.sp).words(),
+        titleMedium = titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 17.sp, lineHeight = 24.sp).words(),
+        titleSmall = titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 15.sp, lineHeight = 22.sp).words(),
+        bodyLarge = bodyLarge.copy(fontSize = 16.sp, lineHeight = 24.sp).words(),
+        bodyMedium = bodyMedium.copy(fontSize = 14.sp, lineHeight = 21.sp).words(),
+        bodySmall = bodySmall.copy(fontSize = 13.sp, lineHeight = 18.sp).words(),
+        labelLarge = labelLarge.copy(fontWeight = FontWeight.SemiBold, fontSize = 15.sp).words(),
+        labelMedium = labelMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 12.sp).words(),
     )
 }
 

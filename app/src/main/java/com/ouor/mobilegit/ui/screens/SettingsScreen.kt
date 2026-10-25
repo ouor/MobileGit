@@ -1,5 +1,6 @@
 package com.ouor.mobilegit.ui.screens
 
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Schedule
@@ -148,9 +149,24 @@ fun SettingsScreen(nav: Nav) {
                     Row(Modifier.padding(vertical = Space.xs), verticalAlignment = Alignment.Top) {
                         Box(Modifier.padding(top = 6.dp).size(10.dp).clip(CircleShape).background(tone(t).content))
                         Spacer(Modifier.width(Space.md))
-                        Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(88.dp))
+                        Column(Modifier.width(88.dp)) {
+                            Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Text(str(when (t) { Tone.Success -> R.string.sec_level_safe; Tone.Danger -> R.string.sec_level_danger; else -> R.string.sec_level_caution }),
+                                style = MaterialTheme.typography.labelMedium, color = tone(t).content)
+                        }
                         Text(body, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                     }
+                }
+            }
+
+            AdvancedSection(title = str(R.string.settings_ngrok_title) + " · " + ngrokStatus(s.ngrokEnabled, tunnel, running)) {
+                if (s.exposedWithoutPassword) ExposedMark(running && tunnel is TunnelState.Connected)
+                RowGroup {
+                    SwitchRow(str(R.string.settings_ngrok_switch), s.ngrokEnabled, { on -> if (on) turnNgrokOn() else core.settings.update { it.copy(ngrokEnabled = false) } },
+                        // already in settings: point at the row below instead of "설정에서" (RV2-03)
+                        subtitle = if (!s.ngrokEnabled) str(R.string.settings_ngrok_sub) else if (running && tunnel is TunnelState.TokenRejected) str(R.string.tunnel_token_rejected_here) else tunnelText(tunnel, running))
+                    Divider()
+                    NavRow(str(R.string.settings_ngrok_token_row), { dialog = "token" }, value = if (s.hasNgrokToken) str(R.string.settings_ngrok_token_set) else str(R.string.fmt_none), subtitle = str(R.string.settings_ngrok_token_note))
                 }
             }
 
@@ -218,16 +234,6 @@ fun SettingsScreen(nav: Nav) {
                 NavRow(str(R.string.settings_licenses), { dialog = "licenses" }, icon = Icons.Outlined.Public)
             }
             Text(str(R.string.unsupported_line), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = Space.sm))
-
-            AdvancedSection(title = str(R.string.settings_ngrok_title) + " · " + ngrokStatus(s.ngrokEnabled, tunnel, running)) {
-                if (s.exposedWithoutPassword) ExposedMark(running && tunnel is TunnelState.Connected)
-                RowGroup {
-                    SwitchRow(str(R.string.settings_ngrok_switch), s.ngrokEnabled, { on -> if (on) turnNgrokOn() else core.settings.update { it.copy(ngrokEnabled = false) } },
-                        subtitle = if (s.ngrokEnabled) tunnelText(tunnel, running) else str(R.string.settings_ngrok_sub))
-                    Divider()
-                    NavRow("authtoken", { dialog = "token" }, value = if (s.hasNgrokToken) str(R.string.settings_ngrok_token_set) else str(R.string.fmt_none), subtitle = str(R.string.settings_ngrok_token_note))
-                }
-            }
         }
     }
 
@@ -254,11 +260,13 @@ fun SettingsScreen(nav: Nav) {
                 Text(str(R.string.settings_auto_update_where), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
             }
         }, confirmButton = { TextButton(onClick = { dialog = null }) { Text(str(R.string.common_close)) } })
-        "riskFromNgrok" -> RiskDialog(level = authLevel(s), safeLabel = str(R.string.risk_safe_auth_on), onDismiss = { dialog = null },
-            onSafe = { core.settings.update { it.copy(authEnabled = true, anonymousReadOnLan = false, ngrokEnabled = true, ngrokWarningAccepted = true) }; dialog = null },
+        "riskFromNgrok" -> RiskDialog(str(R.string.risk_title), str(if (authLevel(s) == 2) R.string.risk_body_off else R.string.risk_body_push_only),
+            safeLabel = str(R.string.risk_safe_auth_on), onDismiss = { dialog = null },
+            onSafe = { core.settings.update { it.copy(authEnabled = true, anonymousReadOnLan = false, ngrokEnabled = true, ngrokWarningAccepted = true) }; dialog = null; snack(str(R.string.risk_done_auth_on)) },
             onProceed = { core.settings.update { it.copy(ngrokEnabled = true, ngrokWarningAccepted = true) }; dialog = null })
-        "riskFromAuth" -> RiskDialog(level = pendingLevel, safeLabel = str(R.string.risk_safe_ngrok_off), onDismiss = { dialog = null },
-            onSafe = { val l = pendingLevel; core.settings.update { it.copy(ngrokEnabled = false, authEnabled = l != 2, anonymousReadOnLan = l == 1) }; dialog = null },
+        "riskFromAuth" -> RiskDialog(str(if (pendingLevel == 2) R.string.risk_title_auth_off else R.string.risk_title_auth_push),
+            str(if (pendingLevel == 2) R.string.risk_body_auth_off else R.string.risk_body_auth_push), safeLabel = str(R.string.risk_safe_ngrok_off), onDismiss = { dialog = null },
+            onSafe = { val l = pendingLevel; core.settings.update { it.copy(ngrokEnabled = false, authEnabled = l != 2, anonymousReadOnLan = l == 1) }; dialog = null; snack(str(R.string.risk_done_ngrok_off)) },
             onProceed = { setAuthLevel(pendingLevel); dialog = null })
         "authOff" -> ConfirmDialog(str(R.string.settings_auth_off_title), str(R.string.settings_auth_off_body), str(R.string.settings_auth_off_confirm),
             destructive = true, onConfirm = { core.settings.update { it.copy(authEnabled = false) }; dialog = null }, onDismiss = { dialog = null })
@@ -294,24 +302,24 @@ private fun ngrokStatus(on: Boolean, t: TunnelState, running: Boolean) = when {
 private fun ExposedMark(live: Boolean) {
     Row(Modifier.padding(vertical = Space.xs), verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Outlined.LockOpen, null, Modifier.size(16.dp), tint = tone(Tone.Danger).content); Spacer(Modifier.width(Space.xs))
-        Text(str(if (live) R.string.main_exposed_no_password else R.string.main_exposed_pending_body), style = MaterialTheme.typography.labelLarge, color = tone(Tone.Danger).content)
+        Text(str(if (live) R.string.main_exposed_no_password else R.string.settings_exposed_pending), style = MaterialTheme.typography.labelLarge, color = tone(Tone.Danger).content)
     }
 }
 
 /**
- * R2-06: password-less + ngrok. Cancel is the default (filled), the safe alternative is next, "그래도 진행" last and
- * in the danger color. Only that last button saves the risky combination.
+ * R2-06 / RV2-03: password-less + ngrok. Cancel is the default (filled), the safe alternative is next, "비밀번호 없이 공개" last
+ * in the danger color. Only that last button saves the risky combination. All three are the same height.
  */
 @Composable
-private fun RiskDialog(level: Int, safeLabel: String, onDismiss: () -> Unit, onSafe: () -> Unit, onProceed: () -> Unit) {
+private fun RiskDialog(title: String, body: String, safeLabel: String, onDismiss: () -> Unit, onSafe: () -> Unit, onProceed: () -> Unit) {
     AlertDialog(onDismissRequest = onDismiss, icon = { Icon(Icons.Outlined.LockOpen, null, tint = tone(Tone.Danger).content) },
-        title = { Text(str(R.string.risk_title)) },
-        text = { Text(str(if (level == 2) R.string.risk_body_off else R.string.risk_body_push_only)) },
+        title = { Text(title) },
+        text = { Text(body) },
         confirmButton = {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Space.xs)) {
-                androidx.compose.material3.Button(onClick = onDismiss, Modifier.fillMaxWidth()) { Text(str(R.string.common_cancel)) }
-                androidx.compose.material3.OutlinedButton(onClick = onSafe, Modifier.fillMaxWidth()) { Text(safeLabel) }
-                TextButton(onClick = onProceed, Modifier.fillMaxWidth()) { Text(str(R.string.risk_proceed), color = tone(Tone.Danger).content) }
+                androidx.compose.material3.Button(onClick = onDismiss, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(str(R.string.common_cancel)) }
+                androidx.compose.material3.OutlinedButton(onClick = onSafe, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(safeLabel) }
+                TextButton(onClick = onProceed, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(str(R.string.risk_proceed), color = tone(Tone.Danger).content) }
             }
         })
 }
