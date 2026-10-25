@@ -17,3 +17,5 @@ local.properties
 # release signing (local only)
 keystore.properties
 *.jks
+signing/release.p12
+signing/keystore.properties

@@ -16,22 +16,23 @@ android {
         applicationId = "com.ouor.mobilegit"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.1.0"
+        versionCode = 3
+        versionName = "0.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    // Release signing key lives outside the repo; keystore.properties is gitignored.
-    val keystoreProps = rootProject.file("keystore.properties").takeIf { it.exists() }
+    // Release signing per signing/SIGNING.md; release.p12 and keystore.properties are gitignored.
+    val keystoreProps = rootProject.file("signing/keystore.properties").takeIf { it.exists() }
         ?.let { f -> Properties().apply { f.inputStream().use { load(it) } } }
     signingConfigs {
         keystoreProps?.let { p ->
             create("release") {
-                storeFile = file(p.getProperty("storeFile"))
+                storeFile = rootProject.file("signing/release.p12")
+                storeType = "PKCS12"
                 storePassword = p.getProperty("storePassword")
-                keyAlias = p.getProperty("keyAlias")
-                keyPassword = p.getProperty("keyPassword")
+                keyAlias = "release"
+                keyPassword = p.getProperty("storePassword")
             }
         }
     }
