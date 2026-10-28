@@ -82,7 +82,7 @@ object Badges {
             OriginStatus.AUTH_REQUIRED -> out += Badge.AUTH_REQUIRED
             else -> if (mir.lastError != null) out += Badge.FAILED
         }
-        if (!checksStalled && now - (mir.lastCheckAt ?: m.createdAt) > 3 * s.checkIntervalMillis) out += Badge.DELAYED
+        if (!checksStalled && !s.checksOff && now - (mir.lastCheckAt ?: m.createdAt) > 3 * s.checkIntervalMillis) out += Badge.DELAYED
         return out
     }
 
@@ -179,7 +179,7 @@ class SyncCoordinator(
                 }.mirror!!
                 NotificationRules.decide(meta.name, before, after, 0, false).forEach(notifier::notify)
                 val s = settings()
-                CheckDecision(ev, outcome.changed, outcome.changed > 0 && s.autoUpdate && !mir.autoUpdateExcluded && trigger == SyncTrigger.AUTO)
+                CheckDecision(ev, outcome.changed, outcome.changed > 0 && !mir.autoUpdateExcluded && trigger == SyncTrigger.AUTO)
             } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 if (!currentCoroutineContext().isActive) throw CancellationException("check cancelled")
@@ -333,7 +333,7 @@ class SyncCoordinator(
             (category == ErrorCategory.NETWORK || category == ErrorCategory.TIMEOUT)) mir.lastError ?: category else category
         val n = mir.consecutiveFailures + 1
         // NFR: exponential, max 24 h; also capped at 2x the check interval so the "지연" badge stays meaningful.
-        val backoff = minOf(24 * 3_600_000L, 2 * settings().checkIntervalMillis, 3_600_000L shl minOf(n - 1, 5))
+        val backoff = minOf(24 * 3_600_000L, settings().let { if (it.checksOff) Long.MAX_VALUE else 2 * it.checkIntervalMillis }, 3_600_000L shl minOf(n - 1, 5))
         val ev = SyncEvent(started, clock.now() - started, trigger, kind, SyncResult.FAILED, errorCategory = category,
             errorDetail = Redact.text(f.detail, credentials.secrets()))
         store.appendEvent(meta.name, ev)
@@ -520,7 +520,7 @@ object RepoQuery {
      */
     fun checksStalled(repos: List<RepoMeta>, s: Settings, now: Long): Boolean {
         val mirrors = repos.filter { it.mirror != null }
-        if (mirrors.isEmpty()) return false
+        if (mirrors.isEmpty() || s.checksOff) return false
         val newest = s.lastPeriodicCheckAt ?: mirrors.maxOf { it.mirror!!.lastCheckAt ?: it.createdAt }
         return now - newest > 3 * s.checkIntervalMillis
     }

@@ -91,9 +91,7 @@ fun OnboardingScreen(nav: Nav) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Space.screen, vertical = Space.lg), verticalArrangement = Arrangement.spacedBy(Space.md)) {
                 when (page) {
                     0 -> Page(null, str(R.string.onboarding_intro_title), str(R.string.onboarding_intro_body)) {
-                        Banner(Tone.Info, Icons.Outlined.CheckCircle, str(R.string.onboarding_extra_copy_title), str(R.string.onboarding_extra_copy_body))
-                        Text(str(R.string.unsupported_line), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                        Banner(Tone.Info, Icons.Outlined.CheckCircle, str(R.string.onboarding_extra_copy_title), str(R.string.onboarding_extra_copy_body))                    }
                     1 -> Page(Icons.Outlined.PhonelinkLock, str(R.string.onboarding_on_device_title), str(R.string.onboarding_on_device_body)) {
                         Banner(Tone.Danger, Icons.Outlined.Warning, str(R.string.onboarding_uninstall_title), str(R.string.onboarding_uninstall_body))
                     }

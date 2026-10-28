@@ -116,7 +116,7 @@ fun SettingsScreen(nav: Nav) {
                 Divider()
                 NavRow(str(R.string.bulk_user_label), { dialog = "user" }, value = s.username)
                 Divider()
-                NavRow(str(R.string.settings_reset_password), { dialog = "password" }, subtitle = str(R.string.settings_reset_password_sub))
+                NavRow(str(R.string.settings_reset_password), { dialog = "password" })
                 Divider()
                 Column(Modifier.padding(horizontal = Space.lg, vertical = Space.md)) {
                     Text(str(R.string.settings_auth), style = MaterialTheme.typography.bodyLarge)
@@ -187,9 +187,9 @@ fun SettingsScreen(nav: Nav) {
                 RowGroup {
                     SwitchRow(str(R.string.settings_ngrok_switch), s.ngrokEnabled, { on -> if (on) turnNgrokOn() else core.settings.update { it.copy(ngrokEnabled = false) } },
                         // already in settings: point at the row below instead of "설정에서" (RV2-03)
-                        subtitle = if (!s.ngrokEnabled) str(R.string.settings_ngrok_sub) else if (running && tunnel is TunnelState.TokenRejected) str(R.string.tunnel_token_rejected_here) else tunnelText(tunnel, running))
+                        subtitle = if (!s.ngrokEnabled) null else if (running && tunnel is TunnelState.TokenRejected) str(R.string.tunnel_token_rejected_here) else tunnelText(tunnel, running))
                     Divider()
-                    NavRow(str(R.string.settings_ngrok_token_row), { dialog = "token" }, value = if (s.hasNgrokToken) str(R.string.settings_ngrok_token_set) else str(R.string.fmt_none), subtitle = str(R.string.settings_ngrok_token_note))
+                    NavRow(str(R.string.settings_ngrok_token_row), { dialog = "token" }, value = if (s.hasNgrokToken) str(R.string.settings_ngrok_token_set) else str(R.string.fmt_none))
                 }
             }
 
@@ -201,16 +201,13 @@ fun SettingsScreen(nav: Nav) {
 
             SectionHeader(str(R.string.settings_sync))
             RowGroup {
-                NavRow(str(R.string.settings_sync_summary, s.checkIntervalHours, autoUpdateText(s)), { dialog = "interval" }, icon = Icons.Outlined.Schedule,
-                    subtitle = str(R.string.settings_check_interval_sub))
+                NavRow(str(R.string.settings_sync_summary, intervalText(s.checkIntervalHours)), { dialog = "interval" }, icon = Icons.Outlined.Schedule)
                 Divider()
-                SwitchRow(str(R.string.settings_auto_update), s.autoUpdate, { v -> core.settings.update { it.copy(autoUpdate = v) } }, subtitle = str(R.string.settings_auto_update_sub))
+                SwitchRow(str(R.string.settings_wifi_only), s.updateWifiOnly, { v -> core.settings.update { it.copy(updateWifiOnly = v) } }, enabled = !s.checksOff)
                 Divider()
-                SwitchRow(str(R.string.settings_wifi_only), s.updateWifiOnly, { v -> core.settings.update { it.copy(updateWifiOnly = v) } }, enabled = s.autoUpdate)
+                SwitchRow(str(R.string.settings_charging_only), s.updateChargingOnly, { v -> core.settings.update { it.copy(updateChargingOnly = v) } }, enabled = !s.checksOff)
                 Divider()
-                SwitchRow(str(R.string.settings_charging_only), s.updateChargingOnly, { v -> core.settings.update { it.copy(updateChargingOnly = v) } }, enabled = s.autoUpdate)
-                Divider()
-                SwitchRow(str(R.string.settings_check_wifi_only), s.checkWifiOnly, { v -> core.settings.update { it.copy(checkWifiOnly = v) } }, subtitle = str(R.string.settings_check_wifi_only_sub))
+                SwitchRow(str(R.string.settings_check_wifi_only), s.checkWifiOnly, { v -> core.settings.update { it.copy(checkWifiOnly = v) } }, enabled = !s.checksOff)
             }
             AdvancedSection {
                 RowGroup {
@@ -228,11 +225,11 @@ fun SettingsScreen(nav: Nav) {
                 }
             }
             RowGroup {
-                SwitchRow(str(R.string.settings_notify_success), s.notifyOnSuccess, { v -> core.settings.update { it.copy(notifyOnSuccess = v) } }, subtitle = str(R.string.settings_notify_success_sub))
+                SwitchRow(str(R.string.settings_notify_success), s.notifyOnSuccess, { v -> core.settings.update { it.copy(notifyOnSuccess = v) } })
                 Divider()
                 NavRow(str(R.string.settings_system_notifications), {
                     ctx.startActivity(Intent(AndroidSettings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(AndroidSettings.EXTRA_APP_PACKAGE, ctx.packageName))
-                }, icon = Icons.Outlined.Notifications, subtitle = str(R.string.settings_system_notifications_sub))
+                }, icon = Icons.Outlined.Notifications)
             }
 
             SectionHeader(str(R.string.detail_manage))
@@ -256,7 +253,6 @@ fun SettingsScreen(nav: Nav) {
                 Divider()
                 NavRow(str(R.string.settings_licenses), { dialog = "licenses" }, icon = Icons.Outlined.Public)
             }
-            Text(str(R.string.unsupported_line), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = Space.sm))
         }
     }
 
@@ -274,15 +270,14 @@ fun SettingsScreen(nav: Nav) {
         }
         "interval" -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text(str(R.string.settings_check_interval)) }, text = {
             Column(Modifier.selectableGroup()) {
-                listOf(1, 6, 12, 24).forEach { h ->
+                listOf(1, 6, 12, 24, 0).forEach { h ->
                     // R2AND-08: selection state is announced, 48dp rows
                     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(MaterialTheme.shapes.small)
                         .selectable(s.checkIntervalHours == h, role = Role.RadioButton) { core.settings.setCheckIntervalHours(h); dialog = null },
                         verticalAlignment = Alignment.CenterVertically) {
-                        androidx.compose.material3.RadioButton(s.checkIntervalHours == h, null, Modifier.padding(Space.sm)); Text(str(R.string.settings_every_hours, h))
+                        androidx.compose.material3.RadioButton(s.checkIntervalHours == h, null, Modifier.padding(Space.sm)); Text(intervalText(h))
                     }
                 }
-                Text(str(R.string.settings_auto_update_where), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
             }
         }, confirmButton = { TextButton(onClick = { dialog = null }) { Text(str(R.string.common_close)) } })
         "riskFromNgrok" -> RiskDialog(str(R.string.risk_title), str(if (s.authLevel == 2) R.string.risk_body_off else R.string.risk_body_push_only),
@@ -307,13 +302,7 @@ fun SettingsScreen(nav: Nav) {
 }
 
 
-private fun autoUpdateText(s: com.ouor.mobilegit.core.Settings) = when {
-    !s.autoUpdate -> str(R.string.settings_auto_off)
-    s.updateWifiOnly && s.updateChargingOnly -> str(R.string.settings_auto_wifi_charging)
-    s.updateWifiOnly -> str(R.string.settings_auto_wifi)
-    s.updateChargingOnly -> str(R.string.settings_auto_charging)
-    else -> str(R.string.settings_auto_always)
-}
+private fun intervalText(h: Int) = if (h == 0) str(R.string.settings_check_off) else str(R.string.settings_every_hours, h)
 
 private fun ngrokStatus(on: Boolean, t: TunnelState, running: Boolean) = when {
     !on -> str(R.string.settings_ngrok_status_off)

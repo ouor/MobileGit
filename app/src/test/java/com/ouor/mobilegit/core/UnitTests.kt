@@ -259,6 +259,10 @@ class NotificationRulesTest {
         assertTrue(RepoQuery.overview(oneP, sp, stalledNow).checksStalled); assertTrue(oneP.none { Badge.DELAYED in it.badges })
         assertFalse(RepoQuery.checksStalled(listOf(late1), sp.copy(lastPeriodicCheckAt = stalledNow - 1), stalledNow))
         assertFalse(RepoQuery.checksStalled(listOf(a), sp, stalledNow)) // no mirrors, nothing to check
+        // "확인 안 함": the user turned checks off, so neither the stall banner nor "지연" shows
+        val off = s.copy(checkIntervalHours = 0)
+        assertFalse(RepoQuery.checksStalled(listOf(late1), off, stalledNow))
+        assertTrue(RepoQuery.items(listOf(late1), off, stalledNow, emptyMap()).none { Badge.DELAYED in it.badges })
         assertEquals(Severity.ERROR, RepoBrowser.summary(b, s, 7).severity)
         assertEquals(RepoOverview(0, 0, 0, 1, null, false), RepoQuery.overview(RepoQuery.items(listOf(a), s, 8, emptyMap()), s, Long.MAX_VALUE / 2))
         // WR-6: the web summary uses the same rule as the app row

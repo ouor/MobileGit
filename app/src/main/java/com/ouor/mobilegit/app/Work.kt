@@ -56,6 +56,7 @@ class WorkScheduler(private val context: Context, private val settings: () -> Se
     /** (Re)schedules the periodic check; call on start and whenever interval / checkWifiOnly change. */
     fun schedulePeriodicCheck() {
         val s = settings()
+        if (s.checksOff) { wm.cancelUniqueWork("periodic-check"); return }
         val req = PeriodicWorkRequestBuilder<PeriodicCheckWorker>(s.checkIntervalHours.toLong(), TimeUnit.HOURS)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(if (s.checkWifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED).build())
             .addTag(TAG_SYNC).build()

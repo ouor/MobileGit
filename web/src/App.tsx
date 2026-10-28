@@ -158,8 +158,6 @@ function AppHeader() {
           <img src="/favicon.svg" alt="" className="size-7" />
           mobilegit
         </a>
-        {/* "읽기 전용" alone read as if the whole server refused pushes (round 1 review); F-26 adds the one write (WM-04 AC8). */}
-        <span className="hidden text-sm text-muted-foreground md:inline">폰 속 git 서버 · 웹에서는 보기와 미러 추가만 할 수 있어요</span>
         <div className="ml-auto">
           <ThemeToggle />
         </div>
@@ -171,12 +169,9 @@ function AppHeader() {
 function AppFooter() {
   const { data: info } = useApi<Info>(apiUrl("info"))
   return (
-    // The header already says the web is view-only, so the footer does not repeat it (round 2 review).
     <footer className="border-t px-4 py-4 text-center text-sm text-muted-foreground">
-      mobilegit{info ? ` ${info.version}` : ""} · 미러 업데이트와 레포 관리는 폰 앱에서, push는 PC의 git으로 해요.
+      mobilegit{info ? ` ${info.version}` : ""}
       {info && !info.authRequired && " · 비밀번호 요구: 안 함"}
-      {/* The setting only applies on the LAN and Tailscale; loopback and ngrok always ask (SEC-03). */}
-      {info?.anonymousRead && " · 같은 Wi-Fi·Tailscale에서는 로그인 없이 보기 허용"}
     </footer>
   )
 }

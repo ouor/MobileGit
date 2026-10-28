@@ -326,7 +326,7 @@ private fun OriginCard(item: RepoListItem, nav: Nav, onSheet: (String) -> Unit) 
         // R2AND-10: an estimate ("쯤") that turns into "곧" while the screen stays open; no time at all while background checks are stalled
         val overview by core.overview.collectAsStateWithLifecycle(initialValue = null)
         val now by produceState(System.currentTimeMillis()) { while (true) { kotlinx.coroutines.delay(60_000); value = System.currentTimeMillis() } }
-        InfoRow(str(R.string.detail_check_interval), (if (mir.autoUpdateExcluded) str(R.string.detail_check_only_mode) + " · " else "") +
+        InfoRow(str(R.string.detail_check_interval), if (settings.checksOff) str(R.string.settings_check_off) else (if (mir.autoUpdateExcluded) str(R.string.detail_check_only_mode) + " · " else "") +
             if (overview?.checksStalled == true) str(R.string.settings_every_hours, settings.checkIntervalHours) + " · " + str(R.string.main_summary_stalled)
             else str(R.string.detail_check_next, settings.checkIntervalHours, if (next > now) clock(next) else str(R.string.detail_check_soon)))
         InfoRow(str(R.string.detail_scope), str(if (mir.includePullRefs ?: settings.mirrorPullRefs) R.string.detail_scope_mirror_pull else R.string.detail_scope_mirror) + " · " + str(R.string.detail_scope_no_lfs))

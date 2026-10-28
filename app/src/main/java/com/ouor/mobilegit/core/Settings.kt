@@ -21,7 +21,9 @@ data class Settings(
     val ngrokEnabled: Boolean = false,
     val ngrokAuthtokenEnc: String? = null,
     val ngrokWarningAccepted: Boolean = false,
+    /** 0 = "확인 안 함": no periodic check, so no automatic update either. */
     val checkIntervalHours: Int = 6,
+    /** No longer shown or read: a check that finds changes always updates. Kept so older settings.json still loads. */
     val autoUpdate: Boolean = true,
     val updateWifiOnly: Boolean = true,
     val updateChargingOnly: Boolean = false,
@@ -60,6 +62,7 @@ data class Settings(
     /** R2ARC-02: going from these settings to [next] opens the phone to the internet without a password (R2-06 warning). */
     fun becomesExposed(next: Settings) = next.exposedWithoutPassword && !exposedWithoutPassword
     val checkIntervalMillis get() = checkIntervalHours * 3_600_000L
+    val checksOff get() = checkIntervalHours == 0
 }
 
 class SettingsException(message: String) : IllegalArgumentException(message)
@@ -133,7 +136,7 @@ class SettingsStore(private val file: File, private val cipher: SecretCipher) {
     fun ngrokAuthtoken(): String? = current.ngrokAuthtokenEnc?.let { runCatching { cipher.decrypt(it) }.getOrNull() }
 
     fun setCheckIntervalHours(h: Int) {
-        if (h !in listOf(1, 6, 12, 24)) throw SettingsException("확인 주기는 1, 6, 12, 24시간 중 하나입니다")
+        if (h !in listOf(0, 1, 6, 12, 24)) throw SettingsException("확인 주기는 1, 6, 12, 24시간 또는 확인 안 함 중 하나입니다")
         update { it.copy(checkIntervalHours = h) }
     }
 
