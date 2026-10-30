@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/icon.png" width="112" alt="mobilegit 아이콘: 파란 바탕 흰 원 안에 갈라지는 git 브랜치">
+<img src="docs/images/icon.svg" width="112" alt="mobilegit 아이콘: 파란 바탕 흰 원 안에 갈라지는 git 브랜치">
 
 # mobilegit
 
