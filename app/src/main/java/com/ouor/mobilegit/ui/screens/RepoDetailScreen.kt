@@ -1,6 +1,8 @@
 package com.ouor.mobilegit.ui.screens
 
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import com.ouor.mobilegit.ui.badgeOrder
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.LockOpen
@@ -107,7 +109,6 @@ import com.ouor.mobilegit.ui.bytes
 import com.ouor.mobilegit.ui.components.AddressBar
 import com.ouor.mobilegit.ui.components.AppScaffold
 import com.ouor.mobilegit.ui.components.Banner
-import com.ouor.mobilegit.ui.components.BadgeRow
 import com.ouor.mobilegit.ui.components.CommandBlock
 import com.ouor.mobilegit.ui.components.ConfirmDialog
 import com.ouor.mobilegit.ui.components.Divider
@@ -201,17 +202,19 @@ fun RepoDetailScreen(name: String, nav: Nav) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Header(item: RepoListItem) {
     val m = item.meta
     Column(Modifier.padding(top = Space.xs)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // state/warning badges first (badgeOrder puts problems first), then the kind; metadata stays a quiet line below
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.xs), verticalArrangement = Arrangement.spacedBy(Space.xs)) {
+            badgeOrder.filter { it in item.badges }.forEach { b -> val s = b.style(); Pill(s.label, s.tone, s.icon) }
             Pill(if (m.mirror != null) str(R.string.detail_kind_mirror) else str(R.string.detail_kind_local), Tone.Neutral, if (m.mirror != null) Icons.Outlined.SyncAlt else Icons.Outlined.Folder)
         }
-        if (m.description.isNotBlank()) Text(m.description, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = Space.xs))
         Text((if (m.sizeMeasuredAt != null) bytes(m.sizeBytes) else str(R.string.detail_size_unmeasured)) + (m.defaultBranch?.let { str(R.string.default_branch_suffix, it) } ?: ""),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.xs))
-        BadgeRow(item.badges, Modifier.padding(top = Space.sm))
+        if (m.description.isNotBlank()) Text(m.description, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = Space.sm))
     }
 }
 
@@ -231,7 +234,7 @@ private fun InfoTab(item: RepoListItem, export: ExportRunner, onSheet: (String) 
         // clone card (F-16): first for every repo, it is what the PC needs
         SectionCard(title = str(R.string.detail_clone_title)) {
             if (server !is ServerState.Running) {
-                Banner(Tone.Warning, Icons.Outlined.WifiOff, str(R.string.detail_server_off_title), str(R.string.detail_server_off_body), actionLabel = str(R.string.detail_server_on), onAction = { core.server.start() })
+                Banner(Tone.Warning, Icons.Outlined.WifiOff, str(R.string.detail_server_off_title), actionLabel = str(R.string.detail_server_on), onAction = { core.server.start() })
                 Spacer(Modifier.height(Space.sm))
             }
             if (urls.isEmpty()) Text(str(R.string.detail_no_network), style = MaterialTheme.typography.bodyMedium)
@@ -244,7 +247,7 @@ private fun InfoTab(item: RepoListItem, export: ExportRunner, onSheet: (String) 
                     Icon(Icons.Outlined.QrCode2, null, Modifier.size(18.dp)); Spacer(Modifier.width(Space.xs)); Text(str(R.string.detail_clone_qr))
                 }
             }
-            Text(str(R.string.detail_account_hint, core.settings.current.username), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = Space.sm))
+            Text(str(R.string.detail_account_hint, core.settings.current.username), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
         }
 
         if (m.mirror == null && m.lastPushAt == null && m.forkedFromUrl == null) SectionCard(title = str(R.string.detail_empty_title)) {
@@ -350,12 +353,9 @@ private fun OriginCard(item: RepoListItem, nav: Nav, onSheet: (String) -> Unit) 
             Modifier.fillMaxWidth(), enabled = item.progress == null, icon = Icons.Outlined.Refresh) {
             core.mirrors.updateNow(m.name); snack(str(R.string.detail_update_started))
         }
-        Text(str(R.string.detail_read_only_note), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = Space.sm))
-        androidx.compose.material3.OutlinedButton(onClick = { onSheet("fork") }, Modifier.padding(top = Space.xs).heightIn(min = 48.dp)) { Text(str(R.string.detail_fork_short)) }
     }
     RowGroup {
-        SwitchRow(str(R.string.detail_auto_update), !mir.autoUpdateExcluded, { v -> scope.launch(Dispatchers.IO) { core.mirrors.setAutoUpdateExcluded(m.name, !v) } },
-            subtitle = str(R.string.detail_auto_update_sub))
+        SwitchRow(str(R.string.detail_auto_update), !mir.autoUpdateExcluded, { v -> scope.launch(Dispatchers.IO) { core.mirrors.setAutoUpdateExcluded(m.name, !v) } })
         Box(Modifier.padding(horizontal = Space.lg, vertical = Space.sm)) {
             CredentialPicker(creds.filter { it.host == host }, mir.credentialId, { id -> scope.launch(Dispatchers.IO) { core.mirrors.setCredential(m.name, id) } }, host) {
                 nav.go(Routes.credentials(host))

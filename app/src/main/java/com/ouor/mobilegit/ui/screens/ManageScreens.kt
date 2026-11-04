@@ -232,7 +232,6 @@ fun BatteryScreen(nav: Nav) {
                 listOf(
                     str(R.string.battery_tip_charger),
                     str(R.string.battery_tip_charge_limit),
-                    str(R.string.battery_tip_boot),
                     str(R.string.battery_tip_ap_isolation),
                 ).forEach { Text("• ${it}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = Space.xs)) }
             }
@@ -262,7 +261,7 @@ fun AccessLogScreen(nav: Nav) {
                 Text(str(R.string.log_retention_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = Space.sm))
             }
-            if (shown.isEmpty()) item { EmptyState(Icons.Outlined.ListAlt, if (entries.isEmpty()) str(R.string.log_empty_title) else str(R.string.log_no_match), str(R.string.log_empty_body)) }
+            if (shown.isEmpty()) item { EmptyState(Icons.Outlined.ListAlt, if (entries.isEmpty()) str(R.string.log_empty_title) else str(R.string.log_no_match), null) }
             // v0.2.0 crash: several entries can share all these fields (one page load = several requests in the same ms)
             val keys = uniqueKeys(shown) { "${it.at}-${it.clientIp}-${it.status}-${it.repoName}-${it.action}" }
             items(shown.size, key = { keys[it] }) { i -> AccessRow(shown[i]) }

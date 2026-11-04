@@ -120,7 +120,7 @@ fun OnboardingScreen(nav: Nav) {
                                 Icon(Icons.Outlined.BatteryChargingFull, null); Spacer(Modifier.size(Space.md))
                                 Column(Modifier.weight(1f)) {
                                     Text(str(R.string.onboarding_battery_exempt), style = MaterialTheme.typography.titleSmall)
-                                    Text(if (batteryOk) str(R.string.bulk_registered) else str(R.string.onboarding_battery_exempt_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    if (batteryOk) Text(str(R.string.bulk_registered), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 if (!batteryOk) SecondaryButton(str(R.string.onboarding_view_guide)) { nav.go(Routes.BATTERY) }
                                 else Icon(Icons.Outlined.CheckCircle, str(R.string.bulk_registered), tint = MaterialTheme.colorScheme.tertiary)

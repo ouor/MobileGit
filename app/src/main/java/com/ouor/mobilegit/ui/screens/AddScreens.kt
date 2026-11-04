@@ -132,7 +132,6 @@ fun CredentialPicker(creds: List<RemoteCredential>, selected: String?, onSelect:
             DropdownMenuItem(text = { Text(str(R.string.cred_add_menu), color = MaterialTheme.colorScheme.primary) }, onClick = { open = false; onAdd() })
         }
     }
-    Text(str(R.string.cred_storage_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.xs))
     }
 }
 
@@ -210,7 +209,6 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
         })
     }) { padding ->
         ScreenColumn(padding) {
-            Text(str(R.string.mirror_intro), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(
                 text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 120.dp),
                 label = { Text(str(R.string.mirror_url_label)) }, placeholder = { Text("https://github.com/owner/repo") },
@@ -231,7 +229,6 @@ fun AddMirrorScreen(initialText: String?, nav: Nav) {
                 SectionCard(title = str(R.string.mirror_multi_title, candidates.size)) {
                     candidates.take(50).forEach { Text(it, style = CodeText.small, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(vertical = 3.dp)) }
                     if (candidates.size > 50) Text(str(R.string.mirror_multi_more, candidates.size - 50), style = MaterialTheme.typography.bodySmall)
-                    Text(str(R.string.mirror_multi_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.sm))
                 }
                 CredentialPicker(creds, credId, { credId = it }, null) { nav.go(Routes.CREDENTIALS) }
             } else if (single != null) {
@@ -392,7 +389,7 @@ fun BulkMirrorScreen(nav: Nav) {
                         }
                     }
                 }
-                if (visible.isEmpty()) item { EmptyState(Icons.Outlined.Search, str(R.string.bulk_empty_title), str(R.string.bulk_empty_body)) }
+                if (visible.isEmpty()) item { EmptyState(Icons.Outlined.Search, str(R.string.bulk_empty_title), null) }
                 items(visible, key = { it.cloneUrl }) { r ->
                     val done = r.cloneUrl in mirrored
                     val on = r.cloneUrl in selected

@@ -108,14 +108,13 @@ fun QrScreen(repo: String?, nav: Nav) {
         val qrMod = Modifier.fillMaxWidth().widthIn(max = 420.dp).aspectRatio(1f)
         qr?.let { Image(it, str(R.string.qr_image_desc, url), qrMod, filterQuality = FilterQuality.None) } ?: androidx.compose.foundation.layout.Box(qrMod)
         Spacer(Modifier.height(Space.lg))
-        Text(breakable(url), color = Color(0xFF191F28), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = when { url.length > 40 -> 16.sp; url.length > 24 -> 20.sp; else -> 26.sp },
-            lineHeight = 30.sp, textAlign = TextAlign.Center)
-        if (repo != null) Text(breakable("git clone $url"), color = Color(0xFF4E5968), fontFamily = Mono, fontSize = 16.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = Space.sm))
-        // review #10: say who scans this, and give copy/share for the PC case
-        Text(str(R.string.qr_who), color = Color(0xFF333D4B), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, modifier = Modifier.padding(top = Space.lg))
-        Row(Modifier.padding(top = Space.md), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+        // repo: the clone command is the one line shown and copied; web UI: the address
+        val shown = if (repo != null) "git clone $url" else url
+        Text(breakable(shown), color = Color(0xFF191F28), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = when { shown.length > 40 -> 16.sp; shown.length > 24 -> 20.sp; else -> 26.sp },
+            lineHeight = 26.sp, textAlign = TextAlign.Center)
+        Row(Modifier.padding(top = Space.lg), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
             val colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF191F28))
-            OutlinedButton(onClick = { ctx.copyText("mobilegit", url); android.widget.Toast.makeText(ctx, str(R.string.common_copied), android.widget.Toast.LENGTH_SHORT).show() }, colors = colors) {
+            OutlinedButton(onClick = { ctx.copyText("mobilegit", shown); android.widget.Toast.makeText(ctx, str(R.string.common_copied), android.widget.Toast.LENGTH_SHORT).show() }, colors = colors) {
                 Icon(Icons.Outlined.ContentCopy, null, Modifier.size(18.dp)); Spacer(Modifier.width(Space.xs)); Text(str(R.string.common_copy))
             }
             OutlinedButton(onClick = {
@@ -131,6 +130,6 @@ fun QrScreen(repo: String?, nav: Nav) {
                     colors = FilterChipDefaults.filterChipColors(labelColor = Color(0xFF191F28), selectedContainerColor = Color(0xFFE5ECFF), selectedLabelColor = Color(0xFF0B2A80)))
             }
         }
-        Text(str(R.string.qr_no_credentials), color = Color(0xFF4E5968), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = Space.lg))
+        Spacer(Modifier.height(Space.lg))
     }
 }

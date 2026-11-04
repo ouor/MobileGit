@@ -287,15 +287,15 @@ fun WarningChip(text: String, icon: ImageVector, tone: Tone = Tone.Warning, onDi
 }
 
 @Composable
-fun EmptyState(icon: ImageVector, title: String, body: String, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit = {}) {
+fun EmptyState(icon: ImageVector, title: String, body: String?, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit = {}) {
     Column(modifier.fillMaxWidth().padding(vertical = Space.xxl, horizontal = Space.lg), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(64.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer), contentAlignment = Alignment.Center) {
             Icon(icon, null, Modifier.size(30.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.height(Space.lg))
         Text(title, style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(Space.xs))
-        Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        if (body != null) Spacer(Modifier.height(Space.xs))
+        if (body != null) Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         Spacer(Modifier.height(Space.lg))
         content()
     }
@@ -432,8 +432,10 @@ fun RepoRow(item: RepoListItem, intervalHours: Int, onClick: () -> Unit, onUpdat
                     val whenText = if (mirror && m.mirror?.waitingForForeground == true) str(R.string.detail_waiting_foreground_short) else if (mirror) m.mirror?.lastSuccessUpdateAt?.let { str(R.string.common_updated_ago, ago(it)) } ?: str(R.string.common_before_first_fetch) else m.lastPushAt?.let { "push ${ago(it)}" } ?: str(R.string.common_before_push)
                     val kind = if (mirror) str(R.string.common_kind_mirror) else str(R.string.common_kind_local)
                     val issue = item.issue
+                    // the badge already names the state, so a reason that only repeats it gives way to the normal line
+                    val issueText = issue?.text(intervalHours)?.takeIf { it != issue.badge.style().label }
                     // R2-01: the reason replaces "업데이트 N분 전"; the icon already says 미러, and "언제부터" must not be cut (RV2-05)
-                    if (issue != null) Text(issue.text(intervalHours), style = MaterialTheme.typography.bodySmall, color = tone(issue.tone).content, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (issue != null && issueText != null) Text(issueText, style = MaterialTheme.typography.bodySmall, color = tone(issue.tone).content, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     else Text("$kind · ${whenText} · ${bytes(m.sizeBytes)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
                     if (item.badges.isNotEmpty()) BadgeRow(item.badges, Modifier.padding(top = Space.xs + Space.xxs))
                     item.progress?.let { p ->

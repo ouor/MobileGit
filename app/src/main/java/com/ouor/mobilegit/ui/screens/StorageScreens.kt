@@ -144,7 +144,7 @@ fun StorageScreen(nav: Nav) {
             }
             item { SecondaryButton(str(R.string.storage_full_backup), Modifier.fillMaxWidth(), icon = Icons.Outlined.Upload) { nav.go(Routes.BACKUP) } }
             item { Text(str(R.string.storage_by_repo), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.md)) }
-            if (s.reposBySize.isEmpty()) item { EmptyState(Icons.Outlined.Inventory2, str(R.string.storage_empty_title), str(R.string.storage_empty_body)) }
+            if (s.reposBySize.isEmpty()) item { EmptyState(Icons.Outlined.Inventory2, str(R.string.storage_empty_title), null) }
             val max = s.reposBySize.firstOrNull()?.sizeBytes?.coerceAtLeast(1) ?: 1
             items(s.reposBySize, key = { it.id }) { m ->
                 Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
@@ -165,7 +165,6 @@ fun StorageScreen(nav: Nav) {
         title = { Text(str(R.string.storage_floor_change)) },
         text = {
             Column {
-                Text(str(R.string.storage_floor_body), style = MaterialTheme.typography.bodyMedium)
                 listOf(512L, 1024L, 2048L, 5120L).map { it * 1024 * 1024 }.forEach { v ->
                     Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable(role = Role.RadioButton) { core.settings.update { it.copy(storageFloorBytes = v) }; floorDialog = false; tick++ },
                         verticalAlignment = Alignment.CenterVertically) {
@@ -227,7 +226,7 @@ fun BackupScreen(nav: Nav) {
                     TextButton(onClick = { selected.clear(); if (!all) selected.addAll(repos.map { it.name }) }) { Text(if (all) str(R.string.bulk_select_none) else str(R.string.bulk_select_all)) }
                 }
             }
-            if (repos.isEmpty()) item { EmptyState(Icons.Outlined.Inventory2, str(R.string.backup_empty_title), str(R.string.backup_empty_body)) }
+            if (repos.isEmpty()) item { EmptyState(Icons.Outlined.Inventory2, str(R.string.backup_empty_title), null) }
             items(repos, key = { it.id }) { m ->
                 val on = m.name in selected
                 Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {

@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Schedule
@@ -158,7 +160,7 @@ fun SettingsScreen(nav: Nav) {
                     }
                 }
                 Divider()
-                SwitchRow(str(R.string.settings_start_on_boot), s.startOnBoot, { v -> core.settings.update { it.copy(startOnBoot = v) } }, subtitle = str(R.string.settings_start_on_boot_sub))
+                SwitchRow(str(R.string.settings_start_on_boot), s.startOnBoot, { v -> core.settings.update { it.copy(startOnBoot = v) } })
             }
             SectionCard(title = str(R.string.settings_security_title)) {
                 listOf(
@@ -167,14 +169,15 @@ fun SettingsScreen(nav: Nav) {
                     Triple(Tone.Danger, "ngrok", str(R.string.settings_sec_ngrok_body)),
                 ).forEach { (t, name, body) ->
                     Row(Modifier.padding(vertical = Space.xs), verticalAlignment = Alignment.Top) {
-                        Box(Modifier.padding(top = 6.dp).size(10.dp).clip(CircleShape).background(tone(t).content))
+                        // the dot alone carries the level visually; screen readers get it as text
+                        val level = str(when (t) { Tone.Success -> R.string.sec_level_safe; Tone.Danger -> R.string.sec_level_danger; else -> R.string.sec_level_caution })
+                        Box(Modifier.padding(top = 6.dp).size(10.dp).clip(CircleShape).background(tone(t).content)
+                            .semantics { contentDescription = level })
                         Spacer(Modifier.width(Space.md))
                         // RV2-10: at large font sizes the name no longer fits 88dp ("와이파/이"), so the body goes under it
                         val stacked = androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f
                         Column(if (stacked) Modifier.weight(1f) else Modifier.width(88.dp)) {
                             Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                            Text(str(when (t) { Tone.Success -> R.string.sec_level_safe; Tone.Danger -> R.string.sec_level_danger; else -> R.string.sec_level_caution }),
-                                style = MaterialTheme.typography.labelMedium, color = tone(t).content)
                             if (stacked) Text(body, style = MaterialTheme.typography.bodyMedium)
                         }
                         if (!stacked) Text(body, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
@@ -194,7 +197,7 @@ fun SettingsScreen(nav: Nav) {
             }
 
             SectionCard(title = str(R.string.settings_lost_title)) {
-                listOf(R.string.settings_lost_storage, R.string.settings_lost_no_lock, R.string.settings_lost_tokens, R.string.settings_lost_revoke).forEach {
+                listOf(R.string.settings_lost_storage, R.string.settings_lost_revoke).forEach {
                     Text("• " + str(it), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = Space.xxs))
                 }
             }
@@ -211,8 +214,7 @@ fun SettingsScreen(nav: Nav) {
             }
             AdvancedSection {
                 RowGroup {
-                    SwitchRow(str(R.string.settings_pull_refs), s.mirrorPullRefs, { v -> if (v) core.settings.update { it.copy(mirrorPullRefs = true) } else dialog = "pullOff" },
-                        subtitle = str(R.string.settings_pull_refs_sub))
+                    SwitchRow(str(R.string.settings_pull_refs), s.mirrorPullRefs, { v -> if (v) core.settings.update { it.copy(mirrorPullRefs = true) } else dialog = "pullOff" })
                 }
             }
 
@@ -242,7 +244,7 @@ fun SettingsScreen(nav: Nav) {
                 Divider()
                 NavRow(str(R.string.main_full_backup), { nav.go(Routes.BACKUP) }, icon = Icons.Outlined.Upload)
                 Divider()
-                NavRow(str(R.string.battery_title), { nav.go(Routes.BATTERY) }, icon = Icons.Outlined.BatteryChargingFull, subtitle = str(R.string.settings_background_sub))
+                NavRow(str(R.string.battery_title), { nav.go(Routes.BATTERY) }, icon = Icons.Outlined.BatteryChargingFull)
             }
 
             SectionHeader(str(R.string.detail_tab_info))

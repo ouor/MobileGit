@@ -7,6 +7,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import com.ouor.mobilegit.ui.breakable
 import com.ouor.mobilegit.ui.ago
@@ -19,7 +20,6 @@ import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Shield
-import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -192,10 +192,6 @@ fun MainScreen(nav: Nav) {
                     OverflowMenu {
                         item(str(R.string.main_update_all)) { core.mirrors.updateAll(); snack(str(R.string.main_update_all_started)) }
                         item(str(R.string.main_check_all)) { core.mirrors.checkAll(); snack(str(R.string.main_check_all_started)) }
-                        item(str(R.string.main_storage)) { nav.go(Routes.STORAGE) }
-                        item(str(R.string.main_full_backup)) { nav.go(Routes.BACKUP) }
-                        item(str(R.string.main_access_log)) { nav.go(Routes.ACCESS_LOG) }
-                        item(str(R.string.main_settings)) { nav.go(Routes.SETTINGS) }
                     }
                 }
             }
@@ -266,13 +262,14 @@ fun MainScreen(nav: Nav) {
                     overview?.takeIf { all.isNotEmpty() }?.let { Summary(it, onProblems = { filter = RepoFilter.PROBLEM }) }
                     if (all.isNotEmpty()) {
                         SearchField(query) { query = it }
-                        FlowRow(Modifier.padding(top = Space.sm), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+                        // one line always; scrolls sideways if a large font still overflows
+                        Row(Modifier.fillMaxWidth().padding(top = Space.sm).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
                             val opts = listOf(RepoFilter.ALL to str(R.string.main_filter_all), RepoFilter.MIRROR to str(R.string.main_filter_mirror, all.count { it.meta.type == RepoType.MIRROR }),
                                 RepoFilter.LOCAL to str(R.string.main_filter_local, all.count { it.meta.type == RepoType.LOCAL })) +
                                 (if (problems > 0 || filter == RepoFilter.PROBLEM) listOf(RepoFilter.PROBLEM to str(R.string.main_filter_problem, problems)) else emptyList())
                             opts.forEach { (f, label) ->
-                                FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(label) },
-                                    leadingIcon = if (filter == f) ({ Icon(Icons.Outlined.Check, null, Modifier.size(18.dp)) }) else null)
+                                // no check icon: the selected fill already shows it, and the icon widened the chip enough to wrap
+                                FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(label, maxLines = 1, softWrap = false) })
                             }
                         }
                     }
@@ -290,7 +287,7 @@ fun MainScreen(nav: Nav) {
                     }
                 }
                 shown.isEmpty() -> item(key = "noMatch") {
-                    EmptyState(Icons.Outlined.Search, str(R.string.main_no_match_title), str(R.string.main_no_match_body)) {
+                    EmptyState(Icons.Outlined.Search, str(R.string.main_no_match_title), null) {
                         TextButton(onClick = { query = ""; filter = RepoFilter.ALL }) { Text(str(R.string.main_clear_filters)) }
                     }
                 }
@@ -363,7 +360,7 @@ private fun ServerCard(
         is ServerState.Running -> str(R.string.main_server_on) to (primary?.baseUrl?.removePrefix("http://") ?: str(R.string.main_no_network_title))
         ServerState.Starting -> str(R.string.main_server_starting) to str(R.string.main_server_port, port)
         ServerState.Stopping -> str(R.string.main_server_stopping) to str(R.string.main_server_stopping_body)
-        ServerState.Stopped -> str(R.string.main_server_off) to str(R.string.main_server_off_body)
+        ServerState.Stopped -> str(R.string.main_server_off) to null
         is ServerState.Failed -> str(R.string.main_server_off) to str(R.string.main_server_failed)
     }
     val showAddr = running && primary != null
@@ -376,8 +373,8 @@ private fun ServerCard(
                 .clickable(onClickLabel = if (showAddr) str(R.string.common_copy) else str(R.string.main_server_details)) { if (showAddr) copy(primary!!.baseUrl) else open = !open }) {
                 Text(title, style = MaterialTheme.typography.titleMedium)
                 // RV2-10: at large font sizes the address wraps only before the port, never inside "120"
-                if (showAddr) Text(breakable(sub), style = CodeText.body, color = MaterialTheme.colorScheme.onSurface)
-                else Text(sub, style = MaterialTheme.typography.bodySmall,
+                if (showAddr) Text(breakable(sub!!), style = CodeText.body, color = MaterialTheme.colorScheme.onSurface)
+                else if (sub != null) Text(sub, style = MaterialTheme.typography.bodySmall,
                     color = if (server is ServerState.Failed) tone(Tone.Danger).content else MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = { open = !open }) { Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, str(R.string.main_server_details)) }
@@ -399,7 +396,7 @@ private fun ServerCard(
             Text(str(R.string.main_server_port_prefix, port) + when { !auth -> str(R.string.main_auth_none); anon -> str(R.string.main_auth_push_only); else -> str(R.string.main_auth_on) },
                 style = MaterialTheme.typography.bodyMedium)
             addrs.forEach { a -> AddressBar(str(R.string.main_address_kind, a.kind.label()), a.baseUrl, enabled = running, onQr = if (running) onQr else null) }
-            if (addrs.isNotEmpty()) Text(if (running) str(R.string.main_address_hint) else str(R.string.main_address_when_on), style = MaterialTheme.typography.bodyMedium)
+            if (running && addrs.isNotEmpty()) Text(str(R.string.main_address_hint), style = MaterialTheme.typography.bodyMedium)
             // review #11: the plain-HTTP warning belongs next to the address, not only in settings
             if (addrs.any { it.kind == AddressKind.WIFI || it.kind == AddressKind.HOTSPOT }) Banner(Tone.Warning, Icons.Outlined.Shield, str(R.string.main_plain_http), str(R.string.main_plain_http_body))
             if (addrs.none { it.kind == AddressKind.TAILSCALE }) {
