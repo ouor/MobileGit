@@ -24,11 +24,14 @@ GitHub·GitLab 레포를 폰에 미러로 받아 두고, PC에서 폰으로 push
 3. **PC에서 쓰기**: 메인 화면의 주소로 `git clone`하거나, 로컬 레포를 만들어 PC에서 `git push`해요. 브라우저로 같은 주소를 열면 파일과 커밋을 볼 수 있어요.
 
 <div align="center">
-<img src="docs/images/screen-1.png" width="30%" alt="메인: 미러 요약 줄의 오류·주의 개수와 레포 목록">
-<img src="docs/images/screen-2.png" width="30%" alt="보존된 기록: force-push와 삭제 때 남긴 브랜치·태그와 커밋">
-<img src="docs/images/screen-3.png" width="30%" alt="웹 화면: 브라우저에서 보는 보존된 기록 표">
+<img src="docs/images/screen-1.jpg" width="30%" alt="메인: 서버 상태, 미러 요약 줄과 필터, 레포 목록">
+<img src="docs/images/screen-2.jpg" width="30%" alt="레포 상세: 와이파이·Tailscale 주소와 clone 명령">
+<img src="docs/images/screen-3.jpg" width="30%" alt="설정: 포트, 사용자 이름, 비밀번호 요구, 연결 경로별 보안">
+<br>
+<img src="docs/images/screen-4.jpg" width="30%" alt="설정: 원본 접속 토큰, 접속 기록, 저장 공간, 전체 백업">
+<img src="docs/images/screen-5.jpg" width="30%" alt="웹 화면: 브라우저에서 보는 레포 목록과 미러 추가">
 </div>
-<div align="center"><sub>메인 · 보존된 기록 · 웹 화면</sub></div>
+<div align="center"><sub>메인 · 레포 상세 · 설정 · 웹 화면</sub></div>
 
 ## ✨ 할 수 있는 것
 
